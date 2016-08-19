@@ -8,14 +8,14 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing;
+package com.linkedin.kafka.clients.auditing.abstractImpl;
 
-import com.linkedin.kafka.clients.auditing.helper.CountingAuditStats;
+import com.linkedin.kafka.clients.auditing.AuditType;
 import org.testng.annotations.Test;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
-import com.linkedin.kafka.clients.auditing.helper.CountingAuditStats.AuditInfo;
+import com.linkedin.kafka.clients.auditing.abstractImpl.CountingAuditStats.AuditInfo;
 
 import static org.testng.Assert.assertEquals;
 

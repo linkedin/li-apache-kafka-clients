@@ -8,7 +8,7 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing.helper;
+package com.linkedin.kafka.clients.auditing.abstractImpl;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 
@@ -19,7 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * A class that aggregate the statistics for auditing.
+ * A class that aggregate the statistics for auditing by simply counting the number of events of different auditing
+ * types for each topic.
  *
  * This class is thread safe.
  */
@@ -90,6 +91,7 @@ public class CountingAuditStats<K, V> implements AuditStats<K, V> {
   public void close() {
     _closed = true;
     // We loop waiting if there is any other threads using this stats.
+    // We should be get out of the loop pretty quickly
     while (_recordingInProgress.get() > 0) { }
   }
 

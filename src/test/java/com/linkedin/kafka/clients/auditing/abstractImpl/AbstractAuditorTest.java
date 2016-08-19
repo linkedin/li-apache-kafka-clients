@@ -8,11 +8,10 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing;
+package com.linkedin.kafka.clients.auditing.abstractImpl;
 
-import com.linkedin.kafka.clients.auditing.helper.AbstractAuditor;
-import com.linkedin.kafka.clients.auditing.helper.AuditStats;
-import com.linkedin.kafka.clients.auditing.helper.CountingAuditStats;
+import com.linkedin.kafka.clients.auditing.AuditType;
+import com.linkedin.kafka.clients.auditing.Auditor;
 import org.apache.kafka.common.utils.Time;
 import org.testng.annotations.Test;
 
@@ -35,7 +34,7 @@ public class AbstractAuditorTest {
   public void testTick() {
     TestingAuditor auditor = new TestingAuditor(TIME);
     Map<String, String> config = new HashMap<>();
-    config.put(AbstractAuditor.BUCKET_MS, "30000");
+    config.put(TestingAuditor.BUCKET_MS, "30000");
     config.put(AbstractAuditor.REPORTING_DELAY_MS, "6000");
     config.put(AbstractAuditor.REPORTING_INTERVAL_MS, "60000");
     auditor.configure(config);
@@ -98,7 +97,7 @@ public class AbstractAuditorTest {
   public void testClose() {
     AbstractAuditor<String, String> auditor = new TestingAuditor(TIME);
     Map<String, String> config = new HashMap<>();
-    config.put(AbstractAuditor.BUCKET_MS, "30000");
+    config.put(TestingAuditor.BUCKET_MS, "30000");
     config.put(AbstractAuditor.REPORTING_DELAY_MS, "6000");
     config.put(AbstractAuditor.REPORTING_INTERVAL_MS, "60000");
     auditor.configure(config);
@@ -124,11 +123,12 @@ public class AbstractAuditorTest {
 
     TestingAuditor auditor = new TestingAuditor(TIME);
     Map<String, String> config = new HashMap<>();
-    config.put(AbstractAuditor.BUCKET_MS, "1000");
+    config.put(TestingAuditor.BUCKET_MS, "1000");
     config.put(AbstractAuditor.REPORTING_DELAY_MS, "100");
     config.put(AbstractAuditor.REPORTING_INTERVAL_MS, "10000");
     auditor.configure(config);
     // Do not start auditor, we will tick manually.
+    auditor.initAuditStats();
 
     for (int i = 0; i < recorders.length; i++) {
       recorders[i] = new Recorder(auditor, numTimestamps, topics, auditTypes);
@@ -224,9 +224,17 @@ public class AbstractAuditorTest {
   }
 
   private static class TestingAuditor extends AbstractAuditor<String, String> {
+    public static final String BUCKET_MS = "bucket.ms";
+    private long _bucketMs;
 
     TestingAuditor(Time time) {
       super(time);
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+      super.configure(configs);
+      _bucketMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(BUCKET_MS, "30000"));
     }
 
     // protected methods for unit test.
@@ -261,8 +269,8 @@ public class AbstractAuditorTest {
     }
 
     @Override
-    protected AuditStats<String, String> newAuditStats(long bucketMs) {
-      return new CountingAuditStats<>(bucketMs);
+    protected AuditStats<String, String> newAuditStats() {
+      return new CountingAuditStats<>(_bucketMs);
     }
   }
 

@@ -10,9 +10,9 @@
 
 package com.linkedin.kafka.clients.auditing;
 
-import com.linkedin.kafka.clients.auditing.helper.AbstractAuditor;
-import com.linkedin.kafka.clients.auditing.helper.AuditStats;
-import com.linkedin.kafka.clients.auditing.helper.CountingAuditStats;
+import com.linkedin.kafka.clients.auditing.abstractImpl.AbstractAuditor;
+import com.linkedin.kafka.clients.auditing.abstractImpl.AuditStats;
+import com.linkedin.kafka.clients.auditing.abstractImpl.CountingAuditStats;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +26,11 @@ import java.util.concurrent.ConcurrentSkipListMap;
  */
 public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   private static final Logger AUDIT_LOG = LoggerFactory.getLogger("AuditingLogger");
+
+  public static final String BUCKET_MS = "auditor.bucket.ms";
+  private static final String BUCKET_MS_DEFAULT = "600000";
+
+  private long _bucketMs = -1L;
 
   public LoggingAuditor() {
     super();
@@ -59,6 +64,13 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
+  public void configure(Map<String, ?> configs) {
+    super.configure(configs);
+    _bucketMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(BUCKET_MS, BUCKET_MS_DEFAULT));
+  }
+
+  @Override
   public void onTick(AuditStats<K, V> lastStats) {
     printSummary(lastStats);
   }
@@ -71,7 +83,7 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
-  protected CountingAuditStats<K, V> newAuditStats(long bucketMs) {
-    return new CountingAuditStats<K, V>(bucketMs);
+  protected CountingAuditStats<K, V> newAuditStats() {
+    return new CountingAuditStats<K, V>(_bucketMs);
   }
 }

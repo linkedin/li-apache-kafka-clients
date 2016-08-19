@@ -42,8 +42,10 @@ public interface Auditor<K, V> extends Configurable {
   void start();
 
   /**
-   * Record the given event in the monitoring statistics. This method record will be called by LiKafkaProducerImpl
+   * Record the given event in the monitoring statistics. This method will be called by LiKafkaProducerImpl
    * for each record it sends, no matter if the record is sent successfully or failed.
+   *
+   * This method may be called from multiple threads, so the implementation must be thread safe.
    *
    * @param topic The topic of the event.
    * @param key The key of the event.

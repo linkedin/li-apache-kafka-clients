@@ -8,10 +8,11 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing.helper;
+package com.linkedin.kafka.clients.auditing.abstractImpl;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.auditing.LoggingAuditor;
 import org.apache.kafka.common.utils.SystemTime;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
@@ -22,16 +23,51 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * An abstract Auditor that helps deal with tricky concurrency problems.
+ *
+ * The abstract auditor helps aggregate the audited records and pass the aggregated statistics to the users periodically
+ * based on the reporting interval setting.
+ * <p>
+ * More specifically, the abstract auditor keeps an {@link AuditStats} for each reporting interval.
+ * The {@link AuditStats} helps maintain the records that have been audited during the corresponding reporting interval.
+ * We have provided {@link CountingAuditStats} as an implementation of {@link AuditStats} in the package.
+ * The {@link CountingAuditStats} aggregates the records that have been audited into different buckets.
+ * At the end of each reporting interval, the abstract auditor would tick to roll out a new {@link AuditStats} and close
+ * the old audit stats. The old audit stats will then be passed to the user through {@link #onTick} method.
+ *
+ * <p>
+ * Ideally, the timestamp of the audited records should always fall in the current reporting interval. But due to some
+ * lag, it is possible that some audited records has an earlier timestamp that falls in the previous reporting interval.
+ * Although this won't impact the auditing results, the abstract auditor allows user to specify a reporting.delay.ms to
+ * tolerate some records that are audited later than expected. On the other hand, if a timestamp is ahead of the
+ * current reporting interval, it will be aggregated into the AuditStats of next reporting interval.
+ *
+ * To use this class, users need to implement the following methods:
+ * <pre>
+ *   public void onTick(AuditStats<K, V> lastStats);
+ *   public void onClosed(AuditStats<K, V> currentStats, AuditStats<K, V> nextStats);
+ *   protected AuditStats<K, V> newAuditStats();
+ * </pre>
+ *
+ * <p>
+ * For users who wants to have customized configurations, they may override the method:
+ * <pre>
+ *   public void configure(Map<String, ?> configs);
+ * </pre>
+ *
+ * When users do that the {@link #configure(java.util.Map)} method must call
+ * <pre>
+ * super.configure(configs);
+ * </pre>
+ * An example implementation can be found in {@link LoggingAuditor}. The {@link LoggingAuditor} uses
+ * {@link CountingAuditStats} to aggregate the audited records and simply print it to the log.
  */
 public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractAuditor.class);
   // Config Names
-  public static final String BUCKET_MS = "auditor.bucket.ms";
   public static final String REPORTING_INTERVAL_MS = "auditor.reporting.interval.ms";
   public static final String REPORTING_DELAY_MS = "auditor.reporting.delay.ms";
 
   // Config default values
-  private static final String BUCKET_MS_DEFAULT = "600000";
   private static final String REPORTING_INTERVAL_MS_DEFAULT = "600000";
   private static final String REPORTING_DELAY_MS_DEFAULT = "60000";
 
@@ -39,8 +75,6 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   // The timer that facilitates unit test.
   private static Time _time;
 
-  // The auditing time bucket in millisecond.
-  private static long _bucketMs;
   // The logging delay in millisecond.
   private static long _reportingIntervalMs;
   // The logging delay in millisecond. This is to tolerate some of the late arrivals on the consumer side.
@@ -55,13 +89,19 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   // The shutdown flag and latches.
   protected volatile boolean _shutdown;
 
+  /**
+   * Construct the abstract auditor
+   */
   public AbstractAuditor() {
     super();
     _time = new SystemTime();
   }
 
-  // Protected constructor for unit test.
-  protected AbstractAuditor(Time time) {
+  /**
+   * Construct the abstract class with a time object.
+   * @param time The time object.
+   */
+  public AbstractAuditor(Time time) {
     super();
     _time = time;
   }
@@ -69,12 +109,9 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   @Override
   @SuppressWarnings("unchecked")
   public void configure(Map<String, ?> configs) {
-    _bucketMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(BUCKET_MS, BUCKET_MS_DEFAULT));
     _reportingIntervalMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(REPORTING_INTERVAL_MS, REPORTING_INTERVAL_MS_DEFAULT));
     _reportingDelayMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(REPORTING_DELAY_MS, REPORTING_DELAY_MS_DEFAULT));
-    _currentStats = newAuditStats(_bucketMs);
-    _nextStats = newAuditStats(_bucketMs);
-    _nextTick = (_time.milliseconds() / _bucketMs) * _bucketMs + _reportingIntervalMs;
+    _nextTick = (_time.milliseconds() / _reportingIntervalMs) * _reportingIntervalMs + _reportingIntervalMs;
     _ticks = 0;
     _shutdown = false;
   }
@@ -102,46 +139,94 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     }
   }
 
+
   // protected methods
+  /**
+   * Get the current audit stats.
+   */
   protected AuditStats<K, V> currentStats() {
     return _currentStats;
   }
 
+  /**
+   * Get the next audit stats.
+   */
   protected AuditStats<K, V> nextStats() {
     return _nextStats;
   }
 
+  /**
+   * Get the time when the next tick will occur.
+   */
   protected long nextTick() {
     return _nextTick;
   }
 
+  /**
+   * Get the total number of ticks occurred so far.
+   */
   protected long ticks() {
     return _ticks;
   }
 
+  /**
+   * Manually tick the abstract auditor and get the AuditStats of the last reporting interval.
+   */
   protected AuditStats<K, V> tickAndGetStats() {
     AuditStats<K, V> prevStats = _currentStats;
     _currentStats = _nextStats;
     _nextTick += _reportingIntervalMs;
-    _nextStats = newAuditStats(_bucketMs);
+    _nextStats = newAuditStats();
     _ticks++;
     prevStats.close();
     return prevStats;
   }
 
+  /**
+   * Roll out a new AuditStats and pass that to the users.
+   */
   private void tick() {
     onTick(tickAndGetStats());
   }
 
+  /**
+   * This method is called when a reporting interval is reached and the abstract auditor rolls out a new AuditStats.
+   * The old AuditStats will be closed and passed to this method as the argument. The subclass must implement this
+   * method to handle the AuditStats for the previous reporting interval.
+   *
+   * @param lastStats The AuditStats of the previous reporting interval.
+   */
   public abstract void onTick(AuditStats<K, V> lastStats);
 
+  /**
+   * This method will be called when the auditor is closed.
+   * The AuditStats of the current and next reporting interval will be passed for the subclass to handle.
+   *
+   * @param currentStats The stats for the current reporting period.
+   * @param nextStats The stats for the next reporting period.
+   */
   public abstract void onClosed(AuditStats<K, V> currentStats, AuditStats<K, V> nextStats);
 
-  protected abstract AuditStats<K, V> newAuditStats(long bucketMs);
+  /**
+   * Create a new AuditStats. This method will be called when the abstract auditor rolls out a new AuditStat for a new
+   * reporting interval.
+   */
+  protected abstract AuditStats<K, V> newAuditStats();
 
   @Override
   public void start() {
+    // Initialize the stats before starting auditor.
+    _currentStats = newAuditStats();
+    _nextStats = newAuditStats();
     super.start();
+  }
+
+  /**
+   * Package private function for unit test. Initialize the audit stats without stating the thread.
+   */
+  void initAuditStats() {
+    _currentStats = newAuditStats();
+    _nextStats = newAuditStats();
   }
 
   @Override

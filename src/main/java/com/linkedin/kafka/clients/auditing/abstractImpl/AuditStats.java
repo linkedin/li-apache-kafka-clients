@@ -8,7 +8,7 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing.helper;
+package com.linkedin.kafka.clients.auditing.abstractImpl;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 
