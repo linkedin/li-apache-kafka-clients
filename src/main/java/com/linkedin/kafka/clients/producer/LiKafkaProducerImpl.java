@@ -127,8 +127,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     V value = producerRecord.value();
     Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
     Integer partition = producerRecord.partition();
-    // Audit the attempt.
-    _auditor.record(topic, key, value, timestamp, 0, AuditType.ATTEMPT);
     Future<RecordMetadata> future = null;
     UUID messageId = getUuid(key, value);
     if (LOG.isTraceEnabled()) {
@@ -144,12 +142,14 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       serializedValue = _valueSerializer.serialize(topic, value);
       serializedKey = _keySerializer.serialize(topic, key);
     } catch (Throwable t) {
-      // Audit the failure.
+      // Audit the attempt and the failure.
+      _auditor.record(topic, key, value, timestamp, 0, AuditType.ATTEMPT);
       _auditor.record(topic, key, value, timestamp, 0, AuditType.FAILURE);
       throw new KafkaException(t);
     }
     int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
         + (serializedValue == null ? 0 : serializedValue.length);
+    // Audit the attempt.
     _auditor.record(topic, key, value, timestamp, sizeInBytes, AuditType.ATTEMPT);
     // We wrap the user callback for error logging and auditing purpose.
     Callback errorLoggingCallback =

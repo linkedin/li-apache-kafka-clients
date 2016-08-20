@@ -43,9 +43,10 @@ import java.util.concurrent.TimeUnit;
  *
  * To use this class, users need to implement the following methods:
  * <pre>
- *   public void onTick(AuditStats<K, V> lastStats);
- *   public void onClosed(AuditStats<K, V> currentStats, AuditStats<K, V> nextStats);
- *   protected AuditStats<K, V> newAuditStats();
+ *   {@link #onTick(AuditStats)}
+ *   {@link #onClosed(AuditStats, AuditStats)}
+ *   {@link #newAuditStats()}
+ *   {@link #getAuditKey(String, Object, Object, long, Integer, com.linkedin.kafka.clients.auditing.AuditType)}
  * </pre>
  *
  * <p>
@@ -90,7 +91,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   protected volatile boolean _shutdown;
 
   /**
-   * Construct the abstract auditor
+   * Construct the abstract auditor.
    */
   public AbstractAuditor() {
     super();
@@ -98,11 +99,13 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   }
 
   /**
-   * Construct the abstract class with a time object.
+   * Construct the abstract auditor with thread name and time object.
+   *
+   * @param name The auditing thread name.
    * @param time The time object.
    */
-  public AbstractAuditor(Time time) {
-    super();
+  public AbstractAuditor(String name, Time time) {
+    super(name);
     _time = time;
   }
 
@@ -213,6 +216,28 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    */
   protected abstract AuditStats<K, V> newAuditStats();
 
+  /**
+   * Get the audit key based on the event information. The audit key will be used to categorize the event that is
+   * being audited. For example, if user wants to categorize the events based on the size of the bytes, the audit key
+   * could be the combination of topic and size rounded down to 100KB. An example audit key implementation can be
+   * found in {@link com.linkedin.kafka.clients.auditing.abstractImpl.CountingAuditStats.AuditKey}.
+   *
+   * @param topic the topic of the event being audited.
+   * @param key the key of the event being audited.
+   * @param value the value of the event being audited.
+   * @param timestamp the timestamp of the event being audited.
+   * @param sizeInBytes the size of the event being audited.
+   * @param auditType the audit type of the event being audited.
+   *
+   * @return An object that can be served as an key in a {@link java.util.HashMap}
+   */
+  protected abstract Object getAuditKey(String topic,
+                                        K key,
+                                        V value,
+                                        long timestamp,
+                                        Integer sizeInBytes,
+                                        AuditType auditType);
+
   @Override
   public void start() {
     // Initialize the stats before starting auditor.
@@ -235,7 +260,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     do {
       try {
         AuditStats<K, V> auditStats = timestamp >= _nextTick ? _nextStats : _currentStats;
-        auditStats.update(topic, key, value, timestamp, sizeInBytes, auditType);
+        auditStats.update(getAuditKey(topic, key, value, timestamp, sizeInBytes, auditType), sizeInBytes);
         done = true;
       } catch (IllegalStateException ise) {
         // Ignore this exception and retry because we might be ticking.

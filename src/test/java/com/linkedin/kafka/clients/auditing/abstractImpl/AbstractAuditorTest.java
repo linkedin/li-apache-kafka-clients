@@ -47,11 +47,11 @@ public class AbstractAuditorTest {
     auditor.record(TOPIC, "key", "value", auditor.nextTick(), 10, AuditType.SUCCESS);
     auditor.record(TOPIC, "key", "value", auditor.nextTick(), 10, AuditType.SUCCESS);
 
-    assertEquals(auditor.currentStats().stats().get(AuditType.SUCCESS).get(0L).get(TOPIC).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.currentStats().stats().get(AuditType.SUCCESS).get(1L).get(TOPIC).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.nextStats().stats().get(AuditType.SUCCESS).get(2L).get(TOPIC).messageCount(), 2,
+    assertEquals(auditor.nextStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock to 1 ms before next tick.
@@ -60,11 +60,11 @@ public class AbstractAuditorTest {
     long ticks = auditor.ticks();
     long startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
-    assertEquals(auditor.currentStats().stats().get(AuditType.SUCCESS).get(0L).get(TOPIC).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.currentStats().stats().get(AuditType.SUCCESS).get(1L).get(TOPIC).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.nextStats().stats().get(AuditType.SUCCESS).get(2L).get(TOPIC).messageCount(), 2,
+    assertEquals(auditor.nextStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock again to the nextTick + REPORTING_DELAY_MS - 1. The tick should not happen due to the logging delay.
@@ -73,11 +73,11 @@ public class AbstractAuditorTest {
     ticks = auditor.ticks();
     startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
-    assertEquals(auditor.currentStats().stats().get(AuditType.SUCCESS).get(0L).get(TOPIC).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.currentStats().stats().get(AuditType.SUCCESS).get(1L).get(TOPIC).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.nextStats().stats().get(AuditType.SUCCESS).get(2L).get(TOPIC).messageCount(), 2,
+    assertEquals(auditor.nextStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock again, now it should tick.
@@ -86,7 +86,7 @@ public class AbstractAuditorTest {
     ticks = auditor.ticks();
     startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
-    assertEquals(auditor.currentStats().stats().get(AuditType.SUCCESS).get(2L).get(TOPIC).messageCount(), 2,
+    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
         "There should be one message in the current stats");
     assertTrue(auditor.nextStats().stats().isEmpty(), "The next stats should be empty now.");
 
@@ -137,7 +137,7 @@ public class AbstractAuditorTest {
 
     // Let's tick. We will tick at most 10 times.
     CountingAuditStats<String, String> stats = null;
-    Map<AuditType, ConcurrentSkipListMap<Long, Map<String, AtomicLong>>> counters = new HashMap<>();
+    Map<CountingAuditStats.AuditKey, AtomicLong> counters = new HashMap<>();
     boolean done = false;
     while (!done) {
       try {
@@ -150,21 +150,11 @@ public class AbstractAuditorTest {
         done = true;
       }
       // Add the stats
-      for (Map.Entry<AuditType, ConcurrentSkipListMap<Long, Map<String, CountingAuditStats.AuditInfo>>> entry : stats.stats().entrySet()) {
-        ConcurrentSkipListMap<Long, Map<String, CountingAuditStats.AuditInfo>> statsForType = entry.getValue();
-        AuditType type = entry.getKey();
-        counters.putIfAbsent(type, new ConcurrentSkipListMap<>());
-        while (!statsForType.isEmpty()) {
-          Map.Entry<Long, Map<String, CountingAuditStats.AuditInfo>> statsForBucket = statsForType.pollFirstEntry();
-          Long bucket = statsForBucket.getKey();
-          counters.get(type).putIfAbsent(bucket, new HashMap<>());
-          for (Map.Entry<String, CountingAuditStats.AuditInfo> statsForTopic : statsForBucket.getValue().entrySet()) {
-            String topic = statsForTopic.getKey();
-            counters.get(type).get(bucket).putIfAbsent(topic, new AtomicLong(0));
-            long messageCount = statsForTopic.getValue().messageCount();
-            counters.get(type).get(bucket).get(topic).addAndGet(messageCount);
-          }
-        }
+      for (Map.Entry<Object, CountingAuditStats.AuditInfo> entry : stats.stats().entrySet()) {
+        CountingAuditStats.AuditKey auditKey = (CountingAuditStats.AuditKey) entry.getKey();
+        CountingAuditStats.AuditInfo auditInfo = entry.getValue();
+        counters.putIfAbsent(auditKey, new AtomicLong(0));
+        counters.get(auditKey).addAndGet(auditInfo.messageCount());
       }
     }
     auditor.close();
@@ -179,19 +169,15 @@ public class AbstractAuditorTest {
     assertTrue(auditor.ticks() > 2);
 
     // Now verify
-    for (Map.Entry<AuditType, ConcurrentSkipListMap<Long, Map<String, AtomicLong>>> entry : counters.entrySet()) {
-      ConcurrentSkipListMap<Long, Map<String, AtomicLong>> statsForType = entry.getValue();
-      long numBuckets = (numTimestamps + bucketMs - 1) / bucketMs;
-      assertEquals(statsForType.size(), numBuckets, "There should be " + numBuckets + " time buckets");
-      long i = 0;
-      while (!statsForType.isEmpty()) {
-        Map.Entry<Long, Map<String, AtomicLong>> statsForBucket = statsForType.pollFirstEntry();
-        assertEquals(statsForBucket.getKey().longValue(), i, "The bucket should be " + i);
-        assertEquals(statsForBucket.getValue().size(), topics.length, "There should be " + topics.length + " topics");
-        i++;
-        long expectedNumMessages = numTimestamps / numBuckets * numThreads;
-        for (Map.Entry<String, AtomicLong> statsForTopic : statsForBucket.getValue().entrySet()) {
-          assertEquals(statsForTopic.getValue().longValue(), expectedNumMessages,
+    long numBuckets = (numTimestamps + bucketMs - 1) / bucketMs;
+    long expectedNumMessages = numTimestamps / numBuckets * numThreads;
+    for (int typeIndex = 0; typeIndex < auditTypes.length; typeIndex++) {
+      for (int topicIndex = 0; topicIndex < topics.length; topicIndex++) {
+        for (long bucketIndex = 0; bucketIndex < numBuckets; bucketIndex++) {
+          CountingAuditStats.AuditKey auditKey =
+              new CountingAuditStats.AuditKey(topics[topicIndex], bucketIndex, auditTypes[typeIndex]);
+          assertTrue(counters.containsKey(auditKey));
+          assertEquals(counters.get(auditKey).longValue(), expectedNumMessages,
               "The topic should have " + expectedNumMessages + " messages in the bucket");
         }
       }
@@ -228,7 +214,7 @@ public class AbstractAuditorTest {
     private long _bucketMs;
 
     TestingAuditor(Time time) {
-      super(time);
+      super("test-auditor", time);
     }
 
     @Override
@@ -271,6 +257,16 @@ public class AbstractAuditorTest {
     @Override
     protected AuditStats<String, String> newAuditStats() {
       return new CountingAuditStats<>(_bucketMs);
+    }
+
+    @Override
+    protected Object getAuditKey(String topic,
+                                 String key,
+                                 String value,
+                                 long timestamp,
+                                 Integer sizeInBytes,
+                                 AuditType auditType) {
+      return new CountingAuditStats.AuditKey(topic, timestamp / _bucketMs, auditType);
     }
   }
 

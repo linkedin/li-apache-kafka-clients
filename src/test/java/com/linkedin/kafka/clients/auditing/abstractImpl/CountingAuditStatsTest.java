@@ -14,10 +14,10 @@ import com.linkedin.kafka.clients.auditing.AuditType;
 import org.testng.annotations.Test;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentSkipListMap;
 import com.linkedin.kafka.clients.auditing.abstractImpl.CountingAuditStats.AuditInfo;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 /**
  * The unit test for AuditStats
@@ -48,23 +48,18 @@ public class CountingAuditStatsTest {
       }
     }
 
-    Map<AuditType, ConcurrentSkipListMap<Long, Map<String, AuditInfo>>> counters = stats.stats();
-    assertEquals(counters.size(), AUDIT_TYPES.length, "There should be " + AUDIT_TYPES.length + " audit types");
-    for (Map.Entry<AuditType, ConcurrentSkipListMap<Long, Map<String, AuditInfo>>> entry : counters.entrySet()) {
-      ConcurrentSkipListMap<Long, Map<String, AuditInfo>> statsForType = entry.getValue();
-      long numBuckets = (NUM_TIMESTAMPS + BUCKET_MS - 1) / BUCKET_MS;
-      assertEquals(statsForType.size(), numBuckets, "There should be " + numBuckets + " time buckets");
-      long i = 0;
-      while (!statsForType.isEmpty()) {
-        Map.Entry<Long, Map<String, AuditInfo>> statsForBucket = statsForType.pollFirstEntry();
-        assertEquals(statsForBucket.getKey().longValue(), i, "The bucket should be " + i);
-        assertEquals(statsForBucket.getValue().size(), TOPICS.length, "There should be " + TOPICS.length + " topics");
-        i++;
-        long expectedNumMessages = NUM_TIMESTAMPS / numBuckets * NUM_THREAD;
-        for (Map.Entry<String, AuditInfo> statsForTopic : statsForBucket.getValue().entrySet()) {
-          assertEquals(statsForTopic.getValue().messageCount(), expectedNumMessages,
+    Map<Object, AuditInfo> counters = stats.stats();
+    long numBuckets = (NUM_TIMESTAMPS + BUCKET_MS - 1) / BUCKET_MS;
+    long expectedNumMessages = NUM_TIMESTAMPS / numBuckets * NUM_THREAD;
+    for (int typeIndex = 0; typeIndex < AUDIT_TYPES.length; typeIndex++) {
+      for (int topicIndex = 0; topicIndex < TOPICS.length; topicIndex++) {
+        for (long bucketIndex = 0; bucketIndex < numBuckets; bucketIndex++) {
+          CountingAuditStats.AuditKey auditKey =
+              new CountingAuditStats.AuditKey(TOPICS[topicIndex], bucketIndex, AUDIT_TYPES[typeIndex]);
+          assertTrue(counters.containsKey(auditKey));
+          assertEquals(counters.get(auditKey).messageCount(), expectedNumMessages,
               "The topic should have " + expectedNumMessages + " messages in the bucket");
-          assertEquals(statsForTopic.getValue().bytesCount(), 2 * expectedNumMessages,
+          assertEquals(counters.get(auditKey).bytesCount(), 2 * expectedNumMessages,
               "The topic should have " + 2 * expectedNumMessages + " messages in the bucket");
         }
       }
@@ -83,7 +78,9 @@ public class CountingAuditStatsTest {
       for (int typeIndex = 0; typeIndex < AUDIT_TYPES.length; typeIndex++) {
         for (int topicIndex = 0; topicIndex < TOPICS.length; topicIndex++) {
           for (long timestamp = 0; timestamp < NUM_TIMESTAMPS; timestamp++) {
-            _stats.update(TOPICS[topicIndex], null, null, timestamp, 2, AUDIT_TYPES[typeIndex]);
+            CountingAuditStats.AuditKey auditKey =
+                new CountingAuditStats.AuditKey(TOPICS[topicIndex], timestamp / BUCKET_MS, AUDIT_TYPES[typeIndex]);
+            _stats.update(auditKey, 2);
           }
         }
       }

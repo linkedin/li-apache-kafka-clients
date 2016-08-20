@@ -10,8 +10,6 @@
 
 package com.linkedin.kafka.clients.auditing.abstractImpl;
 
-import com.linkedin.kafka.clients.auditing.AuditType;
-
 /**
  * The interface for audit stats. This is used to hold the audit information of a tick in {@link AbstractAuditor}.
  *
@@ -25,17 +23,12 @@ public interface AuditStats<K, V> {
   /**
    * The method that record the message for audit.
    *
-   * @param topic the topic of the message.
-   * @param key the key of the message.
-   * @param value the value of the message.
-   * @param timestamp the timestamp of the message.
+   * @param auditKey The audit key for the event. (e.g. combination of topic, key and audit type).
    * @param sizeInBytes the size of the message after serialization.
-   * @param auditType the audit type.
    *
    * @throws IllegalStateException Thrown if the audit stats is updated after it is closed.
    */
-  void update(String topic, K key, V value, long timestamp, int sizeInBytes, AuditType auditType)
-      throws IllegalStateException;
+  void update(Object auditKey, int sizeInBytes) throws IllegalStateException;
 
   /**
    * Close the audit stats.

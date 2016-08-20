@@ -36,30 +36,20 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
     super();
   }
 
-  LoggingAuditor(Time time) {
-    super(time);
+  public LoggingAuditor(String name, Time time) {
+    super(name, time);
   }
 
   public void printSummary(AuditStats<K, V> auditStats) {
     CountingAuditStats<K, V> countingAuditStats = (CountingAuditStats<K, V>) auditStats;
     long bucketMs = countingAuditStats.bucketMs();
-    Map<AuditType, ConcurrentSkipListMap<Long, Map<String, CountingAuditStats.AuditInfo>>> stats = countingAuditStats.stats();
-    for (Map.Entry<AuditType, ConcurrentSkipListMap<Long, Map<String, CountingAuditStats.AuditInfo>>> entry : stats.entrySet()) {
-      AUDIT_LOG.info("*** Audit Type: " + entry.getKey().name() + " ***");
-      ConcurrentSkipListMap<Long, Map<String, CountingAuditStats.AuditInfo>> statsForType = entry.getValue();
-      while (!statsForType.isEmpty()) {
-        Map.Entry<Long, Map<String, CountingAuditStats.AuditInfo>> statsForBucket = statsForType.pollFirstEntry();
-        String start = new Date(statsForBucket.getKey() * bucketMs).toString();
-        String end = new Date(statsForBucket.getKey() * bucketMs + bucketMs).toString();
-        StringBuilder builder = new StringBuilder();
-        builder.append("[").append(start).append(" - ").append(end).append("] : ");
-        for (Map.Entry<String, CountingAuditStats.AuditInfo> statsForTopic : statsForBucket.getValue().entrySet()) {
-          builder.append(statsForTopic);
-          builder.append(",");
-        }
-        builder.deleteCharAt(builder.length() - 1);
-        AUDIT_LOG.info(builder.toString());
-      }
+    Map<Object, CountingAuditStats.AuditInfo> stats = countingAuditStats.stats();
+    for (Map.Entry<Object, CountingAuditStats.AuditInfo> entry : stats.entrySet()) {
+      CountingAuditStats.AuditKey auditKey = (CountingAuditStats.AuditKey) entry.getKey();
+      CountingAuditStats.AuditInfo auditInfo = entry.getValue();
+      String start = new Date(auditKey.bucket() * bucketMs).toString();
+      String end = new Date(auditKey.bucket() * bucketMs + bucketMs).toString();
+      AUDIT_LOG.info("[" + start + " - " + end + "] : " + auditKey + auditInfo);
     }
   }
 
@@ -85,5 +75,10 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   @Override
   protected CountingAuditStats<K, V> newAuditStats() {
     return new CountingAuditStats<K, V>(_bucketMs);
+  }
+
+  @Override
+  protected Object getAuditKey(String topic, K key, V value, long timestamp, Integer sizeInBytes, AuditType auditType) {
+    return new CountingAuditStats.AuditKey(topic, timestamp / _bucketMs, auditType);
   }
 }

@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class CountingAuditStats<K, V> implements AuditStats<K, V> {
 
   private final long _bucketMs;
-  private final Map<AuditType, ConcurrentSkipListMap<Long, Map<String, AuditInfo>>> _stats;
+  private final Map<Object, AuditInfo> _stats;
 
   // The variables for synchronization on ticks.
   private final AtomicInteger _recordingInProgress;
@@ -44,40 +44,22 @@ public class CountingAuditStats<K, V> implements AuditStats<K, V> {
     return _bucketMs;
   }
 
-  public Map<AuditType, ConcurrentSkipListMap<Long, Map<String, AuditInfo>>> stats() {
+  public Map<Object, AuditInfo> stats() {
     return _stats;
   }
 
-  public void update(String topic, K key, V value, long timestamp, int sizeInBytes, AuditType auditType) {
+  public void update(Object auditKey, int sizeInBytes) {
     try {
       // Increment the counter to claim usage. This is to make sure we do not close an AnditStats that is in use.
       _recordingInProgress.incrementAndGet();
       if (_closed) {
         throw new IllegalStateException("Stats has been closed. The caller should get the new AuditStats and retry.");
       }
-      ConcurrentSkipListMap<Long, Map<String, AuditInfo>> statsForType = _stats.get(auditType);
-      if (statsForType == null) {
-        statsForType = new ConcurrentSkipListMap<>();
-        ConcurrentSkipListMap<Long, Map<String, AuditInfo>> prev = _stats.putIfAbsent(auditType, statsForType);
-        if (prev != null) {
-          statsForType = prev;
-        }
-      }
 
-      long bucket = timestamp / _bucketMs;
-      Map<String, AuditInfo> statsForBucket = statsForType.get(bucket);
-      if (statsForBucket == null) {
-        statsForBucket = new ConcurrentHashMap<>();
-        Map<String, AuditInfo> prev = statsForType.putIfAbsent(bucket, statsForBucket);
-        if (prev != null) {
-          statsForBucket = prev;
-        }
-      }
-
-      AuditInfo statsForTopic = statsForBucket.get(topic);
+      AuditInfo statsForTopic = _stats.get(auditKey);
       if (statsForTopic == null) {
         statsForTopic = new AuditInfo();
-        AuditInfo prev = statsForBucket.putIfAbsent(topic, statsForTopic);
+        AuditInfo prev = _stats.putIfAbsent(auditKey, statsForTopic);
         if (prev != null) {
           statsForTopic = prev;
         }
@@ -116,6 +98,60 @@ public class CountingAuditStats<K, V> implements AuditStats<K, V> {
     public String toString() {
       return "(" + _messageCount.get() + "," + _bytesCount.get() + " Bytes)";
     }
+  }
+
+  public static class AuditKey {
+    private final String _topic;
+    private final Long _bucket;
+    private final AuditType _auditType;
+
+    public AuditKey(String topic, Long bucket, AuditType auditType) {
+      _topic = topic;
+      _bucket = bucket;
+      _auditType = auditType;
+    }
+
+    public String topic() {
+      return _topic;
+    }
+
+    public Long bucket() {
+      return _bucket;
+    }
+
+    public AuditType auditType() {
+      return _auditType;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (obj instanceof AuditKey) {
+        AuditKey other = (AuditKey) obj;
+        return equals(_topic, other.topic()) && equals(_auditType, other.auditType());
+      }
+      return false;
+    }
+
+    @Override
+    public int hashCode() {
+      int h1 = _topic != null ? _topic.hashCode() : 0;
+      int h2 = _bucket != null ? _bucket.hashCode() : 0;
+      int h3 = _auditType != null ? _auditType.hashCode() : 0;
+      return 31 * 31 * h1 + 31 * h2 + h3;
+    }
+
+    @Override
+    public String toString() {
+      return "(" + _topic + ',' + _bucket + ',' + auditType() + ')';
+    }
+
+    private static boolean equals(Object o1, Object o2) {
+      if (o1 != null) {
+        return o1.equals(o2);
+      }
+      return o2 == null;
+    }
+
   }
 
 }
