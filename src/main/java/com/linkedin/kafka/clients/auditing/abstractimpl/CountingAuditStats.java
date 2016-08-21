@@ -8,13 +8,12 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing.abstractImpl;
+package com.linkedin.kafka.clients.auditing.abstractimpl;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -24,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * This class is thread safe.
  */
-public class CountingAuditStats<K, V> implements AuditStats<K, V> {
+public class CountingAuditStats implements AuditStats {
 
   private final long _bucketMs;
   private final Map<Object, AuditInfo> _stats;
@@ -50,7 +49,7 @@ public class CountingAuditStats<K, V> implements AuditStats<K, V> {
 
   public void update(Object auditKey, int sizeInBytes) {
     try {
-      // Increment the counter to claim usage. This is to make sure we do not close an AnditStats that is in use.
+      // Increment the counter to claim usage. This is to make sure we do not close an AuditStats that is in use.
       _recordingInProgress.incrementAndGet();
       if (_closed) {
         throw new IllegalStateException("Stats has been closed. The caller should get the new AuditStats and retry.");
@@ -73,10 +72,13 @@ public class CountingAuditStats<K, V> implements AuditStats<K, V> {
   public void close() {
     _closed = true;
     // We loop waiting if there is any other threads using this stats.
-    // We should be get out of the loop pretty quickly
+    // We should be able to get out of the loop pretty quickly
     while (_recordingInProgress.get() > 0) { }
   }
 
+  /**
+   * A container class that hosts the messages count and bytes count for each audit key.
+   */
   public static class AuditInfo {
     private AtomicLong _messageCount = new AtomicLong(0);
     private AtomicLong _bytesCount = new AtomicLong(0);
@@ -100,6 +102,10 @@ public class CountingAuditStats<K, V> implements AuditStats<K, V> {
     }
   }
 
+  /**
+   * The AuditKey we defined here is simply a combination of the topic, bucket and audit type. For different use
+   * cases, user may want to define a different audit key.
+   */
   public static class AuditKey {
     private final String _topic;
     private final Long _bucket;

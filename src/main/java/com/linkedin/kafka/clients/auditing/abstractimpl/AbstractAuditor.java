@@ -8,7 +8,7 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing.abstractImpl;
+package com.linkedin.kafka.clients.auditing.abstractimpl;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
@@ -82,8 +82,8 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   private static long _reportingDelayMs;
 
   // the volatile stats.
-  private volatile AuditStats<K, V> _currentStats;
-  private volatile AuditStats<K, V> _nextStats;
+  private volatile AuditStats _currentStats;
+  private volatile AuditStats _nextStats;
   private volatile long _nextTick;
   private volatile long _ticks;
 
@@ -147,14 +147,14 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   /**
    * Get the current audit stats.
    */
-  protected AuditStats<K, V> currentStats() {
+  protected AuditStats currentStats() {
     return _currentStats;
   }
 
   /**
    * Get the next audit stats.
    */
-  protected AuditStats<K, V> nextStats() {
+  protected AuditStats nextStats() {
     return _nextStats;
   }
 
@@ -175,8 +175,8 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   /**
    * Manually tick the abstract auditor and get the AuditStats of the last reporting interval.
    */
-  protected AuditStats<K, V> tickAndGetStats() {
-    AuditStats<K, V> prevStats = _currentStats;
+  protected AuditStats tickAndGetStats() {
+    AuditStats prevStats = _currentStats;
     _currentStats = _nextStats;
     _nextTick += _reportingIntervalMs;
     _nextStats = newAuditStats();
@@ -199,7 +199,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    *
    * @param lastStats The AuditStats of the previous reporting interval.
    */
-  public abstract void onTick(AuditStats<K, V> lastStats);
+  public abstract void onTick(AuditStats lastStats);
 
   /**
    * This method will be called when the auditor is closed.
@@ -208,19 +208,19 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    * @param currentStats The stats for the current reporting period.
    * @param nextStats The stats for the next reporting period.
    */
-  public abstract void onClosed(AuditStats<K, V> currentStats, AuditStats<K, V> nextStats);
+  public abstract void onClosed(AuditStats currentStats, AuditStats nextStats);
 
   /**
    * Create a new AuditStats. This method will be called when the abstract auditor rolls out a new AuditStat for a new
    * reporting interval.
    */
-  protected abstract AuditStats<K, V> newAuditStats();
+  protected abstract AuditStats newAuditStats();
 
   /**
    * Get the audit key based on the event information. The audit key will be used to categorize the event that is
    * being audited. For example, if user wants to categorize the events based on the size of the bytes, the audit key
    * could be the combination of topic and size rounded down to 100KB. An example audit key implementation can be
-   * found in {@link com.linkedin.kafka.clients.auditing.abstractImpl.CountingAuditStats.AuditKey}.
+   * found in {@link com.linkedin.kafka.clients.auditing.abstractimpl.CountingAuditStats.AuditKey}.
    *
    * @param topic the topic of the event being audited.
    * @param key the key of the event being audited.
@@ -259,7 +259,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     boolean done = false;
     do {
       try {
-        AuditStats<K, V> auditStats = timestamp >= _nextTick ? _nextStats : _currentStats;
+        AuditStats auditStats = timestamp >= _nextTick ? _nextStats : _currentStats;
         auditStats.update(getAuditKey(topic, key, value, timestamp, sizeInBytes, auditType), sizeInBytes);
         done = true;
       } catch (IllegalStateException ise) {

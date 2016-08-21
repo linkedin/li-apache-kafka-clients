@@ -8,7 +8,7 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing.abstractImpl;
+package com.linkedin.kafka.clients.auditing.abstractimpl;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
@@ -17,7 +17,6 @@ import org.testng.annotations.Test;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.testng.Assert.assertEquals;
@@ -136,7 +135,7 @@ public class AbstractAuditorTest {
     }
 
     // Let's tick. We will tick at most 10 times.
-    CountingAuditStats<String, String> stats = null;
+    CountingAuditStats stats = null;
     Map<CountingAuditStats.AuditKey, AtomicLong> counters = new HashMap<>();
     boolean done = false;
     while (!done) {
@@ -218,18 +217,19 @@ public class AbstractAuditorTest {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public void configure(Map<String, ?> configs) {
       super.configure(configs);
       _bucketMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(BUCKET_MS, "30000"));
     }
 
     // protected methods for unit test.
-    public CountingAuditStats<String, String> currentStats() {
-      return (CountingAuditStats<String, String>) super.currentStats();
+    public CountingAuditStats currentStats() {
+      return (CountingAuditStats) super.currentStats();
     }
 
-    public CountingAuditStats<String, String> nextStats() {
-      return (CountingAuditStats<String, String>) super.nextStats();
+    public CountingAuditStats nextStats() {
+      return (CountingAuditStats) super.nextStats();
     }
 
     public long nextTick() {
@@ -240,23 +240,23 @@ public class AbstractAuditorTest {
       return super.ticks();
     }
 
-    public CountingAuditStats<String, String> tickAndGetStats() {
-      return (CountingAuditStats<String, String>) super.tickAndGetStats();
+    public CountingAuditStats tickAndGetStats() {
+      return (CountingAuditStats) super.tickAndGetStats();
     }
 
     @Override
-    public void onTick(AuditStats<String, String> lastStats) {
-
-    }
-
-    @Override
-    public void onClosed(AuditStats<String, String> currentStats, AuditStats<String, String> nextStats) {
+    public void onTick(AuditStats lastStats) {
 
     }
 
     @Override
-    protected AuditStats<String, String> newAuditStats() {
-      return new CountingAuditStats<>(_bucketMs);
+    public void onClosed(AuditStats currentStats, AuditStats nextStats) {
+
+    }
+
+    @Override
+    protected AuditStats newAuditStats() {
+      return new CountingAuditStats(_bucketMs);
     }
 
     @Override

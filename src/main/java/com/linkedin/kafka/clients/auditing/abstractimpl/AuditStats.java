@@ -8,7 +8,7 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing.abstractImpl;
+package com.linkedin.kafka.clients.auditing.abstractimpl;
 
 /**
  * The interface for audit stats. This is used to hold the audit information of a tick in {@link AbstractAuditor}.
@@ -18,7 +18,7 @@ package com.linkedin.kafka.clients.auditing.abstractImpl;
  *
  * The implementation of this interface needs to be thread safe.
  */
-public interface AuditStats<K, V> {
+public interface AuditStats {
 
   /**
    * The method that record the message for audit.

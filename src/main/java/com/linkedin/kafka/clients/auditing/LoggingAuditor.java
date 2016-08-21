@@ -10,16 +10,15 @@
 
 package com.linkedin.kafka.clients.auditing;
 
-import com.linkedin.kafka.clients.auditing.abstractImpl.AbstractAuditor;
-import com.linkedin.kafka.clients.auditing.abstractImpl.AuditStats;
-import com.linkedin.kafka.clients.auditing.abstractImpl.CountingAuditStats;
+import com.linkedin.kafka.clients.auditing.abstractimpl.AbstractAuditor;
+import com.linkedin.kafka.clients.auditing.abstractimpl.AuditStats;
+import com.linkedin.kafka.clients.auditing.abstractimpl.CountingAuditStats;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Date;
 import java.util.Map;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
  * A simple auditor that logs the message count aggregated by time buckets.
@@ -40,8 +39,8 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
     super(name, time);
   }
 
-  public void printSummary(AuditStats<K, V> auditStats) {
-    CountingAuditStats<K, V> countingAuditStats = (CountingAuditStats<K, V>) auditStats;
+  public void printSummary(AuditStats auditStats) {
+    CountingAuditStats countingAuditStats = (CountingAuditStats) auditStats;
     long bucketMs = countingAuditStats.bucketMs();
     Map<Object, CountingAuditStats.AuditInfo> stats = countingAuditStats.stats();
     for (Map.Entry<Object, CountingAuditStats.AuditInfo> entry : stats.entrySet()) {
@@ -61,20 +60,20 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
-  public void onTick(AuditStats<K, V> lastStats) {
+  public void onTick(AuditStats lastStats) {
     printSummary(lastStats);
   }
 
   @Override
-  public void onClosed(AuditStats<K, V> currentStats, AuditStats<K, V> nextStats) {
+  public void onClosed(AuditStats currentStats, AuditStats nextStats) {
     AUDIT_LOG.info("Logging Auditing stats on closure...");
     printSummary(currentStats);
     printSummary(nextStats);
   }
 
   @Override
-  protected CountingAuditStats<K, V> newAuditStats() {
-    return new CountingAuditStats<K, V>(_bucketMs);
+  protected CountingAuditStats newAuditStats() {
+    return new CountingAuditStats(_bucketMs);
   }
 
   @Override

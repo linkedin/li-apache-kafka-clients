@@ -8,13 +8,13 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
-package com.linkedin.kafka.clients.auditing.abstractImpl;
+package com.linkedin.kafka.clients.auditing.abstractimpl;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import org.testng.annotations.Test;
 
 import java.util.Map;
-import com.linkedin.kafka.clients.auditing.abstractImpl.CountingAuditStats.AuditInfo;
+import com.linkedin.kafka.clients.auditing.abstractimpl.CountingAuditStats.AuditInfo;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -33,7 +33,7 @@ public class CountingAuditStatsTest {
   @Test
   public void testRecord() {
     Thread[] recorders = new Thread[NUM_THREAD];
-    CountingAuditStats<String, String> stats = new CountingAuditStats<>(BUCKET_MS);
+    CountingAuditStats stats = new CountingAuditStats(BUCKET_MS);
 
     for (int i = 0; i < NUM_THREAD; i++) {
       recorders[i] = new Recorder(stats);
@@ -67,9 +67,9 @@ public class CountingAuditStatsTest {
   }
 
   private class Recorder extends Thread {
-    private final CountingAuditStats<String, String> _stats;
+    private final CountingAuditStats _stats;
 
-    Recorder(CountingAuditStats<String, String> stats) {
+    Recorder(CountingAuditStats stats) {
       _stats = stats;
     }
 
