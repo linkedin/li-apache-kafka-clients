@@ -79,9 +79,9 @@ public class CountingAuditStats implements AuditStats {
   /**
    * A container class that hosts the messages count and bytes count for each audit key.
    */
-  public static class AuditInfo {
-    private AtomicLong _messageCount = new AtomicLong(0);
-    private AtomicLong _bytesCount = new AtomicLong(0);
+  public static final class AuditInfo {
+    private final AtomicLong _messageCount = new AtomicLong(0);
+    private final AtomicLong _bytesCount = new AtomicLong(0);
 
     public void recordMessage(long messageCount, long bytesCount) {
       _messageCount.addAndGet(messageCount);

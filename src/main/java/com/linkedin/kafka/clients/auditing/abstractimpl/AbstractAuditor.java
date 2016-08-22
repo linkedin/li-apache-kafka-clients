@@ -292,7 +292,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
 
   @Override
   public void close(long timeout, TimeUnit unit) {
-    LOG.info("Closing auditor with timeout {} {}", timeout, unit.toString());
+    LOG.info("Closing auditor with timeout {} {}", timeout, unit);
     _shutdown = true;
     interrupt();
     try {

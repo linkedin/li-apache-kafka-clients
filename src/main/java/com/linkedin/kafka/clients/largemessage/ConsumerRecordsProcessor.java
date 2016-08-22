@@ -313,7 +313,7 @@ public class ConsumerRecordsProcessor<K, V> {
   private byte[] parseAndMaybeTrackRecord(TopicPartition tp, long messageOffset, byte[] bytes) {
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
     if (assembledResult.messageBytes() != null) {
-      // We skip the messages whose offset is smaller than the hw watermark.
+      // We skip the messages whose offset is smaller than the high watermark.
       if (shouldSkip(tp, messageOffset)) {
         return null;
       }

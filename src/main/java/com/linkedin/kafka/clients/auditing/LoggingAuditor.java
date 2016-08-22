@@ -48,7 +48,7 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
       CountingAuditStats.AuditInfo auditInfo = entry.getValue();
       String start = new Date(auditKey.bucket() * bucketMs).toString();
       String end = new Date(auditKey.bucket() * bucketMs + bucketMs).toString();
-      AUDIT_LOG.info("[" + start + " - " + end + "] : " + auditKey + auditInfo);
+      AUDIT_LOG.info("[{} - {}] : {}, {}", start, end, auditKey, auditInfo);
     }
   }
 

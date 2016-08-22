@@ -49,7 +49,7 @@ import java.util.regex.Pattern;
  * The implementation of {@link LiKafkaConsumer}
  */
 public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
-  private final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerImpl.class);
   private final Consumer<byte[], byte[]> _kafkaConsumer;
   private final ConsumerRecordsProcessor<K, V> _consumerRecordsProcessor;
   private final LiKafkaConsumerRebalanceListener<K, V> _consumerRebalanceListener;
@@ -202,12 +202,13 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     ConsumerRecords<K, V> processedRecords;
     // We will keep polling until timeout.
     long now = startMs;
+    long expireMs = startMs + timeout;
     do {
       if (_autoCommitEnabled && now > _lastAutoCommitMs + _autoCommitInterval) {
         commitAsync();
         _lastAutoCommitMs = now;
       }
-      ConsumerRecords<byte[], byte[]> rawRecords = _kafkaConsumer.poll(startMs + timeout - now);
+      ConsumerRecords<byte[], byte[]> rawRecords = _kafkaConsumer.poll(expireMs - now);
       // Check if we have enough high watermark for a partition. The high watermark is cleared during rebalance.
       // We make this check so that after rebalance we do not deliver duplicate messages to the user.
       if (!rawRecords.isEmpty() && _consumerRecordsProcessor.numberOfHighWaterMarks() < assignment().size()) {
