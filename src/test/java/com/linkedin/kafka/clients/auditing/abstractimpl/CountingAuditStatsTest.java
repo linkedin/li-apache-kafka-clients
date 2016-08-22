@@ -80,7 +80,7 @@ public class CountingAuditStatsTest {
           for (long timestamp = 0; timestamp < NUM_TIMESTAMPS; timestamp++) {
             CountingAuditStats.AuditKey auditKey =
                 new CountingAuditStats.AuditKey(TOPICS[topicIndex], timestamp / BUCKET_MS, AUDIT_TYPES[typeIndex]);
-            _stats.update(auditKey, 2);
+            _stats.update(auditKey, 1, 2);
           }
         }
       }

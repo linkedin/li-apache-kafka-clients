@@ -35,6 +35,10 @@ import java.util.concurrent.TimeUnit;
  * the old audit stats. The old audit stats will then be passed to the user through {@link #onTick} method.
  *
  * <p>
+ * A negative reporting interval will disable the auditing thread. In that case, user needs to call tick manually to
+ * roll out new AuditStats.
+ *
+ * <p>
  * Ideally, the timestamp of the audited records should always fall in the current reporting interval. But due to some
  * lag, it is possible that some audited records has an earlier timestamp that falls in the previous reporting interval.
  * Although this won't impact the auditing results, the abstract auditor allows user to specify a reporting.delay.ms to
@@ -46,7 +50,7 @@ import java.util.concurrent.TimeUnit;
  *   {@link #onTick(AuditStats)}
  *   {@link #onClosed(AuditStats, AuditStats)}
  *   {@link #newAuditStats()}
- *   {@link #getAuditKey(String, Object, Object, long, Integer, com.linkedin.kafka.clients.auditing.AuditType)}
+ *   {@link #getAuditKey(String, Object, Object, Long, Long, Long, com.linkedin.kafka.clients.auditing.AuditType)}
  * </pre>
  *
  * <p>
@@ -55,10 +59,6 @@ import java.util.concurrent.TimeUnit;
  *   public void configure(Map<String, ?> configs);
  * </pre>
  *
- * When users do that the {@link #configure(java.util.Map)} method must call
- * <pre>
- * super.configure(configs);
- * </pre>
  * An example implementation can be found in {@link LoggingAuditor}. The {@link LoggingAuditor} uses
  * {@link CountingAuditStats} to aggregate the audited records and simply print it to the log.
  */
@@ -109,36 +109,48 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     _time = time;
   }
 
+  /**
+   * Note that if this method is overridden by the subclasses. The overriding configure method MUST call this method
+   * <b>at the end</b> to ensure the AuditStats are correctly initialized.
+   *
+   * @param configs The configurations for the auditor
+   */
   @Override
   @SuppressWarnings("unchecked")
   public void configure(Map<String, ?> configs) {
     _reportingIntervalMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(REPORTING_INTERVAL_MS, REPORTING_INTERVAL_MS_DEFAULT));
     _reportingDelayMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(REPORTING_DELAY_MS, REPORTING_DELAY_MS_DEFAULT));
-    _nextTick = (_time.milliseconds() / _reportingIntervalMs) * _reportingIntervalMs + _reportingIntervalMs;
+    _nextTick = _reportingIntervalMs < 0 ?
+        Long.MAX_VALUE : (_time.milliseconds() / _reportingIntervalMs) * _reportingIntervalMs + _reportingIntervalMs;
     _ticks = 0;
     _shutdown = false;
   }
 
   @Override
   public void run() {
-    try {
-      while (!_shutdown) {
-        long now = _time.milliseconds();
-        if (now >= _nextTick + _reportingDelayMs) {
-          tick();
+    if (_reportingIntervalMs >= 0) {
+      LOG.info("Starting auditor...");
+      try {
+        while (!_shutdown) {
+          long now = _time.milliseconds();
+          if (now >= _nextTick + _reportingDelayMs) {
+            tick();
+          }
+          try {
+            Thread.sleep(Math.max(0, _nextTick + _reportingDelayMs - now));
+          } catch (InterruptedException ie) {
+            // Let it go.
+          }
         }
-        try {
-          Thread.sleep(_nextTick + _reportingDelayMs - now);
-        } catch (InterruptedException ie) {
-          // Let it go.
-        }
+      } catch (Throwable t) {
+        LOG.error("Logging auditor encounter exception.", t);
+      } finally {
+        _currentStats.close();
+        _nextStats.close();
+        onClosed(_currentStats, _nextStats);
       }
-    } catch (Throwable t) {
-      LOG.error("Logging auditor encounter exception.", t);
-    } finally {
-      _currentStats.close();
-      _nextStats.close();
-      onClosed(_currentStats, _nextStats);
+    } else {
+      LOG.info("Reporting interval is set to {}. Automatic ticking is disabled.", _reportingIntervalMs);
     }
   }
 
@@ -176,19 +188,25 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    * Manually tick the abstract auditor and get the AuditStats of the last reporting interval.
    */
   protected AuditStats tickAndGetStats() {
-    AuditStats prevStats = _currentStats;
-    _currentStats = _nextStats;
-    _nextTick += _reportingIntervalMs;
-    _nextStats = newAuditStats();
-    _ticks++;
-    prevStats.close();
-    return prevStats;
+    // We only allow one thread to tick.
+    synchronized (this) {
+      AuditStats prevStats = _currentStats;
+      _currentStats = _nextStats;
+      // Only update next tick if reporting interval is non-negative.
+      if (_reportingIntervalMs >= 0) {
+        _nextTick += _reportingIntervalMs;
+      }
+      _nextStats = newAuditStats();
+      _ticks++;
+      prevStats.close();
+      return prevStats;
+    }
   }
 
   /**
    * Roll out a new AuditStats and pass that to the users.
    */
-  private void tick() {
+  protected void tick() {
     onTick(tickAndGetStats());
   }
 
@@ -226,16 +244,19 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    * @param key the key of the event being audited.
    * @param value the value of the event being audited.
    * @param timestamp the timestamp of the event being audited.
-   * @param sizeInBytes the size of the event being audited.
+   * @param messageCount the number of messages being audited.
+   * @param bytesCount the number of bytes being audited.
    * @param auditType the audit type of the event being audited.
    *
-   * @return An object that can be served as an key in a {@link java.util.HashMap}
+   * @return An object that can be served as an key in a {@link java.util.HashMap}. Returning null means skipping the
+   * auditing.
    */
   protected abstract Object getAuditKey(String topic,
                                         K key,
                                         V value,
-                                        long timestamp,
-                                        Integer sizeInBytes,
+                                        Long timestamp,
+                                        Long messageCount,
+                                        Long bytesCount,
                                         AuditType auditType);
 
   @Override
@@ -246,21 +267,22 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     super.start();
   }
 
-  /**
-   * Package private function for unit test. Initialize the audit stats without stating the thread.
-   */
-  void initAuditStats() {
-    _currentStats = newAuditStats();
-    _nextStats = newAuditStats();
-  }
-
   @Override
-  public void record(String topic, K key, V value, Long timestamp, Integer sizeInBytes, AuditType auditType) {
+  public void record(String topic,
+                     K key,
+                     V value,
+                     Long timestamp,
+                     Long messageCount,
+                     Long bytesCount,
+                     AuditType auditType) {
     boolean done = false;
     do {
       try {
-        AuditStats auditStats = timestamp >= _nextTick ? _nextStats : _currentStats;
-        auditStats.update(getAuditKey(topic, key, value, timestamp, sizeInBytes, auditType), sizeInBytes);
+        AuditStats auditStats = timestamp == null || timestamp >= _nextTick ? _nextStats : _currentStats;
+        Object auditKey = getAuditKey(topic, key, value, timestamp, messageCount, bytesCount, auditType);
+        if (auditKey != null) {
+          auditStats.update(auditKey, messageCount, bytesCount);
+        }
         done = true;
       } catch (IllegalStateException ise) {
         // Ignore this exception and retry because we might be ticking.

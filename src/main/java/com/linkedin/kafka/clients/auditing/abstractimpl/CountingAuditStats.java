@@ -47,7 +47,7 @@ public class CountingAuditStats implements AuditStats {
     return _stats;
   }
 
-  public void update(Object auditKey, int sizeInBytes) {
+  public void update(Object auditKey, long messageCount, long bytesCount) {
     try {
       // Increment the counter to claim usage. This is to make sure we do not close an AuditStats that is in use.
       _recordingInProgress.incrementAndGet();
@@ -63,7 +63,7 @@ public class CountingAuditStats implements AuditStats {
           statsForTopic = prev;
         }
       }
-      statsForTopic.recordMessage(sizeInBytes);
+      statsForTopic.recordMessage(messageCount, bytesCount);
     } finally {
       _recordingInProgress.decrementAndGet();
     }
@@ -83,9 +83,9 @@ public class CountingAuditStats implements AuditStats {
     private AtomicLong _messageCount = new AtomicLong(0);
     private AtomicLong _bytesCount = new AtomicLong(0);
 
-    public void recordMessage(int sizeInBytes) {
-      _messageCount.incrementAndGet();
-      _bytesCount.addAndGet(sizeInBytes);
+    public void recordMessage(long messageCount, long bytesCount) {
+      _messageCount.addAndGet(messageCount);
+      _bytesCount.addAndGet(bytesCount);
     }
 
     public long messageCount() {

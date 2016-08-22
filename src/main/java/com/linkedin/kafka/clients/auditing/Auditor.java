@@ -51,10 +51,17 @@ public interface Auditor<K, V> extends Configurable {
    * @param key The key of the event.
    * @param value The value of the event.
    * @param timestamp The timestamp of the event.
-   * @param sizeInBytes The size of the event.
+   * @param messageCount The number of messages to record.
+   * @param bytesCount The number of bytes to record.
    * @param auditType The type of the event to audit.
    */
-  void record(String topic, K key, V value, Long timestamp, Integer sizeInBytes, AuditType auditType);
+  void record(String topic,
+              K key,
+              V value,
+              Long timestamp,
+              Long messageCount,
+              Long bytesCount,
+              AuditType auditType);
 
   /**
    * Close the auditor with timeout.

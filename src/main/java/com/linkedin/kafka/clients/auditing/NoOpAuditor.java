@@ -29,7 +29,13 @@ public class NoOpAuditor<K, V> implements Auditor<K, V> {
   }
 
   @Override
-  public void record(String topic, K key, V value, Long timestamp, Integer sizeInBytes, AuditType auditType) {
+  public void record(String topic,
+                     K key,
+                     V value,
+                     Long timestamp,
+                     Long messageCount,
+                     Long bytesCount,
+                     AuditType auditType) {
 
   }
 

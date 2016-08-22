@@ -292,7 +292,8 @@ public class ConsumerRecordsProcessor<K, V> {
     V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
     if (value != null) {
       if (_auditor != null) {
-        _auditor.record(tp.topic(), key, value, consumerRecord.timestamp(), consumerRecord.value().length, AuditType.SUCCESS);
+        _auditor.record(tp.topic(), key, value, consumerRecord.timestamp(), 1L,
+            (long) consumerRecord.value().length, AuditType.SUCCESS);
       }
       handledRecord = new ConsumerRecord<>(
           consumerRecord.topic(),

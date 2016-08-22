@@ -64,17 +64,6 @@ public interface LiKafkaProducer<K, V> extends Producer<K, V> {
   Map<MetricName, ? extends Metric> metrics();
 
   /**
-   * LiKafkaProducer method.
-   * Get the UUID that will be used for the segments of the original large message.
-   *
-   * @param key   key of the original large message.
-   * @param value value of the original large message.
-   * @return UUID to use for the large message segments.
-   */
-  @InterfaceOrigin.LiKafkaClients
-  UUID getUuid(K key, V value);
-
-  /**
    * Close this producer
    */
   @InterfaceOrigin.ApacheKafka
@@ -83,6 +72,9 @@ public interface LiKafkaProducer<K, V> extends Producer<K, V> {
   /**
    * Tries to close the producer cleanly within the specified timeout. If the close does not complete within the
    * timeout, fail any pending send requests and force close the producer.
+   *
+   * Notice that if an auditor is used, depending on how the auditor is implemented, closing a producer with
+   * timeout may cause inaccurate auditing result.
    */
   @InterfaceOrigin.ApacheKafka
   void close(long timeout, TimeUnit unit);

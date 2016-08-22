@@ -27,11 +27,11 @@ import static org.testng.Assert.assertTrue;
  */
 public class AbstractAuditorTest {
   private static final String TOPIC = "topic";
-  private static final Time TIME = new MockTime();
 
   @Test
   public void testTick() {
-    TestingAuditor auditor = new TestingAuditor(TIME);
+    Time time = new MockTime();
+    TestingAuditor auditor = new TestingAuditor(time);
     Map<String, String> config = new HashMap<>();
     config.put(TestingAuditor.BUCKET_MS, "30000");
     config.put(AbstractAuditor.REPORTING_DELAY_MS, "6000");
@@ -41,10 +41,10 @@ public class AbstractAuditorTest {
 
     assertEquals(auditor.nextTick(), 60000, "The cutting over time should be 60000");
 
-    auditor.record(TOPIC, "key", "value", 0L, 10, AuditType.SUCCESS);
-    auditor.record(TOPIC, "key", "value", 30000L, 10, AuditType.SUCCESS);
-    auditor.record(TOPIC, "key", "value", auditor.nextTick(), 10, AuditType.SUCCESS);
-    auditor.record(TOPIC, "key", "value", auditor.nextTick(), 10, AuditType.SUCCESS);
+    auditor.record(TOPIC, "key", "value", 0L, 1L, 10L, AuditType.SUCCESS);
+    auditor.record(TOPIC, "key", "value", 30000L, 1L, 10L, AuditType.SUCCESS);
+    auditor.record(TOPIC, "key", "value", auditor.nextTick(), 1L, 10L, AuditType.SUCCESS);
+    auditor.record(TOPIC, "key", "value", auditor.nextTick(), 1L, 10L, AuditType.SUCCESS);
 
     assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
@@ -54,7 +54,7 @@ public class AbstractAuditorTest {
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock to 1 ms before next tick.
-    TIME.sleep(59999);
+    time.sleep(59999);
     auditor.interrupt();
     long ticks = auditor.ticks();
     long startMs = System.currentTimeMillis();
@@ -67,7 +67,7 @@ public class AbstractAuditorTest {
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock again to the nextTick + REPORTING_DELAY_MS - 1. The tick should not happen due to the logging delay.
-    TIME.sleep(6000);
+    time.sleep(6000);
     auditor.interrupt();
     ticks = auditor.ticks();
     startMs = System.currentTimeMillis();
@@ -80,7 +80,7 @@ public class AbstractAuditorTest {
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock again, now it should tick.
-    TIME.sleep(1);
+    time.sleep(1);
     auditor.interrupt();
     ticks = auditor.ticks();
     startMs = System.currentTimeMillis();
@@ -94,7 +94,8 @@ public class AbstractAuditorTest {
 
   @Test
   public void testClose() {
-    AbstractAuditor<String, String> auditor = new TestingAuditor(TIME);
+    Time time = new MockTime();
+    AbstractAuditor<String, String> auditor = new TestingAuditor(time);
     Map<String, String> config = new HashMap<>();
     config.put(TestingAuditor.BUCKET_MS, "30000");
     config.put(AbstractAuditor.REPORTING_DELAY_MS, "6000");
@@ -120,14 +121,15 @@ public class AbstractAuditorTest {
     final AuditType[] auditTypes = {AuditType.SUCCESS, AuditType.FAILURE, AuditType.ATTEMPT};
     Recorder[] recorders = new Recorder[5];
 
-    TestingAuditor auditor = new TestingAuditor(TIME);
+    Time time = new MockTime();
+    TestingAuditor auditor = new TestingAuditor(time);
     Map<String, String> config = new HashMap<>();
     config.put(TestingAuditor.BUCKET_MS, "1000");
     config.put(AbstractAuditor.REPORTING_DELAY_MS, "100");
-    config.put(AbstractAuditor.REPORTING_INTERVAL_MS, "10000");
+    // Set reporting interval to negative to disable the automatic ticking.
+    config.put(AbstractAuditor.REPORTING_INTERVAL_MS, "-1");
     auditor.configure(config);
-    // Do not start auditor, we will tick manually.
-    auditor.initAuditStats();
+    auditor.start();
 
     for (int i = 0; i < recorders.length; i++) {
       recorders[i] = new Recorder(auditor, numTimestamps, topics, auditTypes);
@@ -140,7 +142,7 @@ public class AbstractAuditorTest {
     boolean done = false;
     while (!done) {
       try {
-        Thread.sleep(5);
+        Thread.sleep(1);
       } catch (InterruptedException e) {
         e.printStackTrace();
       }
@@ -201,7 +203,7 @@ public class AbstractAuditorTest {
       for (int typeIndex = 0; typeIndex < _auditTypes.length; typeIndex++) {
         for (int topicIndex = 0; topicIndex < _topics.length; topicIndex++) {
           for (long timestamp = 0; timestamp < _numTimestamps; timestamp++) {
-            _auditor.record(_topics[topicIndex], "key", "value", timestamp, 2, _auditTypes[typeIndex]);
+            _auditor.record(_topics[topicIndex], "key", "value", timestamp, 1L, 2L, _auditTypes[typeIndex]);
           }
         }
       }
@@ -263,8 +265,9 @@ public class AbstractAuditorTest {
     protected Object getAuditKey(String topic,
                                  String key,
                                  String value,
-                                 long timestamp,
-                                 Integer sizeInBytes,
+                                 Long timestamp,
+                                 Long messageCount,
+                                 Long sizeInBytes,
                                  AuditType auditType) {
       return new CountingAuditStats.AuditKey(topic, timestamp / _bucketMs, auditType);
     }

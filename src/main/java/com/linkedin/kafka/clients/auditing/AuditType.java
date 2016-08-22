@@ -24,6 +24,11 @@ public interface AuditType {
     public String name() {
       return "SUCCESS";
     }
+
+    @Override
+    public String toString() {
+      return name();
+    }
   };
 
   public static final AuditType FAILURE = new AuditType() {
@@ -31,12 +36,22 @@ public interface AuditType {
     public String name() {
       return "FAILURE";
     }
+
+    @Override
+    public String toString() {
+      return name();
+    }
   };
 
   public static final AuditType ATTEMPT = new AuditType() {
     @Override
     public String name() {
       return "ATTEMPT";
+    }
+
+    @Override
+    public String toString() {
+      return name();
     }
   };
 }

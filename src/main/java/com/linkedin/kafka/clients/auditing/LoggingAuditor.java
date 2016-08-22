@@ -77,7 +77,13 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
-  protected Object getAuditKey(String topic, K key, V value, long timestamp, Integer sizeInBytes, AuditType auditType) {
+  protected Object getAuditKey(String topic,
+                               K key,
+                               V value,
+                               Long timestamp,
+                               Long messageCount,
+                               Long sizeInBytes,
+                               AuditType auditType) {
     return new CountingAuditStats.AuditKey(topic, timestamp / _bucketMs, auditType);
   }
 }

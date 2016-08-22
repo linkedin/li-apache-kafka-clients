@@ -37,6 +37,7 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * This producer is the implementation of {@link LiKafkaProducer}.
@@ -56,6 +57,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   // raw byte producer
   private final Producer<byte[], byte[]> _producer;
   /*package private for testing*/ Auditor<K, V> _auditor;
+
+  // A counter of in threads in the middle of sending messages. This is needed to ensure when we close the producer
+  // everything is audited.
+  private final AtomicInteger _numThreadsInSend;
+  private volatile boolean _closed;
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
@@ -113,6 +119,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
     _auditor.configure(configs.configsWithCurrentProducer(_producer));
     _auditor.start();
+    _numThreadsInSend = new AtomicInteger(0);
+    _closed = false;
   }
 
   @Override
@@ -122,56 +130,68 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   @Override
   public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
-    String topic = producerRecord.topic();
-    K key = producerRecord.key();
-    V value = producerRecord.value();
-    Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
-    Integer partition = producerRecord.partition();
-    Future<RecordMetadata> future = null;
-    UUID messageId = getUuid(key, value);
-    if (LOG.isTraceEnabled()) {
-      LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}",
-          messageId.toString().replaceAll("-", ""),
-          value.toString(),
-          (key != null) ? key.toString() : "[none]",
-          topic);
-    }
-    byte[] serializedValue;
-    byte[] serializedKey;
+    _numThreadsInSend.incrementAndGet();
     try {
-      serializedValue = _valueSerializer.serialize(topic, value);
-      serializedKey = _keySerializer.serialize(topic, key);
-    } catch (Throwable t) {
-      // Audit the attempt and the failure.
-      _auditor.record(topic, key, value, timestamp, 0, AuditType.ATTEMPT);
-      _auditor.record(topic, key, value, timestamp, 0, AuditType.FAILURE);
-      throw new KafkaException(t);
-    }
-    int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
-        + (serializedValue == null ? 0 : serializedValue.length);
-    // Audit the attempt.
-    _auditor.record(topic, key, value, timestamp, sizeInBytes, AuditType.ATTEMPT);
-    // We wrap the user callback for error logging and auditing purpose.
-    Callback errorLoggingCallback =
-        new ErrorLoggingCallback<>(messageId, key, value, topic, timestamp, sizeInBytes, _auditor, callback);
-    if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
-      List<ProducerRecord<byte[], byte[]>> segmentRecords =
-          _messageSplitter.split(topic, partition, messageId, serializedKey, serializedValue);
-      Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
-      for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
-        future = _producer.send(segmentRecord, largeMessageCallback);
+      if (_closed) {
+        throw new IllegalStateException("LiKafkaProducer has been closed.");
       }
-    } else {
-      // In order to make sure consumer can consume both large message segment and the ordinary message,
-      // we wrap the normal message as a single segment large message. When consumer sees it, it will
-      // be returned by message assembler immediately. We set a pretty large maxSegmentSize to make sure
-      // the message will end up in one segment.
-      List<ProducerRecord<byte[], byte[]>> wrappedRecord =
-          _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, Integer.MAX_VALUE / 2);
-      assert (wrappedRecord.size() == 1);
-      future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
+      String topic = producerRecord.topic();
+      K key = producerRecord.key();
+      V value = producerRecord.value();
+      Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
+      Integer partition = producerRecord.partition();
+      Future<RecordMetadata> future = null;
+      UUID messageId = getUuid(key, value);
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}",
+            messageId.toString().replaceAll("-", ""),
+            value.toString(),
+            (key != null) ? key.toString() : "[none]",
+            topic);
+      }
+      byte[] serializedValue;
+      byte[] serializedKey;
+      try {
+        serializedValue = _valueSerializer.serialize(topic, value);
+        serializedKey = _keySerializer.serialize(topic, key);
+      } catch (Throwable t) {
+        // Audit the attempt and the failure.
+        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.ATTEMPT);
+        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.FAILURE);
+        throw new KafkaException(t);
+      }
+      int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
+          + (serializedValue == null ? 0 : serializedValue.length);
+      // Audit the attempt.
+      _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+      // We wrap the user callback for error logging and auditing purpose.
+      Callback errorLoggingCallback =
+          new ErrorLoggingCallback<>(messageId, key, value, topic, timestamp, sizeInBytes, _auditor, callback);
+      if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
+        List<ProducerRecord<byte[], byte[]>> segmentRecords =
+            _messageSplitter.split(topic, partition, messageId, serializedKey, serializedValue);
+        Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
+        for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
+          future = _producer.send(segmentRecord, largeMessageCallback);
+        }
+      } else {
+        // In order to make sure consumer can consume both large message segment and the ordinary message,
+        // we wrap the normal message as a single segment large message. When consumer sees it, it will
+        // be returned by message assembler immediately. We set a pretty large maxSegmentSize to make sure
+        // the message will end up in one segment.
+        List<ProducerRecord<byte[], byte[]>> wrappedRecord =
+            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, Integer.MAX_VALUE / 2);
+        assert (wrappedRecord.size() == 1);
+        future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
+      }
+      return future;
+    } catch (Throwable t) {
+      _auditor.record(producerRecord.topic(), producerRecord.key(), producerRecord.value(), producerRecord.timestamp(),
+          1L, 0L, AuditType.FAILURE);
+      throw t;
+    } finally {
+      _numThreadsInSend.decrementAndGet();
     }
-    return future;
   }
 
   /**
@@ -192,14 +212,14 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     return _producer.metrics();
   }
 
-  @Override
-  public UUID getUuid(K key, V value) {
+  protected UUID getUuid(K key, V value) {
     return UUID.randomUUID();
   }
 
   @Override
   public void close() {
     LOG.info("Shutting down LiKafkaProducer...");
+    prepClose();
     _auditor.close();
     _producer.close();
   }
@@ -210,6 +230,14 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     LOG.info("Shutting down LiKafkaProducer...");
     _auditor.close(timeout, timeUnit);
     _producer.close(Math.max(0, startMs + timeout - System.currentTimeMillis()), timeUnit);
+  }
+
+  private void prepClose() {
+    _closed = true;
+    // We flush first to avoid the tight loop when buffer is full.
+    _producer.flush();
+    while (_numThreadsInSend.get() > 0) { }
+    _producer.flush();
   }
 
   private static class ErrorLoggingCallback<K, V> implements Callback {
@@ -247,13 +275,13 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
             _value.toString(), (_key != null) ? _key : "[none]",
             (_messageId != null) ? _messageId.toString().replaceAll("-", "") : "[none]", _topic), e);
         // Audit the failure.
-        _auditor.record(_topic, _key, _value, _timestamp, _serializedSize, AuditType.FAILURE);
+        _auditor.record(_topic, _key, _value, _timestamp, 1L, (long) _serializedSize, AuditType.FAILURE);
       }
       if (_userCallback != null) {
         _userCallback.onCompletion(recordMetadata, e);
       }
       // Audit the success.
-      _auditor.record(_topic, _key, _value, _timestamp, _serializedSize, AuditType.SUCCESS);
+      _auditor.record(_topic, _key, _value, _timestamp, 1L, (long) _serializedSize, AuditType.SUCCESS);
     }
   }
 
