@@ -10,7 +10,6 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
-import com.linkedin.kafka.clients.largemessage.errors.NotLargeMessageSegmentException;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
@@ -38,23 +37,17 @@ public class MessageAssemblerImpl implements MessageAssembler {
 
   @Override
   public AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes) {
-    LargeMessageSegment segment;
-    try {
-      segment = _segmentDeserializer.deserialize(tp.topic(), segmentBytes);
-    } catch (NotLargeMessageSegmentException e) {
-      // When deserialization of the segment failed, we assume the message is not sent by the producer in this
-      // library, so we simply return the raw bytes as is and assume user is able to deserialize the message.
-      LOG.debug("Deserialization of large message segment failed. This might be because the " +
-          "received bytes is not a large message segment. Returning the bytes and assume consumer deserializer " +
-          "will handle it.");
+    LargeMessageSegment segment = _segmentDeserializer.deserialize(tp.topic(), segmentBytes);
+    if (segment == null) {
       return new AssembleResult(segmentBytes, offset, offset, Collections.emptySet());
-    }
-    // Return immediately if it is a single segment message.
-    if (segment.numberOfSegments == 1) {
-      return new AssembleResult(segment.payload.array(), offset, offset, Collections.emptySet());
     } else {
-      LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment);
-      return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset, result.segmentOffsets());
+      // Return immediately if it is a single segment message.
+      if (segment.numberOfSegments == 1) {
+        return new AssembleResult(segment.payloadArray(), offset, offset, Collections.emptySet());
+      } else {
+        LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment);
+        return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset, result.segmentOffsets());
+      }
     }
   }
 

@@ -16,7 +16,6 @@ import org.apache.kafka.common.serialization.Serializer;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -79,17 +78,22 @@ public class MessageSplitterImpl implements MessageSplitter {
     int numberOfSegments = (serializedRecord.length + (maxSegmentSize - 1)) / maxSegmentSize;
     // Get original message size in bytes
     int messageSizeInBytes = serializedRecord.length;
+    ByteBuffer bytebuffer = ByteBuffer.wrap(serializedRecord);
+
+    byte[] segmentKey = key == null ? LiKafkaClientsUtils.uuidToBytes(segmentMessageId) : key;
     // Sequence number starts from 0.
     for (int seq = 0; seq < numberOfSegments; seq++) {
       int segmentStart = seq * maxSegmentSize;
-      int segmentEnd = Math.min(serializedRecord.length, segmentStart + maxSegmentSize);
-      byte[] payload = Arrays.copyOfRange(serializedRecord, segmentStart, segmentEnd);
+      int segmentLength = Math.min(serializedRecord.length - segmentStart, maxSegmentSize);
+      // For efficiency we do not make array copy, but just slice the ByteBuffer. The segment serializer needs to
+      // decide how to deal with the payload ByteBuffer.
+      bytebuffer.position(segmentStart);
+      ByteBuffer payload = bytebuffer.slice();
+      payload.limit(segmentLength);
       LargeMessageSegment segment = new LargeMessageSegment(segmentMessageId, seq,
-          numberOfSegments, messageSizeInBytes, ByteBuffer.wrap(payload));
+          numberOfSegments, messageSizeInBytes, payload);
 
-      byte[] segmentKey = key == null ? LiKafkaClientsUtils.uuidToBytes(segmentMessageId) : key;
-      // NOTE: we have to use null topic here to serialize. Otherwise the KafkaMessage schema will be registered
-      // to that topic.
+      // NOTE: we have to use null topic here to serialize because the segment should be topic independent.
       byte[] segmentValue = _segmentSerializer.serialize(null, segment);
       ProducerRecord<byte[], byte[]> segmentProducerRecord =
           new ProducerRecord<>(topic, partition, timestamp, segmentKey, segmentValue);

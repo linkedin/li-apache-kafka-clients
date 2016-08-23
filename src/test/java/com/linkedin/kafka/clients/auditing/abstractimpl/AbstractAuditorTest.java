@@ -46,11 +46,11 @@ public class AbstractAuditorTest {
     auditor.record(TOPIC, "key", "value", auditor.nextTick(), 1L, 10L, AuditType.SUCCESS);
     auditor.record(TOPIC, "key", "value", auditor.nextTick(), 1L, 10L, AuditType.SUCCESS);
 
-    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.nextStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
+    assertEquals(auditor.nextStats().stats().get(new AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock to 1 ms before next tick.
@@ -59,11 +59,11 @@ public class AbstractAuditorTest {
     long ticks = auditor.ticks();
     long startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
-    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.nextStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
+    assertEquals(auditor.nextStats().stats().get(new AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock again to the nextTick + REPORTING_DELAY_MS - 1. The tick should not happen due to the logging delay.
@@ -72,11 +72,11 @@ public class AbstractAuditorTest {
     ticks = auditor.ticks();
     startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
-    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
+    assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 1L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
-    assertEquals(auditor.nextStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
+    assertEquals(auditor.nextStats().stats().get(new AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
         "There should be two messages in bucket 2 in the next stats");
 
     // Advance the clock again, now it should tick.
@@ -85,7 +85,7 @@ public class AbstractAuditorTest {
     ticks = auditor.ticks();
     startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
-    assertEquals(auditor.currentStats().stats().get(new CountingAuditStats.AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
+    assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
         "There should be one message in the current stats");
     assertTrue(auditor.nextStats().stats().isEmpty(), "The next stats should be empty now.");
 
@@ -138,7 +138,7 @@ public class AbstractAuditorTest {
 
     // Let's tick. We will tick at most 10 times.
     CountingAuditStats stats = null;
-    Map<CountingAuditStats.AuditKey, AtomicLong> counters = new HashMap<>();
+    Map<AuditKey, AtomicLong> counters = new HashMap<>();
     boolean done = false;
     while (!done) {
       try {
@@ -152,7 +152,7 @@ public class AbstractAuditorTest {
       }
       // Add the stats
       for (Map.Entry<Object, CountingAuditStats.AuditInfo> entry : stats.stats().entrySet()) {
-        CountingAuditStats.AuditKey auditKey = (CountingAuditStats.AuditKey) entry.getKey();
+        AuditKey auditKey = (AuditKey) entry.getKey();
         CountingAuditStats.AuditInfo auditInfo = entry.getValue();
         counters.putIfAbsent(auditKey, new AtomicLong(0));
         counters.get(auditKey).addAndGet(auditInfo.messageCount());
@@ -175,8 +175,8 @@ public class AbstractAuditorTest {
     for (int typeIndex = 0; typeIndex < auditTypes.length; typeIndex++) {
       for (int topicIndex = 0; topicIndex < topics.length; topicIndex++) {
         for (long bucketIndex = 0; bucketIndex < numBuckets; bucketIndex++) {
-          CountingAuditStats.AuditKey auditKey =
-              new CountingAuditStats.AuditKey(topics[topicIndex], bucketIndex, auditTypes[typeIndex]);
+          AuditKey auditKey =
+              new AuditKey(topics[topicIndex], bucketIndex, auditTypes[typeIndex]);
           assertTrue(counters.containsKey(auditKey));
           assertEquals(counters.get(auditKey).longValue(), expectedNumMessages,
               "The topic should have " + expectedNumMessages + " messages in the bucket");
@@ -269,7 +269,7 @@ public class AbstractAuditorTest {
                                  Long messageCount,
                                  Long sizeInBytes,
                                  AuditType auditType) {
-      return new CountingAuditStats.AuditKey(topic, timestamp / _bucketMs, auditType);
+      return new AuditKey(topic, timestamp / _bucketMs, auditType);
     }
   }
 

@@ -54,8 +54,8 @@ public class CountingAuditStatsTest {
     for (int typeIndex = 0; typeIndex < AUDIT_TYPES.length; typeIndex++) {
       for (int topicIndex = 0; topicIndex < TOPICS.length; topicIndex++) {
         for (long bucketIndex = 0; bucketIndex < numBuckets; bucketIndex++) {
-          CountingAuditStats.AuditKey auditKey =
-              new CountingAuditStats.AuditKey(TOPICS[topicIndex], bucketIndex, AUDIT_TYPES[typeIndex]);
+          AuditKey auditKey =
+              new AuditKey(TOPICS[topicIndex], bucketIndex, AUDIT_TYPES[typeIndex]);
           assertTrue(counters.containsKey(auditKey));
           assertEquals(counters.get(auditKey).messageCount(), expectedNumMessages,
               "The topic should have " + expectedNumMessages + " messages in the bucket");
@@ -78,8 +78,8 @@ public class CountingAuditStatsTest {
       for (int typeIndex = 0; typeIndex < AUDIT_TYPES.length; typeIndex++) {
         for (int topicIndex = 0; topicIndex < TOPICS.length; topicIndex++) {
           for (long timestamp = 0; timestamp < NUM_TIMESTAMPS; timestamp++) {
-            CountingAuditStats.AuditKey auditKey =
-                new CountingAuditStats.AuditKey(TOPICS[topicIndex], timestamp / BUCKET_MS, AUDIT_TYPES[typeIndex]);
+            AuditKey auditKey =
+                new AuditKey(TOPICS[topicIndex], timestamp / BUCKET_MS, AUDIT_TYPES[typeIndex]);
             _stats.update(auditKey, 1, 2);
           }
         }

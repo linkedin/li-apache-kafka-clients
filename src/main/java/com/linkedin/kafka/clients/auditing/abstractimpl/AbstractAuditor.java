@@ -238,7 +238,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    * Get the audit key based on the event information. The audit key will be used to categorize the event that is
    * being audited. For example, if user wants to categorize the events based on the size of the bytes, the audit key
    * could be the combination of topic and size rounded down to 100KB. An example audit key implementation can be
-   * found in {@link com.linkedin.kafka.clients.auditing.abstractimpl.CountingAuditStats.AuditKey}.
+   * found in {@link AuditKey}.
    *
    * @param topic the topic of the event being audited.
    * @param key the key of the event being audited.

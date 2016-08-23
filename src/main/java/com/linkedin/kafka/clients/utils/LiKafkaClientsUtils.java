@@ -26,7 +26,7 @@ public class LiKafkaClientsUtils {
     ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
     byteBuffer.putLong(uuid.getMostSignificantBits());
     byteBuffer.putLong(uuid.getLeastSignificantBits());
-    return byteBuffer.array();
+    return bytes;
   }
 
   public static long offsetFromWrappedMetadata(String metadata) {

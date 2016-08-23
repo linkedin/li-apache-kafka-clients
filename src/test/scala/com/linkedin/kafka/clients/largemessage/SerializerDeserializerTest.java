@@ -50,7 +50,7 @@ public class SerializerDeserializerTest {
     assertEquals(deserializedSegment.numberOfSegments, segment.numberOfSegments);
     assertEquals(deserializedSegment.sequenceNumber, segment.sequenceNumber);
     assertEquals(deserializedSegment.payload.limit(), 100);
-    String deserializedString = stringDeserializer.deserialize("topic", deserializedSegment.payload.array());
+    String deserializedString = stringDeserializer.deserialize("topic", deserializedSegment.payloadArray());
     assertEquals(deserializedString.length(), s.length());
 
   }

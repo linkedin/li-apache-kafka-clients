@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * There are some classes in the Java library that supports similar function but not exactly what we need.
  * A TreeMap sorts the entries by key and can get the smallest key in O(1), but since our key is message ID so we will
  * need an additional data structure to maintain the order.
- * A LinkedMap maintains the insertion order but can only remove the eldest key when inserting a new entry into the
+ * A QueueMap maintains the insertion order but can only remove the eldest key when inserting a new entry into the
  * map.
  */
 public class QueuedMap<K, V> {
@@ -111,6 +111,10 @@ public class QueuedMap<K, V> {
     }
   }
 
+  /**
+   * We need to have a raw doubly linked list to allow O(1) deletion from the middle of the list.
+   * Java LinkedList does not expose the node in the list so the removal will be O(n).
+   */
   private class DoublyLinkedList {
     private ListNode _head;
     private ListNode _tail;

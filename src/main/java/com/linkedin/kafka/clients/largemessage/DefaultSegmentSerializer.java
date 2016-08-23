@@ -46,10 +46,10 @@ public class DefaultSegmentSerializer implements Serializer<LargeMessageSegment>
       byteBuffer.putInt(segment.sequenceNumber);
       byteBuffer.putInt(segment.numberOfSegments);
       byteBuffer.putInt(segment.messageSizeInBytes);
-      byteBuffer.put(segment.payload.array());
+      byteBuffer.put(segment.payload);
       return byteBuffer.array();
     } else {
-      return segment.payload.array();
+      return segment.payloadArray();
     }
   }
 

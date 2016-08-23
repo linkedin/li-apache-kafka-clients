@@ -21,7 +21,6 @@ import org.apache.kafka.common.PartitionInfo;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 

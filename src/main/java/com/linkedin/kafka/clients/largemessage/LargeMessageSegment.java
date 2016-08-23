@@ -11,6 +11,7 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.UUID;
 
 /**
@@ -38,9 +39,24 @@ public class LargeMessageSegment {
     this.payload = payload;
   }
 
+  /**
+   * Notice that the payload as a ByteBuffer does not guarantee to have a dedicated underlying byte array. So calling
+   * {@code payload.array()} will not always give the payload byte array. This method should be called if user wants
+   * to have the payload byte array.
+   *
+   * @return The payload as a byte array.
+   */
+  public byte[] payloadArray() {
+    if (payload.arrayOffset() == 0 && payload.limit() == payload.array().length) {
+      return payload.array();
+    } else {
+      return Arrays.copyOfRange(payload.array(), payload.arrayOffset(), payload.arrayOffset() + payload.limit());
+    }
+  }
+
   @Override
   public String toString() {
     return "[messageId=" + messageId + ",seq=" + sequenceNumber + ",numSegs=" + numberOfSegments + ",messageSize=" +
-        messageSizeInBytes + "payloadSize=" + payload.limit() + "]";
+        messageSizeInBytes + ",payloadSize=" + payload.limit() + "]";
   }
 }

@@ -333,6 +333,40 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
+  public void testSeekAfterAssignmentChange() {
+    Properties props = new Properties();
+    // All the consumers should have the same group id.
+    props.setProperty("group.id", "testSeekAfterAssignmentChange");
+    // Make sure we start to consume from the beginningtp1.
+    props.setProperty("auto.offset.reset", "earliest");
+    // Consumer at most 100 messages per poll
+    props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "100");
+    // Set max fetch size to a small value
+    props.setProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
+    LiKafkaConsumer<String, String> consumer = createConsumer(props);
+    TopicPartition tp0 = new TopicPartition(TOPIC1, 0);
+    TopicPartition tp1 = new TopicPartition(TOPIC1, 1);
+
+    consumer.assign(Arrays.asList(tp0, tp1));
+    // Consume some messages
+    ConsumerRecords<String, String> records = null;
+    while (records == null || records.isEmpty()) {
+      records = consumer.poll(1000);
+    }
+
+    consumer.assign(Collections.singleton(tp1));
+    records = null;
+    while (records == null || records.isEmpty()) {
+      records = consumer.poll(1000);
+    }
+    // we should be able to seek on tp 0 after assignment change.
+    consumer.assign(Arrays.asList(tp0, tp1));
+    assertEquals(consumer.safeOffset(tp0), Long.MAX_VALUE, "The safe offset for " + tp0 + " should be Long.MAX_VALUE now.");
+    // We should be able to seek to 0 freely.
+    consumer.seek(tp0, 0);
+  }
+
+  @Test
   public void testUnsubscribe() {
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -345,12 +379,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     try {
       ConsumerRecords<String, String> records = null;
-      boolean consumptionStarted = false;
-      while (!consumptionStarted || !records.isEmpty()) {
-        records = consumer.poll(10);
-        if (!records.isEmpty()) {
-          consumptionStarted = true;
-        }
+      while (records == null || !records.isEmpty()) {
+        records = consumer.poll(1000);
       }
 
       // Seek forward should work.
@@ -679,7 +709,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           }
         }
       } catch (Throwable t) {
-        System.out.println("consumer thread " + _id + " exited due to ");
         t.printStackTrace();
       }
     }

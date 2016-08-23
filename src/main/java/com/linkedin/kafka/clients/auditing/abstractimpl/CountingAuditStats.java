@@ -10,8 +10,6 @@
 
 package com.linkedin.kafka.clients.auditing.abstractimpl;
 
-import com.linkedin.kafka.clients.auditing.AuditType;
-
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -72,7 +70,7 @@ public class CountingAuditStats implements AuditStats {
   public void close() {
     _closed = true;
     // We loop waiting if there is any other threads using this stats.
-    // We should be able to get out of the loop pretty quickly
+    // This is a spin lock, we should be able to get out of the loop pretty quickly and never end up in a tight loop.
     while (_recordingInProgress.get() > 0) { }
   }
 
@@ -100,64 +98,6 @@ public class CountingAuditStats implements AuditStats {
     public String toString() {
       return "(" + _messageCount.get() + "," + _bytesCount.get() + " Bytes)";
     }
-  }
-
-  /**
-   * The AuditKey we defined here is simply a combination of the topic, bucket and audit type. For different use
-   * cases, user may want to define a different audit key.
-   */
-  public static class AuditKey {
-    private final String _topic;
-    private final Long _bucket;
-    private final AuditType _auditType;
-
-    public AuditKey(String topic, Long bucket, AuditType auditType) {
-      _topic = topic;
-      _bucket = bucket;
-      _auditType = auditType;
-    }
-
-    public String topic() {
-      return _topic;
-    }
-
-    public Long bucket() {
-      return _bucket;
-    }
-
-    public AuditType auditType() {
-      return _auditType;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (obj instanceof AuditKey) {
-        AuditKey other = (AuditKey) obj;
-        return equals(_topic, other.topic()) && equals(_auditType, other.auditType());
-      }
-      return false;
-    }
-
-    @Override
-    public int hashCode() {
-      int h1 = _topic != null ? _topic.hashCode() : 0;
-      int h2 = _bucket != null ? _bucket.hashCode() : 0;
-      int h3 = _auditType != null ? _auditType.hashCode() : 0;
-      return 31 * 31 * h1 + 31 * h2 + h3;
-    }
-
-    @Override
-    public String toString() {
-      return "(" + _topic + ',' + _bucket + ',' + auditType() + ')';
-    }
-
-    private static boolean equals(Object o1, Object o2) {
-      if (o1 != null) {
-        return o1.equals(o2);
-      }
-      return o2 == null;
-    }
-
   }
 
 }

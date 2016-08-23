@@ -152,14 +152,13 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void subscribe(Collection<String> topics) {
-    subscribe(new ArrayList<>(topics), new NoOpConsumerRebalanceListener());
+    subscribe(topics, new NoOpConsumerRebalanceListener());
   }
 
   @Override
   public void subscribe(Collection<String> topics, ConsumerRebalanceListener callback) {
-    Set<String> newSubscription = new HashSet<>();
-    newSubscription.addAll(topics);
-    // This is a hot fix for KAFKA-3664.
+    Set<String> newSubscription = new HashSet<>(topics);
+    // TODO: This is a hot fix for KAFKA-3664 and should be removed after the issue is fixed.
     commitSync();
     for (TopicPartition tp : _kafkaConsumer.assignment()) {
       if (!newSubscription.contains(tp.topic())) {
@@ -178,7 +177,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         _consumerRecordsProcessor.clear(tp);
       }
     }
-    _kafkaConsumer.assign(new ArrayList<>(partitions));
+    _kafkaConsumer.assign(partitions);
   }
 
   @Override
@@ -235,21 +234,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
-    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = _consumerRecordsProcessor.safeOffsets(offsets);
-    // If user did not consume any message before the first commit, in this case user will pass in the last
-    // committed message offsets. We simply use the last committed safe offset.
-    for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : offsets.entrySet()) {
-      OffsetAndMetadata committed = _kafkaConsumer.committed(entry.getKey());
-      if (committed != null) {
-        Long committedUserOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(committed.metadata());
-        if (entry.getValue().offset() == committedUserOffset) {
-          long safeOffset = committed.offset();
-          String userMetadata = entry.getValue().metadata();
-          String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(userMetadata, committedUserOffset);
-          offsetsToCommit.put(entry.getKey(), new OffsetAndMetadata(safeOffset, wrappedMetadata));
-        }
-      }
-    }
+    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = getOffsetsToCommit(offsets);
     LOG.trace("Committing offsets synchronously: {}", offsetsToCommit);
     _kafkaConsumer.commitSync(offsetsToCommit);
   }
@@ -266,19 +251,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
-    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = _consumerRecordsProcessor.safeOffsets(offsets);
-    for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : offsets.entrySet()) {
-      OffsetAndMetadata committed = _kafkaConsumer.committed(entry.getKey());
-      if (committed != null) {
-        Long committedUserOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(committed.metadata());
-        if (entry.getValue().offset() == committedUserOffset) {
-          long safeOffset = committed.offset();
-          String userMetadata = entry.getValue().metadata();
-          String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(userMetadata, committedUserOffset);
-          offsetsToCommit.put(entry.getKey(), new OffsetAndMetadata(safeOffset, wrappedMetadata));
-        }
-      }
-    }
+    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = getOffsetsToCommit(offsets);
     LOG.trace("Committing offsets asynchronously: {}", offsetsToCommit);
     _offsetCommitCallback.setUserCallback(callback);
     _kafkaConsumer.commitAsync(offsetsToCommit, _offsetCommitCallback);
@@ -408,17 +381,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public long safeOffset(TopicPartition tp, long messageOffset) {
-    if (_consumerRecordsProcessor.delivered(tp) == null) {
-      return position(tp);
-    }
     return _consumerRecordsProcessor.safeOffset(tp, messageOffset);
   }
 
   @Override
   public long safeOffset(TopicPartition tp) {
-    if (_consumerRecordsProcessor.delivered(tp) == null) {
-      return position(tp);
-    }
     return _consumerRecordsProcessor.safeOffset(tp);
   }
 
@@ -443,6 +410,31 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   @Override
   public void wakeup() {
     _kafkaConsumer.wakeup();
+  }
+
+  /**
+   * Helper function to get the large message aware TopicPartition to OffsetAndMetadata mapping.
+   *
+   * @param offsets The user provided TopicPartition to OffsetsAndMetadata mapping.
+   * @return The translated large message aware TopicPartition to OffsetAndMetadata mapping.
+   */
+  private Map<TopicPartition, OffsetAndMetadata> getOffsetsToCommit(Map<TopicPartition, OffsetAndMetadata> offsets) {
+    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = _consumerRecordsProcessor.safeOffsets(offsets);
+    // If user did not consume any message before the first commit, in this case user will pass in the last
+    // committed message offsets. We simply use the last committed safe offset.
+    for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : offsets.entrySet()) {
+      OffsetAndMetadata committed = _kafkaConsumer.committed(entry.getKey());
+      if (committed != null) {
+        Long committedUserOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(committed.metadata());
+        if (entry.getValue().offset() == committedUserOffset) {
+          long safeOffset = committed.offset();
+          String userMetadata = entry.getValue().metadata();
+          String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(userMetadata, committedUserOffset);
+          offsetsToCommit.put(entry.getKey(), new OffsetAndMetadata(safeOffset, wrappedMetadata));
+        }
+      }
+    }
+    return offsetsToCommit;
   }
 
   /**

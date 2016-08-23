@@ -11,6 +11,7 @@
 package com.linkedin.kafka.clients.auditing;
 
 import com.linkedin.kafka.clients.auditing.abstractimpl.AbstractAuditor;
+import com.linkedin.kafka.clients.auditing.abstractimpl.AuditKey;
 import com.linkedin.kafka.clients.auditing.abstractimpl.AuditStats;
 import com.linkedin.kafka.clients.auditing.abstractimpl.CountingAuditStats;
 import org.apache.kafka.common.utils.Time;
@@ -44,7 +45,7 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
     long bucketMs = countingAuditStats.bucketMs();
     Map<Object, CountingAuditStats.AuditInfo> stats = countingAuditStats.stats();
     for (Map.Entry<Object, CountingAuditStats.AuditInfo> entry : stats.entrySet()) {
-      CountingAuditStats.AuditKey auditKey = (CountingAuditStats.AuditKey) entry.getKey();
+      AuditKey auditKey = (AuditKey) entry.getKey();
       CountingAuditStats.AuditInfo auditInfo = entry.getValue();
       String start = new Date(auditKey.bucket() * bucketMs).toString();
       String end = new Date(auditKey.bucket() * bucketMs + bucketMs).toString();
@@ -84,6 +85,6 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
                                Long messageCount,
                                Long sizeInBytes,
                                AuditType auditType) {
-    return new CountingAuditStats.AuditKey(topic, timestamp / _bucketMs, auditType);
+    return new AuditKey(topic, timestamp / _bucketMs, auditType);
   }
 }
