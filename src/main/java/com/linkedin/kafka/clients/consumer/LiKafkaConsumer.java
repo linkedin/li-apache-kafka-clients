@@ -424,7 +424,7 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * @return the actual offset committed to Kafka for this partition.
    */
   @InterfaceOrigin.LiKafkaClients
-  long committedSafeOffset(TopicPartition partition);
+  Long committedSafeOffset(TopicPartition partition);
 
   /**
    * Get the metrics kept by the consumer

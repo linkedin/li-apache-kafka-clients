@@ -341,10 +341,10 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
-  public long committedSafeOffset(TopicPartition tp) {
+  public Long committedSafeOffset(TopicPartition tp) {
     OffsetAndMetadata rawOffsetAndMetadata = _kafkaConsumer.committed(tp);
     if (rawOffsetAndMetadata == null) {
-      return -1;
+      return null;
     }
     return rawOffsetAndMetadata.offset();
   }
