@@ -10,9 +10,7 @@
 
 package com.linkedin.kafka.clients.producer;
 
-import com.linkedin.kafka.clients.auditing.LoggingAuditor;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
-import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -32,7 +30,7 @@ import java.util.Random;
 import static org.testng.AssertJUnit.assertEquals;
 
 public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
-  // Runs testing aganist running kafka host
+  // Runs testing against running kafka host
   private static final int RECORD_COUNT = 1000;
 
   @BeforeMethod
@@ -47,70 +45,47 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     super.tearDown();
   }
 
-//  /**
-//   * This test pushes test data into a temporary topic to a particular broker, and
-//   * verifies all data are sent and can be consumed corerctly.
-//   *
-//   * @throws java.io.IOException
-//   * @throws InterruptedException
-//   */
-//  @Test
-//  public void testSend() throws IOException, InterruptedException {
-//
-//    Properties props = new Properties();
-//    props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
-//    LiKafkaProducer<String, String> producer = createProducer(props);
-//    final String tempTopic = "testTopic" + new Random().nextInt(1000000);
-//
-//    for (int i = 0; i < RECORD_COUNT; ++i) {
-//      String value = Integer.toString(i);
-//      producer.send(new ProducerRecord<>(tempTopic, value));
-//    }
-//
-//    // Drain the send queues
-//    producer.close();
-//
-//    Properties consumerProps = new Properties();
-//    consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-//    LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps);
-//    consumer.subscribe(Collections.singleton(tempTopic));
-//    int messageCount = 0;
-//    BitSet counts = new BitSet(RECORD_COUNT);
-//    long startMs = System.currentTimeMillis();
-//    while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
-//      ConsumerRecords<String, String> records = consumer.poll(100);
-//      for (ConsumerRecord<String, String> record : records) {
-//        int index = Integer.parseInt(record.value());
-//        counts.set(index);
-//        messageCount++;
-//      }
-//    }
-//    consumer.close();
-//    assertEquals(RECORD_COUNT, messageCount);
-//  }
-  
+  /**
+   * This test pushes test data into a temporary topic to a particular broker, and
+   * verifies all data are sent and can be consumed corerctly.
+   *
+   * @throws java.io.IOException
+   * @throws InterruptedException
+   */
   @Test
-  public void simpleTest() {
+  public void testSend() throws IOException, InterruptedException {
+
     Properties props = new Properties();
-    props.put("bootstrap.servers", bootstrapServers());
-    props.put("acks", "all");
-    props.put("retries", 0);
-    props.put("batch.size", 16384);
-    props.put("linger.ms", 1);
-    props.put("buffer.memory", 33554432);
-    props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-    props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-    // The following properties are used by LiKafkaProducerImpl
-    props.put("large.message.enabled", "true");
-    props.put("max.message.segment.bytes", 1000 * 1024);
-    props.put("segment.serializer", DefaultSegmentSerializer.class.getName());
-    props.put("auditor.class", LoggingAuditor.class.getName());
+    props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
+    LiKafkaProducer<String, String> producer = createProducer(props);
+    final String tempTopic = "testTopic" + new Random().nextInt(1000000);
 
-    LiKafkaProducer<String, String> producer = new LiKafkaProducerImpl<>(props);
-    for(int i = 0; i < 100; i++)
-        producer.send(new ProducerRecord<String, String>("my-topic", Integer.toString(i), Integer.toString(i)));
+    for (int i = 0; i < RECORD_COUNT; ++i) {
+      String value = Integer.toString(i);
+      producer.send(new ProducerRecord<>(tempTopic, value));
+    }
 
+    // Drain the send queues
     producer.close();
+
+    Properties consumerProps = new Properties();
+    consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps);
+    consumer.subscribe(Collections.singleton(tempTopic));
+    int messageCount = 0;
+    BitSet counts = new BitSet(RECORD_COUNT);
+    long startMs = System.currentTimeMillis();
+    while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
+      ConsumerRecords<String, String> records = consumer.poll(100);
+      for (ConsumerRecord<String, String> record : records) {
+        int index = Integer.parseInt(record.value());
+        counts.set(index);
+        messageCount++;
+      }
+    }
+    consumer.close();
+    assertEquals(RECORD_COUNT, messageCount);
   }
+
 }
 
