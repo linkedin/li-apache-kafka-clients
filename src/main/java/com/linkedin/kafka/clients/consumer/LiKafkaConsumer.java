@@ -40,20 +40,21 @@ import java.util.regex.Pattern;
  * The offset of a large message is the offset of its last segment. We made this design decision so that the consumers
  * can deliver a large message as soon as all the message segments of that large message have been consumed.
  * <p>
- * <p>
  * With the introduction of the support for large messages, we added a few new methods besides the existing methods in
  * {@link Consumer} to help user better manage the offset with the existence of large messages. The added
  * methods are:
- * <ul>
- * <li>{@link #committedSafeOffset(TopicPartition)}
- * <li>{@link #safeOffset(TopicPartition, long)}
- * <li>{@link #safeOffset(TopicPartition)}
- * <li>{@link #safeOffsets()}
- * </ul>
- * <p>
+ * <pre>
+ *   {@code
+ *   long committedSafeOffset(TopicPartition partition);
+ *   void seekToCommitted(Collection<TopicPartition> partitions);
+ *   long safeOffset(TopicPartition tp, long messageOffset);
+ *   long safeOffset(TopicPartition tp);
+ *   Map&lt;TopicPartition, Long&gt; safeOffsets();
+ *   }
+ * </pre>
  * In most cases, large messages are transparent to the users. However, when the user wants to explicitly handle
- * offsets of messages (e.g. providing offsets to or retrieving offsets from LiKafkaConsumer), please read the
- * documentation of the corresponding method to ensure correct usage.
+ * offsets of messages (e.g. providing offsets to or retrieving offsets from LiKafkaConsumer), the above methods may
+ * be handy. Please read the documentation of the corresponding method to ensure correct usage.
  */
 public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
 
@@ -421,10 +422,11 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * returns the safe offset committed by the consumer for the specified partition.
    *
    * @param partition The partition to query the committed offset.
-   * @return the actual offset committed to Kafka for this partition.
+   * @return The actual offset committed to Kafka for this partition, or -1 is returned if there is no committed
+   * safe offset.
    */
   @InterfaceOrigin.LiKafkaClients
-  Long committedSafeOffset(TopicPartition partition);
+  long committedSafeOffset(TopicPartition partition);
 
   /**
    * Get the metrics kept by the consumer
@@ -546,7 +548,10 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * safe offset of the partition will be Long.MAX_VALUE.
    *
    * @param tp The partition to get safe offset.
-   * @return safe offset for the partition.
+   * @return Safe offset for the partition. Long.MAX_VALUE is returned if no message has been delivered from the given
+   * partition.
+   *
+   * @see {@link #safeOffset(TopicPartition, long)}
    */
   @InterfaceOrigin.LiKafkaClients
   long safeOffset(TopicPartition tp);
@@ -560,6 +565,8 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * the consumer accidentally died.
    *
    * @return a map of safe offset for each partition.
+   *
+   * @see {@link #safeOffset(TopicPartition, long)}
    */
   @InterfaceOrigin.LiKafkaClients
   Map<TopicPartition, Long> safeOffsets();

@@ -96,7 +96,7 @@ public class CountingAuditStats implements AuditStats {
 
     @Override
     public String toString() {
-      return "(" + _messageCount.get() + "," + _bytesCount.get() + " Bytes)";
+      return "(" + _messageCount.get() + " messages, " + _bytesCount.get() + " bytes)";
     }
   }
 

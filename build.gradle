@@ -21,7 +21,6 @@ dependencies {
     compile 'org.apache.kafka:kafka_2.10:0.10.0.0:test'
     compile 'org.apache.kafka:kafka_2.10:0.10.0.0'
     compile 'org.apache.kafka:kafka-clients:0.10.0.0'
-    compile 'org.apache.avro:avro:1.4.1'
     compile 'org.testng:testng:6.8.8'
     compile 'junit:junit:4.12'
     compile 'org.scala-lang:scala-library:2.10.4'

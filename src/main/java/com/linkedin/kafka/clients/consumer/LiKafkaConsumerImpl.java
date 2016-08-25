@@ -47,6 +47,23 @@ import java.util.regex.Pattern;
 
 /**
  * The implementation of {@link LiKafkaConsumer}
+ * LiKafkaConsumerImpl wraps an underlying {@link KafkaConsumer}. On top of that, LiKafkaConsumerImpl provides the
+ * additional functions of handling large messages
+ * (@see <a href=http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297>design details</a>)
+ * and auditing.
+ * <p>
+ * Creating a LiKafkaConsumerImpl is very similar to creating a {@link KafkaConsumer}. Besides the configurations
+ * required by {@link KafkaConsumer}, LiKafkaConsumerImpl takes the following additional configurations for handling
+ * large messages:
+ * <ul>
+ * <li>message.assembler.buffer.capacity</li>
+ * <li>message.assembler.expiration.offset.gap</li>
+ * <li>max.tracked.messages.per.partition</li>
+ * <li>exception.on.message.dropped</li>
+ * <li>segment.deserializer.class</li>
+ * </ul>
+ * and it also takes a "auditor.class" configuration for auditing. (see {@link LiKafkaConsumerConfig} for more
+ * configuration details).
  */
 public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerImpl.class);
@@ -341,10 +358,10 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
-  public Long committedSafeOffset(TopicPartition tp) {
+  public long committedSafeOffset(TopicPartition tp) {
     OffsetAndMetadata rawOffsetAndMetadata = _kafkaConsumer.committed(tp);
     if (rawOffsetAndMetadata == null) {
-      return null;
+      return -1L;
     }
     return rawOffsetAndMetadata.offset();
   }

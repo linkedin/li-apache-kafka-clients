@@ -41,6 +41,69 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * This producer is the implementation of {@link LiKafkaProducer}.
+ * <p>
+ * LiKafkaProducerImpl wraps the vanilla Kafka {@link KafkaProducer Java producer} and provides the following
+ * additional functions:
+ * <ul>
+ * <li>Large message support</li>
+ * <li>Auditing</li>
+ * </ul>
+ * In LiKafkaProducerImpl, a large message (a message which is larger than segment size) will be split into
+ * multiple {@link LargeMessageSegment} and sent to Kafka brokers as individual messages. On the consumer side,
+ * LiKafkaConsumer will collect all the segments of the same original large message, reassemble the large message and
+ * deliver it to the users.
+ * (@see <a href=http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297>design details</a>)
+ * <p>
+ * Creating a LiKafkaProducerImpl is very similar to creating a {@link KafkaProducer}. User can pass in all
+ * the configurations in either a single {@link Properties} or a single {@link Map}. A few additional configurations
+ * are required for large message support and auditing. The following example is an extension of the example given in
+ * {@link KafkaProducer}.
+ * <pre><code>
+ * Properties props = new Properties();
+ * props.put("bootstrap.servers", "localhost:9092");
+ * props.put("acks", "all");
+ * props.put("retries", 0);
+ * props.put("batch.size", 16384);
+ * props.put("linger.ms", 1);
+ * props.put("buffer.memory", 33554432);
+ * props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+ * props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+ * // The following properties are used by LiKafkaProducerImpl
+ * props.put("large.message.enabled", "true");
+ * props.put("max.message.segment.bytes", 1000 * 1024);
+ * props.put("segment.serializer", DefaultSegmentSerializer.class.getName());
+ * props.put("auditor.class", LoggingAuditor.class.getName());
+ *
+ * LiKafkaProducer<String, String> liKafkaProducer = new LiKafkaProducerImpl<>(props);
+ * for(int i = 0; i < 100; i++)
+ *     liKafkaProducer.send(new ProducerRecord<String, String>("my-topic", Integer.toString(i), Integer.toString(i)));
+ *
+ * producer.close();
+ * </code></pre>
+ * The segment serializer will be used to serialize the {@link LargeMessageSegment}. The users may have different
+ * serialization/deserialization protocol for the segments of large messages. If no segment serializer is
+ * specified by the user, the {@link com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer} will be used.
+ * <p>
+ * User can also specify an {@link Auditor} implementation class for LiKafkaProducerImpl. For each ProducerRecord
+ * LiKafkaProducer sends, it will audit the ProducerRecord using three predefined {@link AuditType}
+ * (ATTEMPT, SUCCESS, FAILURE). User may define more audit types for the auditor if needed.
+ * <p>
+ * In many cases, after the auditor collected the auditing information, it will send the auditing information out.
+ * One option is to send the information to a Kafka topic, which is what we do at LinkedIn. To avoid creating another
+ * producer to send the auditing information. LiKafkaClients will pass its underlying vanilla {@link KafkaProducer}
+ * to the auditor when invoking {@link Auditor#configure(java.util.Map)}. The auditor implementation can get that
+ * producer from the passed in configuration map. For example:
+ * <pre><code>
+ * {@literal @}Override
+ * {@literal @}SuppressWarnings("unchecked")
+ * public void configure(Map<String, ?> configs) {
+ *    ...
+ *    Producer&lt;byte[], byte[]&gt; producer = (Producer&lt;byte[], byte[]&gt;) configs.get(LiKafkaProducerConfig.CURRENT_PRODUCER);
+ *    ...
+ * }
+ * </code></pre>
+ * If the underlying KafkaProducer is shared by the auditor implementation. The auditor should not close the shared
+ * vanilla producer when {@link Auditor#close()} is invoked.
  */
 public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaProducerImpl.class);
@@ -188,7 +251,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     } catch (Throwable t) {
       _auditor.record(producerRecord.topic(), producerRecord.key(), producerRecord.value(), producerRecord.timestamp(),
           1L, 0L, AuditType.FAILURE);
-      throw t;
+      throw new KafkaException(t);
     } finally {
       _numThreadsInSend.decrementAndGet();
     }
@@ -275,13 +338,14 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
             _value.toString(), (_key != null) ? _key : "[none]",
             (_messageId != null) ? _messageId.toString().replaceAll("-", "") : "[none]", _topic), e);
         // Audit the failure.
-        _auditor.record(_topic, _key, _value, _timestamp, 1L, (long) _serializedSize, AuditType.FAILURE);
+        _auditor.record(_topic, _key, _value, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
+      } else {
+        // Audit the success.
+        _auditor.record(_topic, _key, _value, _timestamp, 1L, _serializedSize.longValue(), AuditType.SUCCESS);
       }
       if (_userCallback != null) {
         _userCallback.onCompletion(recordMetadata, e);
       }
-      // Audit the success.
-      _auditor.record(_topic, _key, _value, _timestamp, 1L, (long) _serializedSize, AuditType.SUCCESS);
     }
   }
 

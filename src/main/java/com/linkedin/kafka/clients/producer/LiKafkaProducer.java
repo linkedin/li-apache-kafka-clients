@@ -26,6 +26,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * The general producer interface that allows allows pluggable serializers and deserializers.
+ * LiKafkaProducer has the same interface as open source {@link Producer}. We define the interface separately to allow
+ * future extensions.
+ * @see LiKafkaProducerImpl
  */
 public interface LiKafkaProducer<K, V> extends Producer<K, V> {
   /**

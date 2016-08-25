@@ -16,6 +16,19 @@ import java.util.UUID;
 
 /**
  * The class that holds a large message segment.
+ * <p>
+ * Each large message segment contains the following information:
+ * <ul>
+ *   <li><b>MessageId:</b> The message id of the original large message.</li>
+ *   <li><b>SequenceNumber:</b> The sequence number of the segment.</li>
+ *   <li><b>NumberOfSegments:</b> The total number of segments the original large message has.</li>
+ *   <li><b>MessageSizeInBytes:</b> The size of the original large message in bytes.</li>
+ *   <li><b>payload:</b> The payload ByteBuffer of the segment.</li>
+ * </ul>
+ *
+ * Please notice that it is not guaranteed that the payload ByteBuffer has a dedicated underlying byte array. To
+ * get a dedicated byte array representation of the payload, {@link #payloadArray()} method should be called.
+ *
  */
 public class LargeMessageSegment {
   public final UUID messageId;

@@ -211,35 +211,35 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.committedSafeOffset(tp), 0, "The committed actual offset should be 0");
 
       while (consumer.poll(10).isEmpty()) {
         // M1
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(5, ""), "The committed user offset should be 5");
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.committedSafeOffset(tp), 0, "The committed actual offset should be 0");
 
       while (consumer.poll(10).isEmpty()) {
         // M0
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(6, ""), "The committed user offset should be 6");
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 3, "The committed actual offset should be 3");
+      assertEquals(consumer.committedSafeOffset(tp), 3, "The committed actual offset should be 3");
 
       while (consumer.poll(10).isEmpty()) {
         // M3
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(7, ""), "The committed user offset should be 7");
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 7, "The committed actual offset should be 7");
+      assertEquals(consumer.committedSafeOffset(tp), 7, "The committed actual offset should be 7");
 
       while (consumer.poll(10).isEmpty()) {
         // M4
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(8, ""), "The committed user offset should be 8");
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 8, "The committed actual offset should be 8");
+      assertEquals(consumer.committedSafeOffset(tp), 8, "The committed actual offset should be 8");
 
       consumer.close();
       consumer = createConsumer(props);
@@ -247,7 +247,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.seekToCommitted(Collections.singleton(tp));
       consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(8, "new commit")));
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(8, "new commit"));
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 8);
+      assertEquals(consumer.committedSafeOffset(tp), 8);
     } finally {
       consumer.close();
     }
@@ -283,7 +283,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.poll(1000); // M2
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.committedSafeOffset(tp), 0, "The committed actual offset should be 0");
 
       consumer.close();
       consumer = createConsumer(props);
@@ -328,7 +328,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         consumer.poll(10);
       }
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.committedSafeOffset(tp), 0, "The committed actual offset should be 0");
     }
   }
 
