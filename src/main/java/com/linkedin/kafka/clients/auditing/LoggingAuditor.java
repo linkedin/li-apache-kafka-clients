@@ -25,7 +25,7 @@ import java.util.Map;
  * A simple auditor that logs the message count aggregated by time buckets.
  */
 public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
-  private static final Logger AUDIT_LOG = LoggerFactory.getLogger("AuditingLogger");
+  private static final Logger AUDIT_LOG = LoggerFactory.getLogger(LoggingAuditor.class);
 
   public static final String BUCKET_MS = "auditor.bucket.ms";
   private static final String BUCKET_MS_DEFAULT = "600000";
@@ -73,7 +73,7 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
-  protected CountingAuditStats newAuditStats() {
+  protected CountingAuditStats createAuditStats() {
     return new CountingAuditStats(_bucketMs);
   }
 

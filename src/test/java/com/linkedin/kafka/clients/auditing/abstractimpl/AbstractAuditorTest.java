@@ -55,8 +55,8 @@ public class AbstractAuditorTest {
 
     // Advance the clock to 1 ms before next tick.
     time.sleep(59999);
-    auditor.interrupt();
     long ticks = auditor.ticks();
+    auditor.interrupt();
     long startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
     assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
@@ -68,8 +68,8 @@ public class AbstractAuditorTest {
 
     // Advance the clock again to the nextTick + REPORTING_DELAY_MS - 1. The tick should not happen due to the logging delay.
     time.sleep(6000);
-    auditor.interrupt();
     ticks = auditor.ticks();
+    auditor.interrupt();
     startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
     assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
@@ -81,8 +81,8 @@ public class AbstractAuditorTest {
 
     // Advance the clock again, now it should tick.
     time.sleep(1);
-    auditor.interrupt();
     ticks = auditor.ticks();
+    auditor.interrupt();
     startMs = System.currentTimeMillis();
     while (auditor.ticks() != ticks + 1 && System.currentTimeMillis() < startMs + 5000) { }
     assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 2L, AuditType.SUCCESS)).messageCount(), 2,
@@ -126,8 +126,8 @@ public class AbstractAuditorTest {
     Map<String, String> config = new HashMap<>();
     config.put(TestingAuditor.BUCKET_MS, "1000");
     config.put(AbstractAuditor.REPORTING_DELAY_MS, "100");
-    // Set reporting interval to negative to disable the automatic ticking.
-    config.put(AbstractAuditor.REPORTING_INTERVAL_MS, "-1");
+    config.put(AbstractAuditor.REPORTING_INTERVAL_MS, "1000");
+    config.put(AbstractAuditor.ENABLE_AUTO_TICK, "false");
     auditor.configure(config);
     auditor.start();
 
@@ -136,26 +136,21 @@ public class AbstractAuditorTest {
       recorders[i].start();
     }
 
-    // Let's tick. We will tick at most 10 times.
+    // Let's tick.
     CountingAuditStats stats = null;
     Map<AuditKey, AtomicLong> counters = new HashMap<>();
-    boolean done = false;
-    while (!done) {
-      try {
-        Thread.sleep(1);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
+    long startMs = System.currentTimeMillis();
+    long totalCount = 0;
+    while (totalCount < numTimestamps * topics.length * auditTypes.length * numThreads
+        && System.currentTimeMillis() < startMs + 30000) {
       stats = auditor.tickAndGetStats();
-      if (stats.stats().size() == 0) {
-        done = true;
-      }
       // Add the stats
       for (Map.Entry<Object, CountingAuditStats.AuditInfo> entry : stats.stats().entrySet()) {
         AuditKey auditKey = (AuditKey) entry.getKey();
         CountingAuditStats.AuditInfo auditInfo = entry.getValue();
         counters.putIfAbsent(auditKey, new AtomicLong(0));
         counters.get(auditKey).addAndGet(auditInfo.messageCount());
+        totalCount += auditInfo.messageCount();
       }
     }
     auditor.close();
@@ -257,7 +252,7 @@ public class AbstractAuditorTest {
     }
 
     @Override
-    protected AuditStats newAuditStats() {
+    protected AuditStats createAuditStats() {
       return new CountingAuditStats(_bucketMs);
     }
 

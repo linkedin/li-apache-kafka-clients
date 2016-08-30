@@ -94,7 +94,7 @@ public class LargeMessageBufferPoolTest {
       pool0.tryCompleteMessage(tp, offset, m1Seg0);
       fail("pool0 should throw LargeMessageException due to message dropped.");
     } catch (LargeMessageDroppedException lmde) {
-      assertTrue(lmde.getMessage().startsWith("Large message"));
+      assertTrue(lmde.getMessage().startsWith("The following large Message is dropped due to buffer full"));
     }
     assertEquals(pool0.bufferUsed(), 0, "Buffer pool0 buffered bytes should be 0.");
     // Now pool0 should have enough space to process  message1 again.

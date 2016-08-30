@@ -36,7 +36,7 @@ public class ConsumerRecordsProcessor<K, V> {
   private final Deserializer<K> _keyDeserializer;
   private final Deserializer<V> _valueDeserializer;
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
-  private final Map<TopicPartition, Long> partitionHighWatermark;
+  private final Map<TopicPartition, Long> partitionConsumerHighWatermarks;
   private final Auditor<K, V> _auditor;
 
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
@@ -49,7 +49,7 @@ public class ConsumerRecordsProcessor<K, V> {
     _valueDeserializer = valueDeserializer;
     _deliveredMessageOffsetTracker = deliveredMessageOffsetTracker;
     _auditor = auditor;
-    partitionHighWatermark = new HashMap<>();
+    partitionConsumerHighWatermarks = new HashMap<>();
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
     }
@@ -165,7 +165,7 @@ public class ConsumerRecordsProcessor<K, V> {
       // We need to minus one because the passed in offset map is the next offset to consume.
       long messageOffset = offsetsToCommit.get(tp).offset() - 1;
       long safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp, messageOffset);
-      // We need to combine the metadata with the high watermark.
+      // We need to combine the metadata with the consumer high watermark.
       String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(offsetsToCommit.get(tp).metadata(),
           messageOffset + 1);
       OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(Math.min(safeOffsetToCommit, messageOffset + 1), wrappedMetadata);
@@ -218,9 +218,9 @@ public class ConsumerRecordsProcessor<K, V> {
   }
 
   /**
-   * Mark the high watermark for a partition. The consumer record processor will ignore the messages whose
-   * offset is less than the high watermark. This is useful to avoid duplicates after a seek() or consumer
-   * rebalance. Notice that the high watermark is not guaranteed to be last committed offset. It is only used
+   * Mark the consumer high watermark for a partition. The consumer record processor will ignore the messages whose
+   * offset is less than the consumer high watermark. This is useful to avoid duplicates after a seek() or consumer
+   * rebalance. Notice that the consumer high watermark is not guaranteed to be last committed offset. It is only used
    * to explicitly specify the minimum acceptable message
    * <p>
    * Note: This the offset in seek won't be cleaned up if there is an automatic offset reset. User needs to
@@ -229,33 +229,33 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param tp     the partition that seek() is called on.
    * @param offset the offset sought to.
    */
-  public void setPartitionHighWaterMark(TopicPartition tp, long offset) {
+  public void setPartitionConsumerHighWaterMark(TopicPartition tp, long offset) {
     // When user seek to an offset, the HW should be that offset - 1.
-    partitionHighWatermark.put(tp, offset);
+    partitionConsumerHighWatermarks.put(tp, offset);
   }
 
   /**
-   * Clear all the high watermarks tracked by the consumer record processor.
+   * Clear all the consumer high watermarks tracked by the consumer record processor.
    */
-  public void clearAllHighWaterMarks() {
-    partitionHighWatermark.clear();
+  public void clearAllConsumerHighWaterMarks() {
+    partitionConsumerHighWatermarks.clear();
   }
 
   /**
-   * @return The number of high watermarks in track.
+   * @return The number of low watermarks in track.
    */
-  public int numberOfHighWaterMarks() {
-    return partitionHighWatermark.size();
+  public int numConsumerHighWaterMarks() {
+    return partitionConsumerHighWatermarks.size();
   }
 
   /**
-   * Get the high watermark of a given partition.
+   * Get the consumer high watermark of a given partition.
    *
-   * @param tp the partition to get high watermark.
-   * @return the high watermark of the given partition.
+   * @param tp the partition to get low watermark.
+   * @return the low watermark of the given partition.
    */
-  public Long highWaterMarkForPartition(TopicPartition tp) {
-    return partitionHighWatermark.get(tp);
+  public Long consumerHighWaterMarkForPartition(TopicPartition tp) {
+    return partitionConsumerHighWatermarks.get(tp);
   }
 
   /**
@@ -265,7 +265,7 @@ public class ConsumerRecordsProcessor<K, V> {
   public void clear() {
     _deliveredMessageOffsetTracker.clear();
     _messageAssembler.clear();
-    partitionHighWatermark.clear();
+    partitionConsumerHighWatermarks.clear();
   }
 
   /**
@@ -276,7 +276,7 @@ public class ConsumerRecordsProcessor<K, V> {
   public void clear(TopicPartition tp) {
     _deliveredMessageOffsetTracker.clear(tp);
     _messageAssembler.clear(tp);
-    partitionHighWatermark.remove(tp);
+    partitionConsumerHighWatermarks.remove(tp);
   }
 
   public void close() {
@@ -313,7 +313,7 @@ public class ConsumerRecordsProcessor<K, V> {
   private byte[] parseAndMaybeTrackRecord(TopicPartition tp, long messageOffset, byte[] bytes) {
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
     if (assembledResult.messageBytes() != null) {
-      // We skip the messages whose offset is smaller than the high watermark.
+      // We skip the messages whose offset is smaller than the consumer high watermark.
       if (shouldSkip(tp, messageOffset)) {
         return null;
       }
@@ -338,7 +338,7 @@ public class ConsumerRecordsProcessor<K, V> {
    * @return true if the message should be skipped. Otherwise false.
    */
   private boolean shouldSkip(TopicPartition tp, long offset) {
-    Long hw = partitionHighWatermark.get(tp);
+    Long hw = partitionConsumerHighWatermarks.get(tp);
     return hw != null && hw > offset;
   }
 }

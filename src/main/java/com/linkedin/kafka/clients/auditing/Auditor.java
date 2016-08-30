@@ -68,7 +68,7 @@ public interface Auditor<K, V> extends Configurable {
    * This method will be called when producer is closed with a timeout.
    *
    * @param timeout the maximum time to wait to close the auditor.
-   * @param unit    The time unit.
+   * @param unit The time unit.
    */
   void close(long timeout, TimeUnit unit);
 

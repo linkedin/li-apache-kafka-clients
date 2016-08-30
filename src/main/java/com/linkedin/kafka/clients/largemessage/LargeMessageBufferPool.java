@@ -145,7 +145,7 @@ public class LargeMessageBufferPool {
           throw new LargeMessageDroppedException("The following large Message is dropped due to buffer full. "
               + message);
         } else {
-          LOG.warn("Incomplete message buffer pool is full. Removing the eldest incomplete message.");
+          LOG.warn("Incomplete message buffer pool is full. Removing the eldest incomplete message." + message);
         }
       }
     }
@@ -164,9 +164,6 @@ public class LargeMessageBufferPool {
           + "Offset of " + message.topicPartition() + " has advanced from " + offsetBeforeRemoval
           + " to " + offsetAfterRemoval;
       LOG.warn(errMsg);
-      if (_exceptionOnMessageDropped) {
-        throw new LargeMessageDroppedException(errMsg);
-      }
     }
     return message;
   }

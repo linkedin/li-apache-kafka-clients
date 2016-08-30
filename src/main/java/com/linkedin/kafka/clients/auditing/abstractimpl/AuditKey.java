@@ -12,6 +12,8 @@ package com.linkedin.kafka.clients.auditing.abstractimpl;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 
+import java.util.Objects;
+
 /**
  * This class is an example of AuditKey implementation.
  * The AuditKey we defined here is simply a combination of the topic, bucket and audit type. For different use
@@ -42,31 +44,25 @@ public final class AuditKey {
 
   @Override
   public boolean equals(Object obj) {
-    if (obj instanceof AuditKey) {
-      AuditKey other = (AuditKey) obj;
-      return equals(_topic, other.topic()) && equals(_auditType, other.auditType());
+    if (this == obj) {
+      return true;
     }
-    return false;
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
+    AuditKey auditKey = (AuditKey) obj;
+    return Objects.equals(_topic, auditKey.topic()) && Objects.equals(_bucket, auditKey.bucket())
+        && Objects.equals(_auditType, auditKey.auditType());
   }
 
   @Override
   public int hashCode() {
-    int h1 = _topic != null ? _topic.hashCode() : 0;
-    int h2 = _bucket != null ? _bucket.hashCode() : 0;
-    int h3 = _auditType != null ? _auditType.hashCode() : 0;
-    return 31 * 31 * h1 + 31 * h2 + h3;
+    return Objects.hash(_topic, _bucket, _auditType);
   }
 
   @Override
   public String toString() {
     return "(" + _topic + ',' + _bucket + ',' + auditType() + ')';
-  }
-
-  private static boolean equals(Object o1, Object o2) {
-    if (o1 != null) {
-      return o1.equals(o2);
-    }
-    return o2 == null;
   }
 
 }

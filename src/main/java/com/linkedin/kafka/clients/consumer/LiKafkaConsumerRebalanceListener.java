@@ -46,7 +46,7 @@ class LiKafkaConsumerRebalanceListener<K, V> implements ConsumerRebalanceListene
     // Record the partitions that might be revoked, if the partitions are really revoked, we need to clean up
     // the state.
     _partitionsRemoved.clear();
-    _consumerRecordsProcessor.clearAllHighWaterMarks();
+    _consumerRecordsProcessor.clearAllConsumerHighWaterMarks();
     _partitionsRemoved.addAll(topicPartitions);
     // Fire user listener.
     _userListener.onPartitionsRevoked(topicPartitions);

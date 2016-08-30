@@ -225,15 +225,15 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         _lastAutoCommitMs = now;
       }
       ConsumerRecords<byte[], byte[]> rawRecords = _kafkaConsumer.poll(expireMs - now);
-      // Check if we have enough high watermark for a partition. The high watermark is cleared during rebalance.
-      // We make this check so that after rebalance we do not deliver duplicate messages to the user.
-      if (!rawRecords.isEmpty() && _consumerRecordsProcessor.numberOfHighWaterMarks() < assignment().size()) {
+      // Check if we have enough consumer high watermark for a partition. The consumer high watermark is cleared during
+      // rebalance. We make this check so that after rebalance we do not deliver duplicate messages to the user.
+      if (!rawRecords.isEmpty() && _consumerRecordsProcessor.numConsumerHighWaterMarks() < assignment().size()) {
         for (TopicPartition tp : rawRecords.partitions()) {
-          if (_consumerRecordsProcessor.highWaterMarkForPartition(tp) == null) {
+          if (_consumerRecordsProcessor.consumerHighWaterMarkForPartition(tp) == null) {
             OffsetAndMetadata offsetAndMetadata = committed(tp);
             if (offsetAndMetadata != null) {
               long hw = offsetAndMetadata.offset();
-              _consumerRecordsProcessor.setPartitionHighWaterMark(tp, hw);
+              _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, hw);
             }
           }
         }
@@ -301,9 +301,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     }
     _kafkaConsumer.seek(partition, offsetToSeek);
     _consumerRecordsProcessor.clear(partition);
-    // We set the high watermark of this partition to the offset to seek so the messages with smaller offset
+    // We set the consumer high watermark of this partition to the offset to seek so the messages with smaller offset
     // won't be delivered to user.
-    _consumerRecordsProcessor.setPartitionHighWaterMark(partition, offset);
+    _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(partition, offset);
   }
 
   @Override
@@ -331,8 +331,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
       _kafkaConsumer.seek(tp, offsetAndMetadata.offset());
       _consumerRecordsProcessor.clear(tp);
-      long hw = LiKafkaClientsUtils.offsetFromWrappedMetadata(offsetAndMetadata.metadata());
-      _consumerRecordsProcessor.setPartitionHighWaterMark(tp, hw);
+      long lw = LiKafkaClientsUtils.offsetFromWrappedMetadata(offsetAndMetadata.metadata());
+      _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, lw);
     }
   }
 

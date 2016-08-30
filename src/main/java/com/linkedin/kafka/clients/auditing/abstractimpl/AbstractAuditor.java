@@ -35,8 +35,8 @@ import java.util.concurrent.TimeUnit;
  * the old audit stats. The old audit stats will then be passed to the user through {@link #onTick} method.
  *
  * <p>
- * A negative reporting interval will disable the auditing thread. In that case, user needs to call tick manually to
- * roll out new AuditStats.
+ * If auto.tick is set to false, the auditing thread would be disabled. In that case, user needs to call tick
+ * manually to roll out new AuditStats.
  *
  * <p>
  * Ideally, the timestamp of the audited records should always fall in the current reporting interval. But due to some
@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit;
  * <pre>
  *   {@link #onTick(AuditStats)}
  *   {@link #onClosed(AuditStats, AuditStats)}
- *   {@link #newAuditStats()}
+ *   {@link #createAuditStats()}
  *   {@link #getAuditKey(String, Object, Object, Long, Long, Long, com.linkedin.kafka.clients.auditing.AuditType)}
  * </pre>
  *
@@ -67,21 +67,23 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   // Config Names
   public static final String REPORTING_INTERVAL_MS = "auditor.reporting.interval.ms";
   public static final String REPORTING_DELAY_MS = "auditor.reporting.delay.ms";
+  public static final String ENABLE_AUTO_TICK = "enable.auto.tick";
 
   // Config default values
   private static final String REPORTING_INTERVAL_MS_DEFAULT = "600000";
   private static final String REPORTING_DELAY_MS_DEFAULT = "60000";
+  private static final String AUTO_TICK_DEFAULT = "true";
 
-  // The number of threads holding
   // The timer that facilitates unit test.
   private static Time _time;
 
   // The logging delay in millisecond.
   private static long _reportingIntervalMs;
-  // The logging delay in millisecond. This is to tolerate some of the late arrivals on the consumer side.
+  // The reporting delay in millisecond. This is to tolerate some of the late arrivals.
   private static long _reportingDelayMs;
+  // Whether disable the auditing thread.
+  private static boolean _enableAutoTick;
 
-  // the volatile stats.
   private volatile AuditStats _currentStats;
   private volatile AuditStats _nextStats;
   private volatile long _nextTick;
@@ -120,15 +122,16 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   public void configure(Map<String, ?> configs) {
     _reportingIntervalMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(REPORTING_INTERVAL_MS, REPORTING_INTERVAL_MS_DEFAULT));
     _reportingDelayMs = Long.parseLong((String) ((Map<String, Object>) configs).getOrDefault(REPORTING_DELAY_MS, REPORTING_DELAY_MS_DEFAULT));
-    _nextTick = _reportingIntervalMs < 0 ?
-        Long.MAX_VALUE : (_time.milliseconds() / _reportingIntervalMs) * _reportingIntervalMs + _reportingIntervalMs;
+    _enableAutoTick = Boolean.parseBoolean((String) ((Map<String, Object>) configs).getOrDefault(ENABLE_AUTO_TICK, AUTO_TICK_DEFAULT));
+    _nextTick = _enableAutoTick ?
+        (_time.milliseconds() / _reportingIntervalMs) * _reportingIntervalMs + _reportingIntervalMs : Long.MAX_VALUE;
     _ticks = 0;
     _shutdown = false;
   }
 
   @Override
   public void run() {
-    if (_reportingIntervalMs >= 0) {
+    if (_enableAutoTick) {
       LOG.info("Starting auditor...");
       try {
         while (!_shutdown) {
@@ -150,7 +153,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
         onClosed(_currentStats, _nextStats);
       }
     } else {
-      LOG.info("Reporting interval is set to {}. Automatic ticking is disabled.", _reportingIntervalMs);
+      LOG.info("Auto auditing is set to {}. Automatic ticking is disabled.", _enableAutoTick);
     }
   }
 
@@ -196,7 +199,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
       if (_reportingIntervalMs >= 0) {
         _nextTick += _reportingIntervalMs;
       }
-      _nextStats = newAuditStats();
+      _nextStats = createAuditStats();
       _ticks++;
       prevStats.close();
       return prevStats;
@@ -232,7 +235,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    * Create a new AuditStats. This method will be called when the abstract auditor rolls out a new AuditStat for a new
    * reporting interval.
    */
-  protected abstract AuditStats newAuditStats();
+  protected abstract AuditStats createAuditStats();
 
   /**
    * Get the audit key based on the event information. The audit key will be used to categorize the event that is
@@ -262,8 +265,8 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   @Override
   public void start() {
     // Initialize the stats before starting auditor.
-    _currentStats = newAuditStats();
-    _nextStats = newAuditStats();
+    _currentStats = createAuditStats();
+    _nextStats = createAuditStats();
     super.start();
   }
 
