@@ -1,7 +1,7 @@
 LiKafka-Clients
 ===================
 
-### Introduction ###
+## Introduction ##
 LiKafka-Clients is a wrapper Kafka clients library built on top of Vanilla Apache Kafka clients.
 
 Apache Kafka has now become a very popular messaging system and is well known for its low latency, high throughput and durable messaging. At LinkedIn, we have built an [ecosystem around Kafka](https://engineering.linkedin.com/blog/2016/04/kafka-ecosystem-at-linkedin) to power our infrastructure. In our ecosystem, LiKafka-Clients library is a fundamental component for many functions such as auditing, data format standardization, large message handling, and so on.
@@ -10,31 +10,31 @@ LiKafka-Clients is designed to be fully compatible with Apache Kafka Vanilla cli
 
 LiKafka-Clients is also highly customizable so the users can plug in their own wire protocol for large message segments and auditor implementation.
 
-### Features ###
+## Features ##
 LiKafka-Clients has the following features in addition to the vanilla Apache Kafka Java clients.
 
-##### Large message support #####
+### Large message support ###
 Like many other messaging systems, Kafka has a maximum message size limit for a few reasons (e.g. memory management. Due to the message size limit, in some cases, user have to bare with small amount of message loss or involve additional storages to store the large objects. LiKafka-Clients addresses this problem with [a solution](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) that does not require an external storage dependency. For users who are storing offsets checkpoints in Kafka, LiKafka-Clients handles large messages almost transparently.
 
-##### Auditing #####
+### Auditing ###
 As a messaging system, the data assurance is critical. At LinkedIn, we have been using a counting based out-of-band auditing solution to monitor the data integrity in our various data pipelines. This auditing solution is described in [these meetup talk slides](http://www.slideshare.net/JonBringhurst/kafka-audit-kafka-meetup-january-27th-2015). LiKafka-Clients has integrated a pluggable auditing feature. We have also provided an `AbstractAuditor` and a `CountingAuditStats` class to help user implement the counting based auditing solution similar to what we are using at LinkedIn. Users can group the messages in to various categories based on `AuditKey` and get the statistics for each `AuditKey`. For more details please refer to the Java doc of `AbstractAuditor` and `CountingAuditStats`. We have provided a `LoggingAuditor` class as an example of using `AbstractAuditor` to implement the counting based auditing.
 
 Users may also have a custom auditing solution by implementing the defined `Auditor` interface.  
 
-### When to use LiKafka-Clients ###
+## When to use LiKafka-Clients ##
 LiKafka-Clients is a wrapper library on top of vanilla Kafka Java clients. If one does not need the additional functions provided by LiKafka-Clients, the vanilla Kafka Java clients should be preferred.
 
-### Build a jar and run all the unit tests ###
+## Build a jar and run all the unit tests ##
 `./gradlew build`
 
-### Handle large messages with LiKafka-Clients ###
+## Handle large messages with LiKafka-Clients ##
 Large messages are the messages whose size are greater than the maximum acceptable message size on the broker. LiKafka-Clients handles large messages by splitting each large message into segments in LiKafkaProducer and reassembling the segments back into the original large message in LiKafkaConsumer. 
 
 LiKafka-Clients is designed to handle **sporadic** large messages. If the users expect to have a high percentage of large messages (e.g. >50%), the users may want to consider **reference-based-messaging** which is also described in the slides below.
 
 The following sections are the user guide for applications to handle large messages with LiKafka-Clients. For more design details, users may refer to the slides about [Handle Large Messages in Apache Kafka](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297).
 
-##### Configurations for LiKafkaProducerImpl #####
+### Configurations for LiKafkaProducerImpl ###
 `LiKafkaProducerImpl` takes the following large message related configurations:
 ```
 large.message.enabled
@@ -53,7 +53,7 @@ If `large.message.enabled=true`, `LiKafkaProducerImpl` will split the messages w
 
 `LiKafkaProducerImpl` allows user to plug in custom `segment.serializer` (e.g Avro). Users may use the custom segment serializer to use their own wire protocol for `LargeMessageSegment`. This may be useful for users who already have existing SerDe in the organization. For example, users may decide not to serialize a single-segment messages as a `LargeMessageSegment`, but simply send the payload of it which is the raw serialized message. Because the payload is the bytes serialized by value.serializer, this will maintain the existing wire protocol. Avoiding the segment size overhead may also be useful if most of the messages are small.
 
-##### Configurations for LiKafkaConsumerImpl #####
+### Configurations for LiKafkaConsumerImpl ###
 `LiKafkaConsumerImpl` takes the following large message related configurations:
 ```
 message.assembler.buffer.capacity
@@ -70,7 +70,7 @@ In order to support large message aware offset seek (see more in the ***About se
 
 Similar to `LiKafkaProducerImpl`, users can specify a custom `segment.deserializer` class to deserialize the bytes into a `LargeMessageSegment` object. In an organization with legacy SerDe implementation, users may have to support both large message segment and the legacy wire protocol of messages. The user implementation of segment deserializer should return `null` if it sees a message that is not a large message segment. `LiKafkaConsumerImpl` will then use the value deserializer to deserialize that message.
 
-##### Consume with large messages #####
+### Consume with large messages ###
 `LiKafkaConsumerImpl` works almost transparently with large messages if the users do not need to seek to an arbitrary offset (See more in ***About seek()*** section). The potential challenging part is the offset management. We encourage users to use the methods provided by `LiKafkaConsumerImpl` to checkpoint the consumer offsets. By doing that the users do not need to deal with the nuances of large message offset management.
 
 If the users only use `commitSync()`, `commitAsync()`, `seekToCommitted()` without specifying any particular offsets to commit or seek to, large message is completely transparent to the users.
@@ -100,7 +100,7 @@ For users who are interested in the details or want to manage the offsets on the
 
 `LiKafkaConsumerImpl` manages the starting offset and safe offset for each messages it has consumed through a sparse map in the `DeliveredMessageOffsetTracker`. The safe offsets are also committed with the `OffsetMetadata` to Kafka. If users wants to manage the offsets outside of Kafka, the users can get the safe offsets through `safeOffset(TopicPartition)`, `safeOffset(TopicPartition, MessageOffset)` and `safeOffsets()` methods.
 
-##### About seek() #####
+### About seek() ###
 Seeking to a given offset when large messages exist is challenging and tricky. **`LiKafkaConsumerImpl` supports large message aware `seek()` function but with some limitations**. `LiKafkaConsumerImpl` keeps track of the messages that have been consumed with a `DeliveredMessageOffsetTracker`. The `DeliveredMessageOffsetTracker` keeps track of all the messages that have been consumed for each partition. The seek function behaves differently based on the **tracked offsets range** (from the first consumed offset to the last consumed offset). The behavior and **limitations** of `seek()` are the following:
 
 * If the user **seek back** to an offset within the **tracked offset range**. `LiKafkaConsumerImpl` will translate the user specified offset to ensure that no message will be "lost".
@@ -114,5 +114,5 @@ Seeking to a given offset when large messages exist is challenging and tricky. *
 
 Due to the complexity of the `seek()` operation with large messages, users are encouraged to avoid seeking to an arbitrary offset if possible.
 
-##### Log compacted topics #####
+### Log compacted topics ###
 In general, LiKafka-Clients does not support large message handling for log compacted topics. In some specific cases, it might work by playing with the message keys, users may refer to [Handle Large Messages in Apache Kafka](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) if interested.
