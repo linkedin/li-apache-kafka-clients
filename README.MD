@@ -53,6 +53,8 @@ If `large.message.enabled=true`, `LiKafkaProducerImpl` will split the messages w
 
 `LiKafkaProducerImpl` allows user to plug in custom `segment.serializer` (e.g Avro). Users may use the custom segment serializer to use their own wire protocol for `LargeMessageSegment`. This may be useful for users who already have existing SerDe in the organization. For example, users may decide not to serialize a single-segment messages as a `LargeMessageSegment`, but simply send the payload of it which is the raw serialized message. Because the payload is the bytes serialized by value.serializer, this will maintain the existing wire protocol. Avoiding the segment size overhead may also be useful if most of the messages are small.
 
+In `LiKafkaProducerConfig`, there is one **special configuration** `current.producer`. This configuration is not set by the users, but set by `LiKafkaProducerImpl` and passed to all the `Configurables` (key serializer, value serializer, segment serializer and the auditor). The value of this configuration is the underlying open source vanilla `KafkaProducer<byte[], byte[]>` used by LiKafkaProducerImpl. The motivation of having this configuration is to avoid creating separate producers in some cases. For example, at LinkedIn we send our auditing events back to an auditing topic in the same Kafka cluster the producer is sending messages to. With this underlying KafkaProducer, we don't need to create a separate producer to send the auditing events.
+
 #### Configurations for LiKafkaConsumerImpl ####
 `LiKafkaConsumerImpl` takes the following large message related configurations:
 ```
@@ -70,7 +72,7 @@ In order to support large message aware offset seek (see more in the ***About se
 
 Similar to `LiKafkaProducerImpl`, users can specify a custom `segment.deserializer` class to deserialize the bytes into a `LargeMessageSegment` object. In an organization with legacy SerDe implementation, users may have to support both large message segment and the legacy wire protocol of messages. The user implementation of segment deserializer should return `null` if it sees a message that is not a large message segment. `LiKafkaConsumerImpl` will then use the value deserializer to deserialize that message.
 
-#### Consume with large messages ####
+#### Consume large messages ####
 `LiKafkaConsumerImpl` works almost transparently with large messages if the users do not need to seek to an arbitrary offset (See more in ***About seek()*** section). The potential challenging part is the offset management. We encourage users to use the methods provided by `LiKafkaConsumerImpl` to checkpoint the consumer offsets. By doing that the users do not need to deal with the nuances of large message offset management.
 
 If the users only use `commitSync()`, `commitAsync()`, `seekToCommitted()` without specifying any particular offsets to commit or seek to, large message is completely transparent to the users.

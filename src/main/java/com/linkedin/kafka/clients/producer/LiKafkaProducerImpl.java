@@ -121,7 +121,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final Producer<byte[], byte[]> _producer;
   /*package private for testing*/ Auditor<K, V> _auditor;
 
-  // A counter of in threads in the middle of sending messages. This is needed to ensure when we close the producer
+  // A counter of the threads in the middle of sending messages. This is needed to ensure when we close the producer
   // everything is audited.
   private final AtomicInteger _numThreadsInSend;
   private volatile boolean _closed;
@@ -156,6 +156,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
                              Serializer<V> valueSerializer,
                              Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
                              Auditor<K, V> auditor) {
+    // Instantiate the open source producer, which always sents raw bytes.
+    _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
 
     // Instantiate the key serializer if necessary.
     _keySerializer = keySerializer != null ? keySerializer :
@@ -173,9 +175,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
     segmentSerializer.configure(configs.originals(), false);
     _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer);
-
-    // Instantiate the open source producer, which always sents raw bytes.
-    _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
 
     // Instantiate auditor if necessary
     _auditor = auditor != null ? auditor :
