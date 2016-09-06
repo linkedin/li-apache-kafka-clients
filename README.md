@@ -2,11 +2,11 @@ LiKafka-Clients
 ===================
 
 ### Introduction ###
-LiKafka-Clients is a wrapper Kafka clients library built on top of Vanilla Apache Kafka clients.
+LiKafka-Clients is a wrapper Kafka clients library built on top of vanilla Apache Kafka clients.
 
 Apache Kafka has now become a very popular messaging system and is well known for its low latency, high throughput and durable messaging. At LinkedIn, we have built an [ecosystem around Kafka](https://engineering.linkedin.com/blog/2016/04/kafka-ecosystem-at-linkedin) to power our infrastructure. In our ecosystem, LiKafka-Clients library is a fundamental component for many functions such as auditing, data format standardization, large message handling, and so on.
 
-LiKafka-Clients is designed to be fully compatible with Apache Kafka Vanilla clients. Both LiKafkaProducer and LiKafkaConsumer implement the vanilla Kafka Producer and Consumer interface.
+LiKafka-Clients is designed to be fully compatible with Apache Kafka vanilla clients. Both LiKafkaProducer and LiKafkaConsumer implement the vanilla Kafka Producer and Consumer interface.
 
 LiKafka-Clients is also highly customizable so the users can plug in their own wire protocol for large message segments and auditor implementation.
 
@@ -14,7 +14,7 @@ LiKafka-Clients is also highly customizable so the users can plug in their own w
 LiKafka-Clients has the following features in addition to the vanilla Apache Kafka Java clients.
 
 #### Large message support ####
-Like many other messaging systems, Kafka has a maximum message size limit for a few reasons (e.g. memory management. Due to the message size limit, in some cases, user have to bare with small amount of message loss or involve additional storages to store the large objects. LiKafka-Clients addresses this problem with [a solution](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) that does not require an external storage dependency. For users who are storing offsets checkpoints in Kafka, LiKafka-Clients handles large messages almost transparently.
+Like many other messaging systems, Kafka has a maximum message size limit for a few reasons (e.g. memory management. Due to the message size limit, in some cases, user have to bear with small amount of message loss or involve external storage to store the large objects. LiKafka-Clients addresses this problem with [a solution](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) that does not require an external storage dependency. For users who are storing offsets checkpoints in Kafka, LiKafka-Clients handles large messages almost transparently.
 
 #### Auditing ####
 As a messaging system, the data assurance is critical. At LinkedIn, we have been using a counting based out-of-band auditing solution to monitor the data integrity in our various data pipelines. This auditing solution is described in [these meetup talk slides](http://www.slideshare.net/JonBringhurst/kafka-audit-kafka-meetup-january-27th-2015). LiKafka-Clients has integrated a pluggable auditing feature. We have also provided an `AbstractAuditor` and a `CountingAuditStats` class to help user implement the counting based auditing solution similar to what we are using at LinkedIn. Users can group the messages in to various categories based on `AuditKey` and get the statistics for each `AuditKey`. For more details please refer to the Java doc of `AbstractAuditor` and `CountingAuditStats`. We have provided a `LoggingAuditor` class as an example of using `AbstractAuditor` to implement the counting based auditing.
@@ -43,7 +43,7 @@ segment.serializer
 ```
 If `large.message.enabled=true`, `LiKafkaProducerImpl` will split the messages whose serialized size is greater than `max.message.segment.bytes` into multiple `LargeMessageSegment`, serialize each `LargeMessageSegment` with the specified `segment.serializer` and send the serialized segments to Kafka brokers. 
 
-* When `large.message.enabled=false` or a message is a normal sized message, `LiKafkaProducerImpl` will still send the message as a single-segment message. This is to make sure that the consumers will always be able to deserialize the messages regardless of the producer settings.
+* When `large.message.enabled=false` or a message is a normal sized message, `LiKafkaProducerImpl` will still send the message as a single-segment message. This is to make sure that the consumers will always be able to deserialize the messages regardless of the producer settings. However, with a custom `segment.serializer` users are able to use any wire protocols for the large message segments, including sending a normal-sized message without wrapping it with a large message segment.
 
 * `LiKafkaProducerImpl` reuses `max.message.segment.bytes` as the threshold of large message. Users are expected to leave some headroom for the segment header and message headers (e.g. 50 KB).
 
