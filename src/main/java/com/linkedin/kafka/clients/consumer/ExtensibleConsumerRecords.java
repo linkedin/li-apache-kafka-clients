@@ -20,19 +20,19 @@ import org.apache.kafka.common.utils.AbstractIterator;
 
 
 /**
- * A container that holds the list {@link ExtendedConsumerRecord} per partition for a
- * particular topic. There is one {@link ExtendedConsumerRecord} list for every topic
+ * A container that holds the list {@link ExtensibleConsumerRecord} per partition for a
+ * particular topic. There is one {@link ExtensibleConsumerRecord} list for every topic
  * partition returned by a {@link LiKafkaConsumer#pollX(long)} operation.
  */
-public class ExtendedConsumerRecords<K, V> implements Iterable<ExtendedConsumerRecord<K, V>> {
+public class ExtensibleConsumerRecords<K, V> implements Iterable<ExtensibleConsumerRecord<K, V>> {
 
   @SuppressWarnings("unchecked")
-  public static final ExtendedConsumerRecords<Object, Object> EMPTY =
-      new ExtendedConsumerRecords<>(Collections.EMPTY_MAP);
+  public static final ExtensibleConsumerRecords<Object, Object> EMPTY =
+      new ExtensibleConsumerRecords<>(Collections.EMPTY_MAP);
 
-  private final Map<TopicPartition, List<ExtendedConsumerRecord<K, V>>> records;
+  private final Map<TopicPartition, List<ExtensibleConsumerRecord<K, V>>> records;
 
-  public ExtendedConsumerRecords(Map<TopicPartition, List<ExtendedConsumerRecord<K, V>>> records) {
+  public ExtensibleConsumerRecords(Map<TopicPartition, List<ExtensibleConsumerRecord<K, V>>> records) {
     this.records = records;
   }
 
@@ -41,8 +41,8 @@ public class ExtendedConsumerRecords<K, V> implements Iterable<ExtendedConsumerR
    *
    * @param partition The partition to get records for
    */
-  public List<ExtendedConsumerRecord<K, V>> records(TopicPartition partition) {
-    List<ExtendedConsumerRecord<K, V>> recs = this.records.get(partition);
+  public List<ExtensibleConsumerRecord<K, V>> records(TopicPartition partition) {
+    List<ExtensibleConsumerRecord<K, V>> recs = this.records.get(partition);
     if (recs == null) {
       return Collections.emptyList();
     } else {
@@ -53,12 +53,12 @@ public class ExtendedConsumerRecords<K, V> implements Iterable<ExtendedConsumerR
   /**
    * Get just the records for the given topic
    */
-  public Iterable<ExtendedConsumerRecord<K, V>> records(String topic) {
+  public Iterable<ExtensibleConsumerRecord<K, V>> records(String topic) {
     if (topic == null) {
       throw new IllegalArgumentException("Topic must be non-null.");
     }
-    List<List<ExtendedConsumerRecord<K, V>>> recs = new ArrayList<>();
-    for (Map.Entry<TopicPartition, List<ExtendedConsumerRecord<K, V>>> entry : records.entrySet()) {
+    List<List<ExtensibleConsumerRecord<K, V>>> recs = new ArrayList<>();
+    for (Map.Entry<TopicPartition, List<ExtensibleConsumerRecord<K, V>>> entry : records.entrySet()) {
       if (entry.getKey().topic().equals(topic)) {
         recs.add(entry.getValue());
       }
@@ -75,7 +75,7 @@ public class ExtendedConsumerRecords<K, V> implements Iterable<ExtendedConsumerR
   }
 
   @Override
-  public Iterator<ExtendedConsumerRecord<K, V>> iterator() {
+  public Iterator<ExtensibleConsumerRecord<K, V>> iterator() {
     return new ConcatenatedIterable<>(records.values()).iterator();
   }
 
@@ -84,27 +84,27 @@ public class ExtendedConsumerRecords<K, V> implements Iterable<ExtendedConsumerR
    */
   public int count() {
     int count = 0;
-    for (List<ExtendedConsumerRecord<K, V>> recs: this.records.values()) {
+    for (List<ExtensibleConsumerRecord<K, V>> recs: this.records.values()) {
       count += recs.size();
     }
     return count;
   }
 
-  private static class ConcatenatedIterable<K, V> implements Iterable<ExtendedConsumerRecord<K, V>> {
+  private static class ConcatenatedIterable<K, V> implements Iterable<ExtensibleConsumerRecord<K, V>> {
 
-    private final Iterable<? extends Iterable<ExtendedConsumerRecord<K, V>>> iterables;
+    private final Iterable<? extends Iterable<ExtensibleConsumerRecord<K, V>>> iterables;
 
-    public ConcatenatedIterable(Iterable<? extends Iterable<ExtendedConsumerRecord<K, V>>> iterables) {
+    public ConcatenatedIterable(Iterable<? extends Iterable<ExtensibleConsumerRecord<K, V>>> iterables) {
       this.iterables = iterables;
     }
 
     @Override
-    public Iterator<ExtendedConsumerRecord<K, V>> iterator() {
-      return new AbstractIterator<ExtendedConsumerRecord<K, V>>() {
-        Iterator<? extends Iterable<ExtendedConsumerRecord<K, V>>> iters = iterables.iterator();
-        Iterator<ExtendedConsumerRecord<K, V>> current;
+    public Iterator<ExtensibleConsumerRecord<K, V>> iterator() {
+      return new AbstractIterator<ExtensibleConsumerRecord<K, V>>() {
+        Iterator<? extends Iterable<ExtensibleConsumerRecord<K, V>>> iters = iterables.iterator();
+        Iterator<ExtensibleConsumerRecord<K, V>> current;
 
-        public ExtendedConsumerRecord<K, V> makeNext() {
+        public ExtensibleConsumerRecord<K, V> makeNext() {
           while (current == null || !current.hasNext()) {
             if (iters.hasNext()) {
               current = iters.next().iterator();
@@ -123,8 +123,8 @@ public class ExtendedConsumerRecords<K, V> implements Iterable<ExtendedConsumerR
   }
 
   @SuppressWarnings("unchecked")
-  public static <K, V> ExtendedConsumerRecords<K, V> empty() {
-    return (ExtendedConsumerRecords<K, V>) EMPTY;
+  public static <K, V> ExtensibleConsumerRecords<K, V> empty() {
+    return (ExtensibleConsumerRecords<K, V>) EMPTY;
   }
 
 }

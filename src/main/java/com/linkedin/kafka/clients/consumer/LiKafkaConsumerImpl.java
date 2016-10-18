@@ -218,8 +218,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
-  public ExtendedConsumerRecords<K, V> pollX(long timeout) {
-    return poll(timeout, new ExtendedCallAdapter());
+  public ExtensibleConsumerRecords<K, V> pollX(long timeout) {
+    return poll(timeout, new ExtensibleCallAdapter());
   }
 
   private <R> R poll(long timeout, RecordsAdapter<R> recordsAdapter) {
@@ -489,9 +489,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     R process(ConsumerRecords<byte[], byte[]> srcRecords);
   }
 
-  private class ExtendedCallAdapter implements RecordsAdapter<ExtendedConsumerRecords<K, V>> {
+  private class ExtensibleCallAdapter implements RecordsAdapter<ExtensibleConsumerRecords<K, V>> {
     @Override
-    public boolean isEmpty(ExtendedConsumerRecords<K, V> destRecords) {
+    public boolean isEmpty(ExtensibleConsumerRecords<K, V> destRecords) {
       if (destRecords == null) {
         return true;
       }
@@ -499,7 +499,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     }
 
     @Override
-    public ExtendedConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> srcRecords) {
+    public ExtensibleConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> srcRecords) {
       return _consumerRecordsProcessor.processX(srcRecords);
     }
   }

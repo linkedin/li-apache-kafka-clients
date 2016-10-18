@@ -261,12 +261,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   }
 
   @Override
-  public Future<RecordMetadata> sendX(ExtendedProducerRecord<K, V> event) {
+  public Future<RecordMetadata> sendX(ExtensibleProducerRecord<K, V> event) {
     return sendX(event, null);
   }
 
   @Override
-  public Future<RecordMetadata> sendX(ExtendedProducerRecord<K, V> producerRecord, Callback callback) {
+  public Future<RecordMetadata> sendX(ExtensibleProducerRecord<K, V> producerRecord, Callback callback) {
     _numThreadsInSend.incrementAndGet();
     try {
       if (_closed) {

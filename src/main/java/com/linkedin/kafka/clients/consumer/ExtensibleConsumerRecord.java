@@ -19,7 +19,7 @@ import org.apache.kafka.common.record.TimestampType;
  * A key/value pair to be received from Kafka. This consists of a topic name and a partition number, from which the
  * record is being received and an offset that points to the record in a Kafka partition.
  */
-public class ExtendedConsumerRecord<K, V> {
+public class ExtensibleConsumerRecord<K, V> {
   //TODO: this means all the byte buffers in the consumer record hang around rather than be garbage collected.
   private final ConsumerRecord kafkaConsumerRecord;
   //TODO:  the current LiKafka clients wrap KafkaClient<byte[], byte[]> so we need to have K here.
@@ -39,7 +39,7 @@ public class ExtendedConsumerRecord<K, V> {
    * @param serializedValueSize the size of the user payload in bytes
    * @param headers this may be null
    */
-  public ExtendedConsumerRecord(ConsumerRecord<?, ?> kafkaConsumerRecord, K key, int serializedKeySize, V value, int serializedValueSize,
+  public ExtensibleConsumerRecord(ConsumerRecord<?, ?> kafkaConsumerRecord, K key, int serializedKeySize, V value, int serializedValueSize,
     Map<Integer, ByteBuffer> headers) {
 
     if (kafkaConsumerRecord == null) {
@@ -183,7 +183,7 @@ public class ExtendedConsumerRecord<K, V> {
   //TODO: printout header in some user friendly format
   @Override
   public String toString() {
-    return "ExtendedConsumerRecord(topic = " + topic() + ", partition = " + partition() + ", offset = " + offset()
+    return "ExtensibleConsumerRecord(topic = " + topic() + ", partition = " + partition() + ", offset = " + offset()
         + ", " + kafkaConsumerRecord.timestampType() + " = " + kafkaConsumerRecord.timestamp() + ", checksum = " + kafkaConsumerRecord.checksum()
         + ", serialized key size = "  + serializedKeySize
         + ", serialized value size = " + serializedValueSize

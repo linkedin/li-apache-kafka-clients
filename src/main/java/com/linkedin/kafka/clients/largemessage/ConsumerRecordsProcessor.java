@@ -12,8 +12,8 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
-import com.linkedin.kafka.clients.consumer.ExtendedConsumerRecord;
-import com.linkedin.kafka.clients.consumer.ExtendedConsumerRecords;
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecords;
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
@@ -76,8 +76,8 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param srcRecords
    * @return
    */
-  public ExtendedConsumerRecords<K, V> processX(ConsumerRecords<byte[], byte[]> srcRecords) {
-    return new ExtendedConsumerRecords<>(process(srcRecords, new ExtendedRecordAdapter()));
+  public ExtensibleConsumerRecords<K, V> processX(ConsumerRecords<byte[], byte[]> srcRecords) {
+    return new ExtensibleConsumerRecords<>(process(srcRecords, new ExtensibleRecordAdapter()));
   }
 
   private <R> Map<TopicPartition, List<R>> process(ConsumerRecords<byte[], byte[]> consumerRecords, RecordAdapter<R> recordAdapter) {
@@ -331,7 +331,7 @@ public class ConsumerRecordsProcessor<K, V> {
   }
 
   //TODO: actually do large messages
-  private ExtendedConsumerRecord<K, V> handleConsumerRecordX(ConsumerRecord<byte[], byte[]> consumerRecord) {
+  private ExtensibleConsumerRecord<K, V> handleConsumerRecordX(ConsumerRecord<byte[], byte[]> consumerRecord) {
     if (consumerRecord.value() == null) {
       return null;
     }
@@ -343,8 +343,8 @@ public class ConsumerRecordsProcessor<K, V> {
       if (handledRecord == null) {
         return null;
       }
-      ExtendedConsumerRecord<K, V> xConsumerRecord =
-        new ExtendedConsumerRecord<>(consumerRecord, handledRecord.key(), handledRecord.serializedKeySize(),
+      ExtensibleConsumerRecord<K, V> xConsumerRecord =
+        new ExtensibleConsumerRecord<>(consumerRecord, handledRecord.key(), handledRecord.serializedKeySize(),
           handledRecord.value(), handledRecord.serializedValueSize(), null /* headers */);
       return xConsumerRecord;
     } else {
@@ -358,8 +358,8 @@ public class ConsumerRecordsProcessor<K, V> {
         userPayloadInHeader.get(copy).flip();
         userValue = _valueDeserializer.deserialize(consumerRecord.topic(), copy);
       }
-      ExtendedConsumerRecord<K, V> xConsumerRecord =
-        new ExtendedConsumerRecord<>(consumerRecord, key, consumerRecord.serializedKeySize(), userValue,
+      ExtensibleConsumerRecord<K, V> xConsumerRecord =
+        new ExtensibleConsumerRecord<>(consumerRecord, key, consumerRecord.serializedKeySize(), userValue,
           userPayloadInHeader == null ? 0 : userPayloadInHeader.remaining(), headers);
       return xConsumerRecord;
     }
@@ -418,10 +418,10 @@ public class ConsumerRecordsProcessor<K, V> {
   }
 
 
-  private class ExtendedRecordAdapter implements RecordAdapter<ExtendedConsumerRecord<K, V>> {
+  private class ExtensibleRecordAdapter implements RecordAdapter<ExtensibleConsumerRecord<K, V>> {
 
     @Override
-    public ExtendedConsumerRecord<K, V> mapRecords(ConsumerRecord<byte[], byte[]> srcRecords) {
+    public ExtensibleConsumerRecord<K, V> mapRecords(ConsumerRecord<byte[], byte[]> srcRecords) {
       return handleConsumerRecordX(srcRecords);
     }
   }

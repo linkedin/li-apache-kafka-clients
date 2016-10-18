@@ -53,13 +53,13 @@ public interface LiKafkaProducer<K, V> extends Producer<K, V> {
    * @return A future which will eventually contain the response information
    */
   @InterfaceOrigin.LiKafkaClients
-  public Future<RecordMetadata> sendX(ExtendedProducerRecord<K, V> record);
+  public Future<RecordMetadata> sendX(ExtensibleProducerRecord<K, V> record);
 
   /**
    * Send a record and invoke the given callback when the record has been acknowledged by the server
    */
   @InterfaceOrigin.LiKafkaClients
-  public Future<RecordMetadata> sendX(ExtendedProducerRecord<K, V> record, Callback callback);
+  public Future<RecordMetadata> sendX(ExtensibleProducerRecord<K, V> record, Callback callback);
 
   /**
    * Flush any accumulated records from the producer. Blocks until all sends are complete.

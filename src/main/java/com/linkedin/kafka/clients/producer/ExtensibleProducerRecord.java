@@ -21,7 +21,7 @@ import java.util.Map;
  * TODO: more documentation
  * </p>
  */
-public class ExtendedProducerRecord<K, V> {
+public class ExtensibleProducerRecord<K, V> {
 
   private final String topic;
   private final Integer partition;
@@ -43,7 +43,7 @@ public class ExtendedProducerRecord<K, V> {
    * @param headers Header key-value pairs.  This may be null if there are not any headers.
    *
    */
-  public ExtendedProducerRecord(String topic, Integer partition, Long timestamp, K key, V value, Map<Integer, byte[]> headers) {
+  public ExtensibleProducerRecord(String topic, Integer partition, Long timestamp, K key, V value, Map<Integer, byte[]> headers) {
     if (topic == null) {
       throw new IllegalArgumentException("Topic cannot be null");
     }
@@ -159,11 +159,11 @@ public class ExtendedProducerRecord<K, V> {
   public boolean equals(Object o) {
     if (this == o) {
       return true;
-    } else if (!(o instanceof ExtendedProducerRecord)) {
+    } else if (!(o instanceof ExtensibleProducerRecord)) {
       return false;
     }
 
-    ExtendedProducerRecord that = (ExtendedProducerRecord) o;
+    ExtensibleProducerRecord that = (ExtensibleProducerRecord) o;
 
     if (key != null ? !key.equals(that.key) : that.key != null) {
       return false;
