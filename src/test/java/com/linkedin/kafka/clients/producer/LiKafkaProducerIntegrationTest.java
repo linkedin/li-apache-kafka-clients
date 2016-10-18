@@ -111,7 +111,8 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     LiKafkaProducer<String, String> producer = createProducer(props);
     final String tempTopic = "testTopic" + new Random().nextInt(1000000);
 
-    Map<Integer, byte[]> headers = Collections.singletonMap(HeaderKeySpace.PUBLIC_UNASSIGNED_START, new byte[] { 1, 2, 3});
+    final byte[] EXPECTED_HEADER_VALUE = new byte[] { 1, 2, 3};
+    Map<Integer, byte[]> headers = Collections.singletonMap(HeaderKeySpace.PUBLIC_UNASSIGNED_START, EXPECTED_HEADER_VALUE);
     for (int i = 0; i < RECORD_COUNT; ++i) {
       String value = Integer.toString(i);
       producer.sendX(new ExtensibleProducerRecord<>(tempTopic, null, null, null, value, headers));
@@ -133,6 +134,8 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
         int index = Integer.parseInt(record.value());
         counts.set(index);
         messageCount++;
+        byte[] headerValue = record.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START);
+        assertEquals(headerValue, EXPECTED_HEADER_VALUE);
       }
     }
     consumer.close();
