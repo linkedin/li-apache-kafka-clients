@@ -214,8 +214,17 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public ConsumerRecords<K, V> poll(long timeout) {
+    return poll(timeout, new SimpleCallAdapter());
+  }
+
+  @Override
+  public ExtendedConsumerRecords<K, V> pollX(long timeout) {
+    return poll(timeout, new ExtendedCallAdapter());
+  }
+
+  private <R> R poll(long timeout, RecordsAdapter<R> recordsAdapter) {
     long startMs = System.currentTimeMillis();
-    ConsumerRecords<K, V> processedRecords;
+    R processedRecords;
     // We will keep polling until timeout.
     long now = startMs;
     long expireMs = startMs + timeout;
@@ -238,9 +247,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
           }
         }
       }
-      processedRecords = _consumerRecordsProcessor.process(rawRecords);
+      processedRecords = recordsAdapter.process(rawRecords);
       now = System.currentTimeMillis();
-    } while (processedRecords.isEmpty() && now < startMs + timeout);
+    } while (recordsAdapter.isEmpty(processedRecords) && now < startMs + timeout);
     return processedRecords;
   }
 
@@ -467,4 +476,48 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     }
     return offsetAndMetadataMap;
   }
+
+  /**
+   *
+   * @param <R> The container class of "Records" (e.g. ConsumerRecords, plural).
+   */
+  private interface RecordsAdapter<R> {
+    /** A function to detect if R is empty. */
+    boolean isEmpty(R destRecords);
+
+    /** A function to convert the raw records to the "Records" type. */
+    R process(ConsumerRecords<byte[], byte[]> srcRecords);
+  }
+
+  private class ExtendedCallAdapter implements RecordsAdapter<ExtendedConsumerRecords<K, V>> {
+    @Override
+    public boolean isEmpty(ExtendedConsumerRecords<K, V> destRecords) {
+      if (destRecords == null) {
+        return true;
+      }
+      return destRecords.isEmpty();
+    }
+
+    @Override
+    public ExtendedConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> srcRecords) {
+      return _consumerRecordsProcessor.processX(srcRecords);
+    }
+  }
+
+  private class SimpleCallAdapter implements RecordsAdapter<ConsumerRecords<K, V>> {
+    @Override
+    public boolean isEmpty(ConsumerRecords<K, V> destRecords) {
+      if (destRecords == null) {
+        return true;
+      }
+      return destRecords.isEmpty();
+    }
+
+    @Override
+    public ConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> srcRecords) {
+      return _consumerRecordsProcessor.process(srcRecords);
+    }
+  }
+
+
 }

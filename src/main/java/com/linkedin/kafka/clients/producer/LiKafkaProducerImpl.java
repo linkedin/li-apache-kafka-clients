@@ -12,10 +12,12 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
+import com.linkedin.kafka.clients.utils.HeaderParser;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -38,6 +40,8 @@ import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import java.nio.ByteBuffer;
 
 /**
  * This producer is the implementation of {@link LiKafkaProducer}.
@@ -255,6 +259,75 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       _numThreadsInSend.decrementAndGet();
     }
   }
+
+  @Override
+  public Future<RecordMetadata> sendX(ExtendedProducerRecord<K, V> event) {
+    return sendX(event, null);
+  }
+
+  @Override
+  public Future<RecordMetadata> sendX(ExtendedProducerRecord<K, V> producerRecord, Callback callback) {
+    _numThreadsInSend.incrementAndGet();
+    try {
+      if (_closed) {
+        throw new IllegalStateException("LiKafkaProducer has been closed.");
+      }
+      String topic = producerRecord.topic();
+      K key = producerRecord.key();
+      V value = producerRecord.value();
+      Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
+      Integer partition = producerRecord.partition();
+      Future<RecordMetadata> future = null;
+      UUID messageId = getUuid(key, value);
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}", messageId.toString().replaceAll("-", ""),
+          value.toString(), (key != null) ? key.toString() : "[none]", topic);
+      }
+      byte[] serializedValue;
+      byte[] serializedKey;
+      Integer auditSize;
+      try {
+        serializedKey = _keySerializer.serialize(topic, key);
+        byte[] encapsulatedValue = _valueSerializer.serialize(topic, value);
+        int encapsulatedValueSize = (encapsulatedValue == null) ? 0 : encapsulatedValue.length + 4 + 4; /* header size */
+        int headerSize = HeaderParser.serializedHeaderSize(producerRecord.headers());
+        ByteBuffer outputBuf = ByteBuffer.allocate(4 /* magic */ + encapsulatedValueSize + headerSize);
+        outputBuf.putInt(HeaderParser.HEADER_VALUE_MAGIC);
+        outputBuf.putInt(HeaderKeySpace.PAYLOAD_HEADER_KEY);
+        outputBuf.putInt(encapsulatedValueSize);
+        outputBuf.put(encapsulatedValue);
+        HeaderParser.writeHeader(outputBuf, producerRecord.headers());
+        serializedValue = outputBuf.array();
+        auditSize = (serializedKey == null ? 0 : serializedKey.length) + encapsulatedValueSize;
+        //TODO: At some point we may want to extend the audit mechanism to count all the header and overhead bytes
+        _auditor.record(topic, key, value, timestamp, 1L, auditSize.longValue(),  AuditType.ATTEMPT);
+      } catch (Throwable t) {
+        // Audit the attempt and the failure.
+        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.ATTEMPT);
+        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.FAILURE);
+        throw new KafkaException(t);
+      }
+
+      if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
+        //TODO: implement me
+        throw new UnsupportedOperationException("Sending large extended messages is not implemented");
+      }
+
+      Callback errorLoggingCallback =
+        new ErrorLoggingCallback<>(messageId, key, value, topic, timestamp, auditSize, _auditor, callback);
+
+      ProducerRecord<byte[], byte[]> recordWithHeaders =
+        new ProducerRecord<>(topic, partition, timestamp, serializedKey, serializedValue);
+      return _producer.send(recordWithHeaders, errorLoggingCallback);
+    } catch (Throwable t) {
+      _auditor.record(producerRecord.topic(), producerRecord.key(), producerRecord.value(), producerRecord.timestamp(),
+        1L, 0L, AuditType.FAILURE);
+      throw new KafkaException(t);
+    } finally {
+      _numThreadsInSend.decrementAndGet();
+    }
+  }
+
 
   /**
    * This method will flush all the message buffered in producer. It is a blocking call.

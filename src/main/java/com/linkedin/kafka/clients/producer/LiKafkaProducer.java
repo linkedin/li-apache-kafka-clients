@@ -47,6 +47,21 @@ public interface LiKafkaProducer<K, V> extends Producer<K, V> {
   Future<RecordMetadata> send(ProducerRecord<K, V> record, Callback callback);
 
   /**
+   * Send the given record asynchronously and return a future which will eventually contain the response information.
+   *
+   * @param record The record to send
+   * @return A future which will eventually contain the response information
+   */
+  @InterfaceOrigin.LiKafkaClients
+  public Future<RecordMetadata> sendX(ExtendedProducerRecord<K, V> record);
+
+  /**
+   * Send a record and invoke the given callback when the record has been acknowledged by the server
+   */
+  @InterfaceOrigin.LiKafkaClients
+  public Future<RecordMetadata> sendX(ExtendedProducerRecord<K, V> record, Callback callback);
+
+  /**
    * Flush any accumulated records from the producer. Blocks until all sends are complete.
    */
   @InterfaceOrigin.ApacheKafka
