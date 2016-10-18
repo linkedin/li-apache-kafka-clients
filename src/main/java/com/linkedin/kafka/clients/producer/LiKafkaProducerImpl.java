@@ -291,14 +291,19 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         byte[] encapsulatedValue = _valueSerializer.serialize(topic, value);
         int encapsulatedValueSize = (encapsulatedValue == null) ? 0 : encapsulatedValue.length + 4 + 4; /* header size */
         int headerSize = HeaderParser.serializedHeaderSize(producerRecord.headers());
-        ByteBuffer outputBuf = ByteBuffer.allocate(4 /* magic */ + encapsulatedValueSize + headerSize);
-        outputBuf.putInt(HeaderParser.HEADER_VALUE_MAGIC);
-        outputBuf.putInt(HeaderKeySpace.PAYLOAD_HEADER_KEY);
-        outputBuf.putInt(encapsulatedValueSize);
-        outputBuf.put(encapsulatedValue);
+        int magicSize = (producerRecord.headers() == null && encapsulatedValue == null) ? 0 : 4;
+        ByteBuffer outputBuf = ByteBuffer.allocate(magicSize + encapsulatedValueSize + headerSize);
+        if (magicSize > 0) {
+          outputBuf.putInt(HeaderParser.HEADER_VALUE_MAGIC);
+        }
+        if (encapsulatedValue != null) {
+          outputBuf.putInt(HeaderKeySpace.PAYLOAD_HEADER_KEY);
+          outputBuf.putInt(encapsulatedValue.length);
+          outputBuf.put(encapsulatedValue);
+        }
         HeaderParser.writeHeader(outputBuf, producerRecord.headers());
         serializedValue = outputBuf.array();
-        auditSize = (serializedKey == null ? 0 : serializedKey.length) + encapsulatedValueSize;
+        auditSize = (serializedKey == null ? 0 : serializedKey.length) + serializedValue.length;
         //TODO: At some point we may want to extend the audit mechanism to count all the header and overhead bytes
         _auditor.record(topic, key, value, timestamp, 1L, auditSize.longValue(),  AuditType.ATTEMPT);
       } catch (Throwable t) {
@@ -310,12 +315,15 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
       if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
         //TODO: implement me
-        throw new UnsupportedOperationException("Sending large extended messages is not implemented");
+        throw new UnsupportedOperationException("Sending large extensible messages is not implemented");
       }
 
       Callback errorLoggingCallback =
         new ErrorLoggingCallback<>(messageId, key, value, topic, timestamp, auditSize, _auditor, callback);
 
+      if (serializedValue.length == 0) {
+        serializedValue = null;
+      }
       ProducerRecord<byte[], byte[]> recordWithHeaders =
         new ProducerRecord<>(topic, partition, timestamp, serializedKey, serializedValue);
       return _producer.send(recordWithHeaders, errorLoggingCallback);

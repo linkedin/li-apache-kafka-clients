@@ -82,7 +82,7 @@ public class HeaderParser {
       }
       int headerValueLength = src.getInt();
       int oldLimit = src.limit();
-      src.limit(src.limit() + headerValueLength);
+      src.limit(src.position() + headerValueLength);
       ByteBuffer headerValue = src.slice().asReadOnlyBuffer();  //TODO: Excessive?
       src.limit(oldLimit);
       src.position(src.position() + headerValueLength);
