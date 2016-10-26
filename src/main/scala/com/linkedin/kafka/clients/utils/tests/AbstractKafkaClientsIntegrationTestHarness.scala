@@ -60,6 +60,9 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
     new LiKafkaConsumerImpl(consumerProps)
   }
 
+  /**
+    * Sets a value if props does not already have the key.
+    */
   def maybeSetProperties(props: Properties, key: String, value: String) {
     if (!props.containsKey(key))
       props.setProperty(key, value);
