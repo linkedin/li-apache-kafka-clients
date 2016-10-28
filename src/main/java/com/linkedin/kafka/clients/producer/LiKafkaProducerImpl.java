@@ -218,9 +218,17 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         serializedKey = _keySerializer.serialize(topic, key);
       } catch (Throwable t) {
         // Audit the attempt and the failure.
-        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.ATTEMPT);
-        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.FAILURE);
-        throw new KafkaException(t);
+        try {
+          _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.ATTEMPT);
+          _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.FAILURE);
+        } catch (Throwable ignored) {
+          LOG.warn("Caught exception while trying to audit failure in catch block.", ignored);
+        }
+        if (t instanceof Exception) {
+          throw new KafkaException(t);
+        } else {
+          throw t;
+        }
       }
       int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
           + (serializedValue == null ? 0 : serializedValue.length);
@@ -248,9 +256,17 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       }
       return future;
     } catch (Throwable t) {
-      _auditor.record(producerRecord.topic(), producerRecord.key(), producerRecord.value(), producerRecord.timestamp(),
+      try {
+        _auditor.record(producerRecord.topic(), producerRecord.key(), producerRecord.value(), producerRecord.timestamp(),
           1L, 0L, AuditType.FAILURE);
-      throw new KafkaException(t);
+      } catch (Throwable t2) {
+        LOG.error("Caught exception while trying to audit failure in catch block.", t2);
+      }
+      if (t instanceof Exception) {
+        throw new KafkaException(t);
+      } else {
+        throw t;
+      }
     } finally {
       _numThreadsInSend.decrementAndGet();
     }
