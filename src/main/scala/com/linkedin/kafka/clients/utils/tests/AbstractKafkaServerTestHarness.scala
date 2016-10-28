@@ -42,12 +42,6 @@ abstract class AbstractKafkaServerTestHarness extends AbstractZookeeperTestHarne
    */
   def generateConfigs(): Seq[KafkaConfig]
 
-  def configs: Seq[KafkaConfig] = {
-    if (instanceConfigs == null)
-      instanceConfigs = generateConfigs()
-    instanceConfigs
-  }
-
   def serverForId(id: Int) = servers.find(s => s.config.brokerId == id)
 
   def bootstrapUrl: String = brokerList
@@ -61,6 +55,7 @@ abstract class AbstractKafkaServerTestHarness extends AbstractZookeeperTestHarne
   @Before
   override def setUp() {
     super.setUp()
+    val configs = generateConfigs()
     if (configs.size <= 0)
       throw new KafkaException("Must supply at least one server config.")
     servers = configs.map(TestUtils.createServer(_)).toBuffer

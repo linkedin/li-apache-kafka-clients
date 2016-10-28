@@ -32,8 +32,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
-import org.testng.annotations.AfterTest;
-import org.testng.annotations.BeforeTest;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -62,14 +62,14 @@ import static org.testng.Assert.fail;
 public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
 
   private final int MESSAGE_COUNT = 1000;
-  private final Random RANDOM = new Random();
+  private Random _random;
   private final String TOPIC1 = "topic1";
   private final String TOPIC2 = "topic2";
   private final int NUM_PRODUCER = 2;
   private final int THREADS_PER_PRODUCER = 2;
   private final int NUM_PARTITIONS = 4;
   private final int MAX_SEGMENT_SIZE = 200;
-  private final Map<String, String> messages = new ConcurrentHashMap<>();
+  private Map<String, String> _messages;
 
   @Override
   public Properties overridingProps() {
@@ -82,19 +82,21 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * This test will have a topic with some partitions having interleaved large messages as well as some ordinary
    * sized messages. The topic will be used for all the sub-tests.
    */
-  @BeforeTest
+  @BeforeMethod
   @Override
   public void setUp() {
     super.setUp();
+    _messages = new ConcurrentHashMap<>();
+    _random = new Random(23423423);
     try {
-      produceMessages(messages, TOPIC1);
-      produceMessages(messages, TOPIC2);
+      produceMessages(_messages, TOPIC1);
+      produceMessages(_messages, TOPIC2);
     } catch (InterruptedException e) {
       throw new RuntimeException("Message producing phase failed.", e);
     }
   }
 
-  @AfterTest
+  @AfterMethod
   @Override
   public void tearDown() {
     super.tearDown();
@@ -427,7 +429,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "consumer1");
     LiKafkaConsumer<String, String> consumer1 = createConsumer(props);
 
-    final Map<String, String> messageUnseen = new ConcurrentHashMap<>(messages);
+    final Map<String, String> messageUnseen = new ConcurrentHashMap<>(_messages);
 
     Thread thread0 = new RebalanceTestConsumerThread(consumer0, messageUnseen, 0);
     Thread thread1 = new RebalanceTestConsumerThread(consumer1, messageUnseen, 1);
@@ -450,7 +452,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   /**
    * This test mimics the following sequence:
    * 1. User started a consumer to consume
-   * 2. Consumer commits offset according to the message it recevies.
+   * 2. Consumer commits offset according to the message it receives.
    * 3. A consumer die/close at some point
    * 4. Another consumer in the same group starts and try to resume from committed offsets.
    * The partitions that is consumed should have many interleaved messages. After stopping and resuming consumption,
@@ -479,8 +481,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       // Subscribe to the partitions.
       consumer.subscribe(Arrays.asList(TOPIC1, TOPIC2));
 
-      // Create a new map to record unseen messages which initially contains all the produced messages.
-      Map<String, String> messagesUnseen = new HashMap<>(messages);
+      // Create a new map to record unseen messages which initially contains all the produced _messages.
+      Map<String, String> messagesUnseen = new HashMap<>(_messages);
 
       long startTime = System.currentTimeMillis();
       int numMessagesConsumed = 0;
@@ -520,8 +522,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
 
-  // This method produce a bunch of messages in an interleaved way. The messages will contain both large message
-  // and ordinary messages.
+  /**
+   * This method produce a bunch of messages in an interleaved way.
+   * @param messages will contain both large message and ordinary messages.
+   */
   private void produceMessages(Map<String, String> messages, String topic) throws InterruptedException {
     Properties props = new Properties();
     // Enable large messages.
@@ -577,7 +581,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       for (int i = 0; i < MESSAGE_COUNT; i++) {
         // The message size is set to 100 - 1124, So we should have most of the messages to be large messages
         // while still have some ordinary size messages.
-        int messageSize = 100 + RANDOM.nextInt() % 1024;
+        int messageSize = 100 + _random.nextInt() % 1024;
         final String messageId = UUID.randomUUID().toString().replace("-", "");
         final String message = messageId + TestUtils.getRandomString(messageSize);
 
