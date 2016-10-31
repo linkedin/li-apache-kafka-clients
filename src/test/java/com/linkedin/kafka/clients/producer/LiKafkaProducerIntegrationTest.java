@@ -11,7 +11,6 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
-import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecords;
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
@@ -22,11 +21,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -115,7 +110,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     Map<Integer, byte[]> headers = Collections.singletonMap(HeaderKeySpace.PUBLIC_UNASSIGNED_START, EXPECTED_HEADER_VALUE);
     for (int i = 0; i < RECORD_COUNT; ++i) {
       String value = Integer.toString(i);
-      producer.sendX(new ExtensibleProducerRecord<>(tempTopic, null, null, null, value, headers));
+      producer.send(new ExtensibleProducerRecord<>(tempTopic, null, null, null, value, headers));
     }
 
     // Drain the send queues
@@ -129,12 +124,13 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     BitSet counts = new BitSet(RECORD_COUNT);
     long startMs = System.currentTimeMillis();
     while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
-      ExtensibleConsumerRecords<String, String> records = consumer.pollX(100);
-      for (ExtensibleConsumerRecord<String, String> record : records) {
+      ConsumerRecords<String, String> records = consumer.poll(100);
+      for (ConsumerRecord<String, String> record : records) {
+        ExtensibleConsumerRecord xRecord = (ExtensibleConsumerRecord) record;
         int index = Integer.parseInt(record.value());
         counts.set(index);
         messageCount++;
-        byte[] headerValue = record.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START);
+        byte[] headerValue = xRecord.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START);
         assertEquals(headerValue, EXPECTED_HEADER_VALUE);
       }
     }

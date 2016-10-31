@@ -196,6 +196,9 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   @Override
   public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
+    if (producerRecord instanceof ExtensibleProducerRecord) {
+      return sendX((ExtensibleProducerRecord) producerRecord, callback);
+    }
     _numThreadsInSend.incrementAndGet();
     try {
       if (_closed) {
@@ -260,13 +263,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     }
   }
 
-  @Override
-  public Future<RecordMetadata> sendX(ExtensibleProducerRecord<K, V> event) {
-    return sendX(event, null);
-  }
-
-  @Override
-  public Future<RecordMetadata> sendX(ExtensibleProducerRecord<K, V> producerRecord, Callback callback) {
+  private Future<RecordMetadata> sendX(ExtensibleProducerRecord<K, V> producerRecord, Callback callback) {
     _numThreadsInSend.incrementAndGet();
     try {
       if (_closed) {

@@ -20,6 +20,7 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
@@ -214,17 +215,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public ConsumerRecords<K, V> poll(long timeout) {
-    return poll(timeout, new SimpleCallAdapter());
-  }
-
-  @Override
-  public ExtensibleConsumerRecords<K, V> pollX(long timeout) {
-    return poll(timeout, new ExtensibleCallAdapter());
-  }
-
-  private <R> R poll(long timeout, RecordsAdapter<R> recordsAdapter) {
     long startMs = System.currentTimeMillis();
-    R processedRecords;
+    ConsumerRecords<K, V> processedRecords;
     // We will keep polling until timeout.
     long now = startMs;
     long expireMs = startMs + timeout;
@@ -247,9 +239,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
           }
         }
       }
-      processedRecords = recordsAdapter.process(rawRecords);
+      processedRecords = _consumerRecordsProcessor.process(rawRecords);
       now = System.currentTimeMillis();
-    } while (recordsAdapter.isEmpty(processedRecords) && now < startMs + timeout);
+    } while (processedRecords.isEmpty() && now < startMs + timeout);
     return processedRecords;
   }
 
@@ -476,48 +468,5 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     }
     return offsetAndMetadataMap;
   }
-
-  /**
-   *
-   * @param <R> The container class of "Records" (e.g. ConsumerRecords, plural).
-   */
-  private interface RecordsAdapter<R> {
-    /** A function to detect if R is empty. */
-    boolean isEmpty(R destRecords);
-
-    /** A function to convert the raw records to the "Records" type. */
-    R process(ConsumerRecords<byte[], byte[]> srcRecords);
-  }
-
-  private class ExtensibleCallAdapter implements RecordsAdapter<ExtensibleConsumerRecords<K, V>> {
-    @Override
-    public boolean isEmpty(ExtensibleConsumerRecords<K, V> destRecords) {
-      if (destRecords == null) {
-        return true;
-      }
-      return destRecords.isEmpty();
-    }
-
-    @Override
-    public ExtensibleConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> srcRecords) {
-      return _consumerRecordsProcessor.processX(srcRecords);
-    }
-  }
-
-  private class SimpleCallAdapter implements RecordsAdapter<ConsumerRecords<K, V>> {
-    @Override
-    public boolean isEmpty(ConsumerRecords<K, V> destRecords) {
-      if (destRecords == null) {
-        return true;
-      }
-      return destRecords.isEmpty();
-    }
-
-    @Override
-    public ConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> srcRecords) {
-      return _consumerRecordsProcessor.process(srcRecords);
-    }
-  }
-
 
 }

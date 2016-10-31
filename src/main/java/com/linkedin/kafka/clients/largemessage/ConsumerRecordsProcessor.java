@@ -13,7 +13,6 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
-import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecords;
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
@@ -67,27 +66,13 @@ public class ConsumerRecordsProcessor<K, V> {
    * @return filtered consumer records.
    */
   public ConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> consumerRecords) {
-    return new ConsumerRecords<>(process(consumerRecords, new SimpleRecordAdapter()));
-  }
-
-  /**
-   * TODO: documentation
-   * TODO: large message support
-   * @param srcRecords
-   * @return
-   */
-  public ExtensibleConsumerRecords<K, V> processX(ConsumerRecords<byte[], byte[]> srcRecords) {
-    return new ExtensibleConsumerRecords<>(process(srcRecords, new ExtensibleRecordAdapter()));
-  }
-
-  private <R> Map<TopicPartition, List<R>> process(ConsumerRecords<byte[], byte[]> consumerRecords, RecordAdapter<R> recordAdapter) {
-    Map<TopicPartition, List<R>> filteredRecords = new HashMap<>();
+    Map<TopicPartition, List<ConsumerRecord<K, V>>> filteredRecords = new HashMap<>();
     for (ConsumerRecord<byte[], byte[]> record : consumerRecords) {
       TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-      R handledRecord = recordAdapter.mapRecords(record);
+      ExtensibleConsumerRecord handledRecord = handleConsumerRecordX(record);
       // Only put record into map if it is not null
       if (handledRecord != null) {
-        List<R> list = filteredRecords.get(tp);
+        List<ConsumerRecord<K, V>> list = filteredRecords.get(tp);
         if (list == null) {
           list = new ArrayList<>();
           filteredRecords.put(tp, list);
@@ -95,7 +80,7 @@ public class ConsumerRecordsProcessor<K, V> {
         list.add(handledRecord);
       }
     }
-    return filteredRecords;
+    return new ConsumerRecords<K, V>(filteredRecords);
   }
 
 
@@ -304,9 +289,9 @@ public class ConsumerRecordsProcessor<K, V> {
     _auditor.close();
   }
 
-  private ConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
+  private ExtensibleConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
     TopicPartition tp = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
-    ConsumerRecord<K, V> handledRecord = null;
+    ExtensibleConsumerRecord<K, V> handledRecord = null;
     K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
     V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
@@ -315,7 +300,7 @@ public class ConsumerRecordsProcessor<K, V> {
         _auditor.record(tp.topic(), key, value, consumerRecord.timestamp(), 1L,
             (long) consumerRecord.value().length, AuditType.SUCCESS);
       }
-      handledRecord = new ConsumerRecord<>(
+      handledRecord = new ExtensibleConsumerRecord<K, V>(
           consumerRecord.topic(),
           consumerRecord.partition(),
           consumerRecord.offset(),
@@ -325,12 +310,13 @@ public class ConsumerRecordsProcessor<K, V> {
           consumerRecord.serializedKeySize(),
           valueBytes.length,
           _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key()),
-          value);
+          value,
+          null /* headers */);
     }
     return handledRecord;
   }
 
-  //TODO: actually do large messages
+  //TODO: actually do large messages with headers
   private ExtensibleConsumerRecord<K, V> handleConsumerRecordX(ConsumerRecord<byte[], byte[]> consumerRecord) {
     if (consumerRecord.value() == null) {
       return null;
@@ -339,28 +325,23 @@ public class ConsumerRecordsProcessor<K, V> {
     ByteBuffer wrappedSrcValue = ByteBuffer.wrap(consumerRecord.value());
     if (!HeaderParser.isHeaderMessage(wrappedSrcValue)) {
       //Old protocol path
-      ConsumerRecord<K, V> handledRecord = handleConsumerRecord(consumerRecord);
-      if (handledRecord == null) {
-        return null;
-      }
-      ExtensibleConsumerRecord<K, V> xConsumerRecord =
-        new ExtensibleConsumerRecord<>(consumerRecord, handledRecord.key(), handledRecord.serializedKeySize(),
-          handledRecord.value(), handledRecord.serializedValueSize(), null /* headers */);
-      return xConsumerRecord;
+      return handleConsumerRecord(consumerRecord);
     } else {
       //parse headers
       Map<Integer, ByteBuffer> headers = HeaderParser.parseHeadersToByteBuffers(wrappedSrcValue);
       K key = _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key());
       V userValue = null;
       ByteBuffer userPayloadInHeader = headers.get(HeaderKeySpace.PAYLOAD_HEADER_KEY);
+      int userPayloadSize = userPayloadInHeader.remaining();
       if (userPayloadInHeader != null) {
         byte[] copy = new byte[userPayloadInHeader.remaining()];
         userPayloadInHeader.get(copy).flip();
         userValue = _valueDeserializer.deserialize(consumerRecord.topic(), copy);
       }
       ExtensibleConsumerRecord<K, V> xConsumerRecord =
-        new ExtensibleConsumerRecord<>(consumerRecord, key, consumerRecord.serializedKeySize(), userValue,
-          userPayloadInHeader == null ? 0 : userPayloadInHeader.remaining(), headers);
+        new ExtensibleConsumerRecord<>(consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset(),
+            consumerRecord.timestamp(), consumerRecord.timestampType(), consumerRecord.checksum(),
+            consumerRecord.serializedKeySize(), userPayloadSize, key, userValue, headers);
       return xConsumerRecord;
     }
   }
@@ -397,32 +378,4 @@ public class ConsumerRecordsProcessor<K, V> {
     return hw != null && hw > offset;
   }
 
-  /**
-   * @type R The record (singular) type (e.g. ConsumerRecord).
-   */
-  private interface RecordAdapter<R> {
-    /**
-     *
-     * @param srcRecord the unfiltered, raw consumer record
-     * @return the filtered mapped records
-     */
-    R mapRecords(ConsumerRecord<byte[], byte[]> srcRecord);
-  }
-
-  private class SimpleRecordAdapter implements RecordAdapter<ConsumerRecord<K, V>> {
-
-    @Override
-    public ConsumerRecord<K, V> mapRecords(ConsumerRecord<byte[], byte[]> srcRecords) {
-      return handleConsumerRecord(srcRecords);
-    }
-  }
-
-
-  private class ExtensibleRecordAdapter implements RecordAdapter<ExtensibleConsumerRecord<K, V>> {
-
-    @Override
-    public ExtensibleConsumerRecord<K, V> mapRecords(ConsumerRecord<byte[], byte[]> srcRecords) {
-      return handleConsumerRecordX(srcRecords);
-    }
-  }
 }

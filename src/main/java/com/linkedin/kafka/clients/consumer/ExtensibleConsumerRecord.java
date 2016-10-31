@@ -18,52 +18,19 @@ import org.apache.kafka.common.record.TimestampType;
 /**
  * A key/value pair to be received from Kafka. This consists of a topic name and a partition number, from which the
  * record is being received and an offset that points to the record in a Kafka partition.
+ * This extension allows for user definable headers.
  */
-public class ExtensibleConsumerRecord<K, V> {
-  //TODO: this means all the byte buffers in the consumer record hang around rather than be garbage collected.
-  private final ConsumerRecord kafkaConsumerRecord;
-  //TODO:  the current LiKafka clients wrap KafkaClient<byte[], byte[]> so we need to have K here.
-  private final int serializedKeySize;
-  private final K key;
-  private final int serializedValueSize;
-  private final V value;
+public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
   private volatile Map<Integer, ByteBuffer> headers;
 
-  /**
-   *
-   * @param kafkaConsumerRecord non-null
-   * @param key this is the key created after stripping out any additional material the LI Kafka clients have added.
-   *            this may be null
-   * @param value this is value created after stripping out any additional material the LI Kafka clients have addded.
-   *              this may not ne null
-   * @param serializedValueSize the size of the user payload in bytes
-   * @param headers this may be null
-   */
-  public ExtensibleConsumerRecord(ConsumerRecord<?, ?> kafkaConsumerRecord, K key, int serializedKeySize, V value, int serializedValueSize,
-    Map<Integer, ByteBuffer> headers) {
-
-    if (kafkaConsumerRecord == null) {
-      throw new IllegalArgumentException("kafkaConsumerRecord must not be null");
-    }
-
-    if (value == null) {
-      throw new IllegalArgumentException("value must not be null");
-    }
-
-    if (serializedValueSize < 0) {
-      throw new IllegalArgumentException("serializedValueSize must be non-negative");
-    }
-
-    this.kafkaConsumerRecord = kafkaConsumerRecord;
-    this.key = key;
-    this.serializedKeySize = serializedKeySize;
-    this.value = value;
-    this.serializedValueSize = serializedValueSize;
+  public ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
+      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, ByteBuffer> headers) {
+    super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
     this.headers = headers;
   }
 
   /**
-   * TODO:  should we allow the user to get the headers in the private space.
+   * TODO:  should we allow the user to get the headers in the private address space.
    * @param headerKey
    * @return returns null if the headerKey does not exist or if this record does not have have headers.
    */
@@ -107,86 +74,8 @@ public class ExtensibleConsumerRecord<K, V> {
     this.headers.put(headerKey, ByteBuffer.wrap(value)); //TODO: wrapped array means value still mutable from outside
   }
 
-  /**
-   * The topic this record is received from
-   */
-  public String topic() {
-    return this.kafkaConsumerRecord.topic();
-  }
-
-  /**
-   * The partition from which this record is received
-   */
-  public int partition() {
-    return this.kafkaConsumerRecord.partition();
-  }
-
-  /**
-   * The key (or null if no key is specified)
-   */
-  public K key() {
-    return this.key;
-  }
-
-  /**
-   * The value
-   */
-  public V value() {
-    return this.value;
-  }
-
-  /**
-   * The position of this record in the corresponding Kafka partition.
-   */
-  public long offset() {
-    return kafkaConsumerRecord.offset();
-  }
-
-  /**
-   * The timestamp of this record
-   */
-  public long timestamp() {
-    return kafkaConsumerRecord.timestamp();
-  }
-
-  /**
-   * The timestamp type of this record
-   */
-  public TimestampType timestampType() {
-    return kafkaConsumerRecord.timestampType();
-  }
-
-  /**
-   * The checksum (CRC32) of the record.
-   * TODO:  Why is this here?  Can the user actually verify this anyway?  They don't know the message format.
-   */
-  public long checksum() {
-    return this.kafkaConsumerRecord.checksum();
-  }
-
-  /**
-   * The size of the serialized, uncompressed key in bytes. If key is null, the returned size
-   * is -1.
-   */
-  public int serializedKeySize() {
-    return this.kafkaConsumerRecord.serializedKeySize();
-  }
-
-  /**
-   * The size of the serialized, uncompressed value in bytes. If value is null, the
-   * returned size is -1.
-   */
-  public int serializedValueSize() {
-    return this.serializedValueSize;
-  }
-
-  //TODO: printout header in some user friendly format
   @Override
   public String toString() {
-    return "ExtensibleConsumerRecord(topic = " + topic() + ", partition = " + partition() + ", offset = " + offset()
-        + ", " + kafkaConsumerRecord.timestampType() + " = " + kafkaConsumerRecord.timestamp() + ", checksum = " + kafkaConsumerRecord.checksum()
-        + ", serialized key size = "  + serializedKeySize
-        + ", serialized value size = " + serializedValueSize
-        + ", key = " + key + ", value = " + value + ")";
+    return "ExtensibleConsumerRecord{" + "headers=" + headers + " super=" + super.toString() + '}';
   }
 }
