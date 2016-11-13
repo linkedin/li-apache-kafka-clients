@@ -21,10 +21,16 @@ import org.apache.kafka.common.record.TimestampType;
  * This extension allows for user definable headers.
  */
 public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
-  private volatile Map<Integer, ByteBuffer> headers;
+  private volatile Map<Integer, byte[]> headers;
 
   public ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
-      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, ByteBuffer> headers) {
+      long checksum, int serializedKeySize, int serializedValueSize, K key, V value) {
+    super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
+  }
+
+  //TODO:  this really needs to be package private to hide the headers implementation, but ConsumerRecordsProcessor is in the largemessage package
+  public ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
+      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, byte[]> headers) {
     super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
     this.headers = headers;
   }
@@ -43,12 +49,7 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
       return null;
     }
 
-    ByteBuffer value = headers.get(headerKey);
-    byte[] copy = new byte[value.remaining()];
-    //TODO: consumer is not thread safe, right?
-    value.get(copy);
-    value.flip();
-    return copy;
+    return headers.get(headerKey);
   }
 
   /**
@@ -60,9 +61,9 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
    */
   public void setHeader(int headerKey, byte[] value) {
     if (!HeaderKeySpace.isKeyValid(headerKey)) {
-      throw new IllegalArgumentException("Key " + headerKey + " is not valid.");
+      throw new IllegalArgumentException("Header key " + headerKey + " is not valid.");
     }
-    //TODO:  or do we want this.  Initially I'm against letting people do this. We can always change later.
+
     if (HeaderKeySpace.isKeyInPrivateRange(headerKey)) {
       throw new IllegalArgumentException(("Key must not be in private range."));
     }
@@ -71,11 +72,11 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
       headers = new HashMap<>();
     }
 
-    this.headers.put(headerKey, ByteBuffer.wrap(value)); //TODO: wrapped array means value still mutable from outside
+    this.headers.put(headerKey, value);
   }
 
   @Override
   public String toString() {
-    return "ExtensibleConsumerRecord{" + "headers=" + headers + " super=" + super.toString() + '}';
+    return "ExtensibleConsumerRecord{headers=" + headers + " super=" + super.toString() + '}';
   }
 }

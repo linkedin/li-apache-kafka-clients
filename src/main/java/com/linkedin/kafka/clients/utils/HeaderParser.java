@@ -49,10 +49,10 @@ public class HeaderParser {
   /**
    *
    * @param src This should be the value part of the underlying producer or consumer message.
+   * @param headerMap non-null, mutable map implementation
    * @return a non-null map of key-value pairs.
    */
-  public static Map<Integer, byte[]> parseHeader(ByteBuffer src) {
-    Map<Integer, byte[]> headers = new HashMap<>(4); //TODO: premature optimization?
+  public static Map<Integer, byte[]> parseHeader(ByteBuffer src, Map<Integer, byte[]> headerMap) {
     while (src.hasRemaining()) {
       int headerKey = src.getInt();
       if (!HeaderKeySpace.isKeyValid(headerKey)) {
@@ -61,35 +61,12 @@ public class HeaderParser {
       int headerValueLength = src.getInt();
       byte[] headerValue = new byte[headerValueLength];
       src.get(headerValue);
-      headers.put(headerKey, headerValue);
+      headerMap.put(headerKey, headerValue);
     }
 
-    return headers;
+    return headerMap;
   }
 
-  /**
-   * TODO: if the user payload is part of the header then the deserialized version sticks around in the header map
-   * A sort of lazy way to parse the headers.
-   * @param src
-   * @return A non-null map of key-value pairs.  The values may share the same underlying storage so don't mess it up.
-   */
-  public static Map<Integer, ByteBuffer> parseHeadersToByteBuffers(ByteBuffer src) {
-    Map<Integer, ByteBuffer> headers = new HashMap<>(4); //TODO: premature optimization?
-    while (src.hasRemaining()) {
-      int headerKey = src.getInt();
-      if (!HeaderKeySpace.isKeyValid(headerKey)) {
-        throw new IllegalArgumentException("Byte buffer contains an invalid header key.");
-      }
-      int headerValueLength = src.getInt();
-      int oldLimit = src.limit();
-      src.limit(src.position() + headerValueLength);
-      ByteBuffer headerValue = src.slice().asReadOnlyBuffer();  //TODO: Excessive?
-      src.limit(oldLimit);
-      src.position(src.position() + headerValueLength);
-      headers.put(headerKey, headerValue);
-    }
-    return headers;
-  }
 
   /**
    *

@@ -14,6 +14,7 @@ import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
+import com.linkedin.kafka.clients.consumer.LazyHeaderListMap;
 import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.nio.ByteBuffer;
@@ -328,20 +329,17 @@ public class ConsumerRecordsProcessor<K, V> {
       return handleConsumerRecord(consumerRecord);
     } else {
       //parse headers
-      Map<Integer, ByteBuffer> headers = HeaderParser.parseHeadersToByteBuffers(wrappedSrcValue);
+      Map<Integer, byte[]> headers = new LazyHeaderListMap(wrappedSrcValue);
       K key = _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key());
       V userValue = null;
-      ByteBuffer userPayloadInHeader = headers.get(HeaderKeySpace.PAYLOAD_HEADER_KEY);
-      int userPayloadSize = userPayloadInHeader.remaining();
+      byte[] userPayloadInHeader = headers.get(HeaderKeySpace.PAYLOAD_HEADER_KEY);
       if (userPayloadInHeader != null) {
-        byte[] copy = new byte[userPayloadInHeader.remaining()];
-        userPayloadInHeader.get(copy).flip();
-        userValue = _valueDeserializer.deserialize(consumerRecord.topic(), copy);
+        userValue = _valueDeserializer.deserialize(consumerRecord.topic(), userPayloadInHeader);
       }
       ExtensibleConsumerRecord<K, V> xConsumerRecord =
         new ExtensibleConsumerRecord<>(consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset(),
             consumerRecord.timestamp(), consumerRecord.timestampType(), consumerRecord.checksum(),
-            consumerRecord.serializedKeySize(), userPayloadSize, key, userValue, headers);
+            consumerRecord.serializedKeySize(), userPayloadInHeader.length, key, userValue, headers);
       return xConsumerRecord;
     }
   }
