@@ -4,6 +4,8 @@ import com.linkedin.kafka.clients.utils.HeaderParser;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.ConcurrentModificationException;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,8 +56,16 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
   private ByteBuffer headerSource;
 
   /**
-   * T
-   * @param headerSource  this may be null in which case there are not any headers
+   * Construct a map without headers.
+   */
+  public LazyHeaderListMap() {
+    this(null);
+  }
+
+  /**
+   * When the map is accessed then headerSource is parsed.
+   *
+   * @param headerSource  this may be null in which case there are not any headers.
    */
   public LazyHeaderListMap(ByteBuffer headerSource) {
     this.headerSource = headerSource;
@@ -125,13 +135,20 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
 
   /**
    *
-   * @param key
-   * @param value
+   * @param key non-null
+   * @param value non-null
    * @return  This always returns null
    */
   @Override
   public byte[] put(Integer key, byte[] value) {
     lazyInit();
+
+    if (key == null) {
+      throw new IllegalArgumentException("null keys are not supported.");
+    }
+    if (value == null) {
+      throw new IllegalArgumentException("null values are not supported.");
+    }
     backingList.add(new Entry(key, value));
     return null; //this breaks map spec
   }
@@ -163,12 +180,112 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
   }
 
   /**
-   * Not implemented.
-   * @return
+   * The set returned by this method may not actually be a set in that it can contain duplicates.
+   *
+   * @return non-null
    */
   @Override
   public Set<Integer> keySet() {
-    throw new UnsupportedOperationException();
+    lazyInit();
+
+    return new Set<Integer>() {
+
+      @Override
+      public int size() {
+        return backingList.size();
+      }
+
+      @Override
+      public boolean isEmpty() {
+        return backingList.isEmpty();
+      }
+
+      @Override
+      public boolean contains(Object o) {
+        return containsKey(o);
+      }
+
+      @Override
+      public Iterator<Integer> iterator() {
+
+        return new Iterator<Integer>() {
+          final int backingListSizeAtInitializationTime = backingList.size();
+          int nextIndex = 0;
+
+          @Override
+          public boolean hasNext() {
+            if (backingList.size() != backingListSizeAtInitializationTime) {
+              throw new ConcurrentModificationException();
+            }
+
+            return nextIndex < backingList.size();
+          }
+
+          @Override
+          public Integer next() {
+            if (backingList.size() != backingListSizeAtInitializationTime) {
+              throw new ConcurrentModificationException();
+            }
+            return backingList.get(nextIndex++).getKey();
+          }
+        };
+      }
+
+      @Override
+      public Object[] toArray() {
+        return backingList.toArray(new Object[backingList.size()]);
+      }
+
+      @Override
+      public <T> T[] toArray(T[] a) {
+        return backingList.toArray(a);
+      }
+
+      @Override
+      public boolean add(Integer integer) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean remove(Object o) {
+        return LazyHeaderListMap.this.remove(o) != null;
+      }
+
+      @Override
+      public boolean containsAll(Collection<?> c) {
+        for (Object key : c) {
+          if (!containsKey(key)) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      @Override
+      public boolean addAll(Collection<? extends Integer> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean retainAll(Collection<?> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean removeAll(Collection<?> c) {
+        boolean setChanged = false;
+        for (Object key : c) {
+          setChanged = setChanged || remove(key);
+        }
+
+        return setChanged;
+      }
+
+      @Override
+      public void clear() {
+        backingList.clear();
+      }
+    };
   }
 
   /**

@@ -10,7 +10,9 @@
 package com.linkedin.kafka.clients.consumer;
 
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.record.TimestampType;
@@ -75,8 +77,28 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
     this.headers.put(headerKey, value);
   }
 
+  public Iterator<Integer> headerKeys() {
+    if (headers == null) {
+      return Collections.emptyIterator();
+    }
+
+    return headers.keySet().iterator();
+  }
+
+  /**
+   * Removes the header with the specified key from this consumer record.
+   * @return The previously mapped value else this returns null.
+   */
+  public byte[] removeHeader(int headerKey)  {
+    if (headers == null) {
+      return null;
+    }
+    return headers.remove(headerKey);
+  }
+
   @Override
   public String toString() {
-    return "ExtensibleConsumerRecord{headers=" + headers + " super=" + super.toString() + '}';
+    return "ExtensibleConsumerRecord{header-count=" + (headers == null ? 0 : headers.size()) + " super=" + super.toString() + '}';
   }
+
 }

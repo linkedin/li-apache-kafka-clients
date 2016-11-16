@@ -10,8 +10,10 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
+import com.linkedin.kafka.clients.consumer.LazyHeaderListMap;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 
@@ -24,7 +26,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
  */
 public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
 
-  private volatile Map<Integer, byte[]> headers;
+  private Map<Integer, byte[]> headers;
 
   /**
    * Creates a record with a specified timestamp to be sent to a specified topic and partition
@@ -36,10 +38,9 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    * @param timestamp The timestamp of the record.  This may be null.
    * @param key The key that will be included in the record.  This may be null.
    * @param value The record contents.  This may be null.
-   * @param headers Header key-value pairs.  This may be null if there are not any headers.
    *
    */
-  public ExtensibleProducerRecord(String topic, Integer partition, Long timestamp, K key, V value, Map<Integer, byte[]> headers) {
+  public ExtensibleProducerRecord(String topic, Integer partition, Long timestamp, K key, V value) {
     super(topic, partition, timestamp, key, value);
 
     if (headers != null) {
@@ -55,7 +56,6 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
         throw new IllegalArgumentException("Can't set the payload key.");
       }
     }
-    this.headers = headers;
   }
 
   /**
@@ -68,13 +68,15 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
       throw new IllegalArgumentException("Invalid header key.");
     }
 
+    if (headers == null) {
+      return null;
+    }
     return headers.get(headerKey);
   }
 
   /**
    * TODO: enforce some max header size?
    * TODO: how do the headers count against the message size?
-   * TODO: are we supposed to be thread safe?
    * Adds or updates the headers associated with this record.
    * @param headerKey
    * @param headerValue
@@ -88,7 +90,8 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     }
 
     if (headers == null) {
-      headers = new HashMap<>();
+      //Can't use lazy header map because it can't compute hashCode() because it may contain duplicates.
+      headers = new TreeMap<>();
     }
     headers.put(headerKey, headerValue);
   }

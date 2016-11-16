@@ -107,10 +107,12 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     final String tempTopic = "testTopic" + new Random().nextInt(1000000);
 
     final byte[] EXPECTED_HEADER_VALUE = new byte[] { 1, 2, 3};
-    Map<Integer, byte[]> headers = Collections.singletonMap(HeaderKeySpace.PUBLIC_UNASSIGNED_START, EXPECTED_HEADER_VALUE);
+
     for (int i = 0; i < RECORD_COUNT; ++i) {
       String value = Integer.toString(i);
-      producer.send(new ExtensibleProducerRecord<>(tempTopic, null, null, null, value, headers));
+      ExtensibleProducerRecord producerRecord = new ExtensibleProducerRecord<>(tempTopic, null, null, null, value);
+      producerRecord.setHeader(HeaderKeySpace.PUBLIC_UNASSIGNED_START, EXPECTED_HEADER_VALUE);
+      producer.send(producerRecord);
     }
 
     // Drain the send queues
