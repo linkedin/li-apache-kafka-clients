@@ -12,7 +12,6 @@ package com.linkedin.kafka.clients.consumer;
 /**
  * This determines the header key range used for various purposes.
  *
- * TODO: Look at the KIP-82 (right) key space intervals.
  */
 public class HeaderKeySpace {
 
@@ -23,6 +22,8 @@ public class HeaderKeySpace {
   public static final int PAYLOAD_HEADER_KEY = 1;
 
   public static final int LIKAFKA_PRIVATE_START = 0;
+
+  public static final int LARGE_MESSAGE_SEGMENT_HEADER = 2;
 
   public static final int PUBLIC_ASSIGNED_START = 10_000;
 

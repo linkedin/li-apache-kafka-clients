@@ -12,7 +12,6 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.Serializer;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -26,12 +25,9 @@ import java.util.UUID;
 public class MessageSplitterImpl implements MessageSplitter {
   // This class does not do anything with the original record, so no key serializer is needed.
   private final int _maxSegmentSize;
-  private final Serializer<LargeMessageSegment> _segmentSerializer;
 
-  public MessageSplitterImpl(int maxSegmentSize,
-                             Serializer<LargeMessageSegment> segmentSerializer) {
-    _maxSegmentSize = maxSegmentSize;
-    _segmentSerializer = segmentSerializer;
+  public MessageSplitterImpl(int maxSegmentSize) {
+    this._maxSegmentSize = maxSegmentSize;
   }
 
   @Override
@@ -71,6 +67,7 @@ public class MessageSplitterImpl implements MessageSplitter {
     if (topic == null) {
       throw new IllegalArgumentException("Topic cannot be empty for LiKafkaGenericMessageSplitter.");
     }
+
     // We allow message id to be null, but it is strongly recommended to pass in a message id.
     UUID segmentMessageId = messageId == null ? UUID.randomUUID() : messageId;
     List<ProducerRecord<byte[], byte[]>> segments = new ArrayList<>();

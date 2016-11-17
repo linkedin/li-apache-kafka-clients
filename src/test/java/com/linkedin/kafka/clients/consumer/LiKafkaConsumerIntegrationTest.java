@@ -10,7 +10,6 @@
 
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;

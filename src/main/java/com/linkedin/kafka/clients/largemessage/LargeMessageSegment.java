@@ -12,6 +12,7 @@ package com.linkedin.kafka.clients.largemessage;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -22,54 +23,102 @@ import java.util.UUID;
  *   <li><b>MessageId:</b> The message id of the original large message.</li>
  *   <li><b>SequenceNumber:</b> The sequence number of the segment.</li>
  *   <li><b>NumberOfSegments:</b> The total number of segments the original large message has.</li>
- *   <li><b>MessageSizeInBytes:</b> The size of the original large message in bytes.</li>
- *   <li><b>payload:</b> The payload ByteBuffer of the segment.</li>
+ *   <li><b>originalValueSize:</b> The size of the original large message in bytes.</li>
+ *   <li><b>segment:</b> The ByteBuffer of the segment.  The segment is the value part of the original producer.</li>
  * </ul>
  *
+ * TODO: do I need this method?
  * Please notice that it is not guaranteed that the payload ByteBuffer has a dedicated underlying byte array. To
  * get a dedicated byte array representation of the payload, {@link #payloadArray()} method should be called.
  *
  */
 public class LargeMessageSegment {
-  public final UUID messageId;
-  public final int sequenceNumber;
-  public final int numberOfSegments;
-  public final int messageSizeInBytes;
-  public final ByteBuffer payload;
   // The segment information over head bytes when serialize.
   public static final int SEGMENT_INFO_OVERHEAD = 16 + Integer.BYTES + Integer.BYTES + Integer.BYTES;
-  public static final byte CURRENT_VERSION = 0;
+  /**
+   * Version history:
+   * 0 - Version 0 did not use headers.
+   */
+  public static final byte CURRENT_VERSION = 1;
 
+  private final UUID _messageId;
+  private final int _sequenceNumber;
+  private final int _numberOfSegments;
+  private final int _originalValueSize;
+
+  private final ByteBuffer _segment;
+
+  /**
+   *  This constructor should be used by the producer when segmenting a large message into segments.
+   *
+   * @param segment position should be assigned to the start of the segment, limit the end of the segment, remaining()
+   *                should give the number of bytes in the segment
+   */
   public LargeMessageSegment(UUID messageId,
                              int sequenceNumber,
                              int numberOfSegments,
-                             int messageSizeInBytes,
-                             ByteBuffer payload) {
-    this.messageId = messageId;
-    this.sequenceNumber = sequenceNumber;
-    this.numberOfSegments = numberOfSegments;
-    this.messageSizeInBytes = messageSizeInBytes;
-    this.payload = payload;
+                             int originalValueSize,
+                             ByteBuffer segment) {
+    this._messageId = messageId;
+    this._sequenceNumber = sequenceNumber;
+    this._numberOfSegments = numberOfSegments;
+    this._originalValueSize = originalValueSize;
+    this._segment = segment;
   }
 
   /**
-   * Notice that the payload as a ByteBuffer does not guarantee to have a dedicated underlying byte array. So calling
-   * {@code payload.array()} will not always give the payload byte array. This method should be called if user wants
-   * to have the payload byte array.
+   * This constructor should be used when consuming a record from the broker.
    *
-   * @return The payload as a byte array.
+   * @param headerPayload non-null, this was originally generated from the producer side.  This is stored in the header
+   *                      map with key {@value com.linkedin.kafka.clients.consumer.HeaderKeySpace#LARGE_MESSAGE_SEGMENT_HEADER}
+   * @param segment the bytes for this segment
    */
-  public byte[] payloadArray() {
-    if (payload.arrayOffset() == 0 && payload.limit() == payload.array().length) {
-      return payload.array();
-    } else {
-      return Arrays.copyOfRange(payload.array(), payload.arrayOffset(), payload.arrayOffset() + payload.limit());
+  public LargeMessageSegment(byte[] headerPayload, ByteBuffer segment) {
+    ByteBuffer headerReader = ByteBuffer.wrap(headerPayload);
+    byte headerVersion = headerReader.get();
+    if (headerVersion != CURRENT_VERSION) {
+      throw new IllegalArgumentException("Invalid large message header, expected version " + CURRENT_VERSION +
+        " but found version " + headerVersion + ".");
     }
+    long uuidMsb = headerReader.getLong();
+    long uuidLsb = headerReader.getLong();
+    this._messageId = new UUID(uuidMsb, uuidLsb);
+    this._sequenceNumber = headerReader.getInt();
+    if (_sequenceNumber < 0) {
+      throw new IllegalArgumentException("Sequence number must be non-negative.");
+    }
+    this._numberOfSegments = headerReader.getInt();
+    if (_numberOfSegments < 0) {
+      throw new IllegalArgumentException("Number of segments must be non-negative.");
+    }
+    if (_numberOfSegments <= _sequenceNumber) {
+      throw new IllegalArgumentException("Number of segments must be greater than sequence number.");
+    }
+    this._originalValueSize = headerReader.getInt();
+    if (_originalValueSize < 0) {
+      throw new IllegalArgumentException("Original value size must be non-negative.");
+    }
+    this._segment = segment;
+
   }
 
   @Override
   public String toString() {
-    return "[messageId=" + messageId + ",seq=" + sequenceNumber + ",numSegs=" + numberOfSegments + ",messageSize=" +
-        messageSizeInBytes + ",payloadSize=" + payload.limit() + "]";
+    return "[messageId=" + _messageId + ",seq=" + _sequenceNumber + ",numSegs=" + _numberOfSegments +
+      ",originalValueSize=" + _originalValueSize + ",segmentSize=" + _segment.remaining() + "]";
+  }
+
+
+  byte[] segmentHeader() {
+    ByteBuffer headerValue =
+      ByteBuffer.allocate(1 /* version*/ + 8 + 8 /* uuid */ + 4 /* sequenceNumber */ + 4 /* numberOfSegments */ +
+      4 /* originalValueSize */);
+    headerValue.put(CURRENT_VERSION);
+    headerValue.putLong(_messageId.getMostSignificantBits());
+    headerValue.putLong(_messageId.getLeastSignificantBits());
+    headerValue.putInt(_sequenceNumber);
+    headerValue.putInt(_numberOfSegments);
+    headerValue.putInt(_originalValueSize);
+    return headerValue.array();
   }
 }

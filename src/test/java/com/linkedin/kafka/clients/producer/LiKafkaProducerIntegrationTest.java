@@ -100,7 +100,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testSendX() throws IOException, InterruptedException {
+  public void testSendHeaderRecord() throws IOException, InterruptedException {
     Properties props = new Properties();
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
     LiKafkaProducer<String, String> producer = createProducer(props);
