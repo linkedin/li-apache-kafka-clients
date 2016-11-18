@@ -14,6 +14,7 @@ import com.linkedin.kafka.clients.consumer.LazyHeaderListMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 
@@ -42,20 +43,6 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    */
   public ExtensibleProducerRecord(String topic, Integer partition, Long timestamp, K key, V value) {
     super(topic, partition, timestamp, key, value);
-
-    if (headers != null) {
-      for (Map.Entry<Integer, byte[]> header : headers.entrySet()) {
-        if (!HeaderKeySpace.isKeyValid(header.getKey())) {
-          throw new IllegalArgumentException("Invalid header key.");
-        }
-        if (header.getValue() == null) {
-          throw new IllegalArgumentException("null header values are not permitted.");
-        }
-      }
-      if (headers.containsKey(HeaderKeySpace.PAYLOAD_HEADER_KEY)) {
-        throw new IllegalArgumentException("Can't set the payload key.");
-      }
-    }
   }
 
   /**
@@ -65,7 +52,7 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    */
   public byte[] header(int headerKey) {
     if (!HeaderKeySpace.isKeyValid(headerKey)) {
-      throw new IllegalArgumentException("Invalid header key.");
+      throw new IllegalArgumentException("Invalid header key, " + headerKey + ".");
     }
 
     if (headers == null) {
@@ -81,7 +68,7 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    * @param headerKey
    * @param headerValue
    */
-  public void setHeader(int headerKey, byte[] headerValue) {
+  public void header(int headerKey, byte[] headerValue) {
     if (!HeaderKeySpace.isKeyValid(headerKey)) {
       throw new IllegalArgumentException("Invalid header key.");
     }
@@ -96,10 +83,11 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     headers.put(headerKey, headerValue);
   }
 
-  /*package private */ Map<Integer, byte[]> headers() {
-    return headers;
+  public void copyHeadersFrom(ExtensibleProducerRecord<K, V> other) {
+    if (other.headers != null) {
+      this.headers = new TreeMap<>(other.headers); //TODO: copy on write?
+    }
   }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) {

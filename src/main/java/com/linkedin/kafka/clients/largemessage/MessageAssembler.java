@@ -68,6 +68,9 @@ public interface MessageAssembler {
    */
   void close();
 
+  /**
+   * The completed, large message value; all segments concatenated into one.
+   */
   static class AssembleResult {
     private final byte[] _messageBytes;
     private final long _messageStartingOffset;

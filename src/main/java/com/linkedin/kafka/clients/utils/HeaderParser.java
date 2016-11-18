@@ -25,6 +25,11 @@ public class HeaderParser {
    */
   public static final int HEADER_VALUE_MAGIC = 0x4c4e4b44;
 
+  /**
+   * The maximum size of the all the serialized headers for a single record.
+   */
+  public static final int MAX_SERIALIZED_HEADER_SIZE = 1024 * 16;
+
   private HeaderParser() {
     // This does nothing
   }

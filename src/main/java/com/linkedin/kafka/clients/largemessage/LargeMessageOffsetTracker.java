@@ -24,7 +24,7 @@ import java.util.UUID;
 /**
  * The class keeps track of the safe offset for each partition.
  */
-public class LargeMessageOffsetTracker {
+class LargeMessageOffsetTracker {
 
   private final Map<TopicPartition, QueuedMap<UUID, Long>> _offsetMap;
 

@@ -42,8 +42,8 @@ public class MessageAssemblerImpl implements MessageAssembler {
       return new AssembleResult(segmentBytes, offset, offset, Collections.emptySet());
     } else {
       // Return immediately if it is a single segment message.
-      if (segment.numberOfSegments == 1) {
-        return new AssembleResult(segment.payloadArray(), offset, offset, Collections.emptySet());
+      if (segment.numberOfSegments() == 1) {
+        return new AssembleResult(segment.segmentArray(), offset, offset, Collections.emptySet());
       } else {
         LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment);
         return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset, result.segmentOffsets());

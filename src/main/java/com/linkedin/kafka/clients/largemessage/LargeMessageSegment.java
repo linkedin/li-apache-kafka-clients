@@ -10,6 +10,7 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Map;
@@ -29,7 +30,7 @@ import java.util.UUID;
  *
  * TODO: do I need this method?
  * Please notice that it is not guaranteed that the payload ByteBuffer has a dedicated underlying byte array. To
- * get a dedicated byte array representation of the payload, {@link #payloadArray()} method should be called.
+ * get a dedicated byte array representation of the payload, {@link #segmentArray()} method should be called.
  *
  */
 public class LargeMessageSegment {
@@ -37,7 +38,7 @@ public class LargeMessageSegment {
   public static final int SEGMENT_INFO_OVERHEAD = 16 + Integer.BYTES + Integer.BYTES + Integer.BYTES;
   /**
    * Version history:
-   * 0 - Version 0 did not use headers.
+   * 0 - did not use headers.
    */
   public static final byte CURRENT_VERSION = 1;
 
@@ -45,7 +46,7 @@ public class LargeMessageSegment {
   private final int _sequenceNumber;
   private final int _numberOfSegments;
   private final int _originalValueSize;
-
+  private final boolean _originalKeyWasNull;
   private final ByteBuffer _segment;
 
   /**
@@ -58,12 +59,35 @@ public class LargeMessageSegment {
                              int sequenceNumber,
                              int numberOfSegments,
                              int originalValueSize,
+                             boolean originalKeyWasNull,
                              ByteBuffer segment) {
+    if (messageId == null) {
+      throw new InvalidSegmentException("messageId must not be null.");
+    }
     this._messageId = messageId;
+
+    if (sequenceNumber < 0) {
+      throw new InvalidSegmentException("sequenceNumber must be non-negative.");
+    }
     this._sequenceNumber = sequenceNumber;
+
+    if (sequenceNumber >= numberOfSegments || numberOfSegments < 0) {
+      throw new InvalidSegmentException("Sequence number " + sequenceNumber
+        + " should fall between [0," + (numberOfSegments - 1) + "].");
+    }
     this._numberOfSegments = numberOfSegments;
+
+    if (originalValueSize < 0) {
+      throw new InvalidSegmentException("originalValueSize must be non-negative.");
+    }
     this._originalValueSize = originalValueSize;
+
+    if (segment == null) {
+      throw new InvalidSegmentException("segment ByteBuffer must not be null");
+    }
     this._segment = segment;
+
+    this._originalKeyWasNull = originalKeyWasNull;
   }
 
   /**
@@ -80,24 +104,31 @@ public class LargeMessageSegment {
       throw new IllegalArgumentException("Invalid large message header, expected version " + CURRENT_VERSION +
         " but found version " + headerVersion + ".");
     }
+    if (segment == null) {
+      throw new IllegalArgumentException("segment ByteBuffer must not be null");
+    }
+    if (headerPayload == null) {
+      throw new IllegalArgumentException("headerPayload must not be null");
+    }
     long uuidMsb = headerReader.getLong();
     long uuidLsb = headerReader.getLong();
     this._messageId = new UUID(uuidMsb, uuidLsb);
     this._sequenceNumber = headerReader.getInt();
     if (_sequenceNumber < 0) {
-      throw new IllegalArgumentException("Sequence number must be non-negative.");
+      throw new InvalidSegmentException("Sequence number must be non-negative.");
     }
     this._numberOfSegments = headerReader.getInt();
     if (_numberOfSegments < 0) {
-      throw new IllegalArgumentException("Number of segments must be non-negative.");
+      throw new InvalidSegmentException("Number of segments must be non-negative.");
     }
     if (_numberOfSegments <= _sequenceNumber) {
-      throw new IllegalArgumentException("Number of segments must be greater than sequence number.");
+      throw new InvalidSegmentException("Number of segments must be greater than sequence number.");
     }
     this._originalValueSize = headerReader.getInt();
     if (_originalValueSize < 0) {
-      throw new IllegalArgumentException("Original value size must be non-negative.");
+      throw new InvalidSegmentException("Original value size must be non-negative.");
     }
+    this._originalKeyWasNull = headerReader.get() == 1;
     this._segment = segment;
 
   }
@@ -119,6 +150,41 @@ public class LargeMessageSegment {
     headerValue.putInt(_sequenceNumber);
     headerValue.putInt(_numberOfSegments);
     headerValue.putInt(_originalValueSize);
+    headerValue.put((byte) (_originalKeyWasNull ? 1 : 0));
     return headerValue.array();
+  }
+
+  ByteBuffer segmentByteBuffer() {
+    return _segment;
+  }
+
+  UUID messageId() {
+    return _messageId;
+  }
+
+  /**
+   * The size of the original, serialized value before segmentation.
+   * @return non-negative
+   */
+  int originalValueSize() {
+    return _originalValueSize;
+  }
+
+  int numberOfSegments() {
+    return _numberOfSegments;
+  }
+
+  byte[] segmentArray() {
+    if (_segment.array().length == _segment.remaining()) {
+      return _segment.array();
+    } else {
+      byte[] copy = new byte[_segment.remaining()];
+      _segment.get(copy);
+      return copy;
+    }
+  }
+
+  boolean originalKeyWasNull() {
+    return _originalKeyWasNull;
   }
 }

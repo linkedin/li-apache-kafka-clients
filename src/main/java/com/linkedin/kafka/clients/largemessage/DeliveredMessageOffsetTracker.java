@@ -24,12 +24,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * This class is only used along with large message support. It is to support the following use case:
- * 1. User consumed a batch of ConsumerRecords,
- * 2. User processed some consumer records in the batch and wanted to commit offsets.
+ * <ul>
+ *  <li>1. User consumed a batch of ConsumerRecords,
+ *  <li>2. User processed some consumer records in the batch and wanted to commit offsets.
  * In this case, we need to guarantee that the all the message delivered after the committed offsets will be consumed
  * again if user resume consumer later. In this case, the safe offsets map returned by large message pool is not
  * sufficient, because it is the safe boundary after the entire batch was delivered, not the safe boundary in the
  * middle of the batch.
+ * </ul>
  * This class will keep the safe boundary of N recently delivered messages for each partition. When user try to commit
  * offset X, it will be able to find the corresponding safe boundary when message with offset X was delivered.
  */
