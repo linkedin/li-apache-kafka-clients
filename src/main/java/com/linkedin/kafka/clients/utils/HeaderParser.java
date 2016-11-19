@@ -21,17 +21,47 @@ import java.util.Map;
 public class HeaderParser {
 
   /**
-   * When this is present in the first 4 bytes of a value this indicates is record value that suports headers.
+   * When this is present in the first 8 bytes of a record value this indicates a record value that suports headers.
    */
-  public static final int HEADER_VALUE_MAGIC = 0x4c4e4b44;
+  private static final long HEADER_MAGIC
+    // All this bit manipulation makes this number look like an invalid UTF8 encoded string if someone starts to read it
+    // within the first 7 bytes
+    = (0x4c6d4eef4b7a44L | 0b11000000_11000000_11000000_11000000_11000000_11000000_11000000_11000000L) &
+        0b11011111_11011111_11011111_11011111_11011111_11011111_11011111_11011111L;
+
+
+  private static final byte[] HEADER_MAGIC_AS_BYTES;
+  static {
+    ByteBuffer bbuf = ByteBuffer.allocate(8);
+    bbuf.putLong(HEADER_MAGIC);
+    HEADER_MAGIC_AS_BYTES = bbuf.array();
+  }
+
+  private final byte[] headerMagicValue;
 
   /**
    * The maximum size of the all the serialized headers for a single record.
    */
-  public static final int MAX_SERIALIZED_HEADER_SIZE = 1024 * 16;
+  public static final int MAX_SERIALIZED_HEADER_SIZE = 1_024 * 16;
 
-  private HeaderParser() {
-    // This does nothing
+
+  public HeaderParser() {
+    this(HEADER_MAGIC_AS_BYTES);
+  }
+
+  public HeaderParser(byte[] headerMagicValue) {
+    if (headerMagicValue == null) {
+      throw new IllegalArgumentException("headerMagicValue must not be null");
+    }
+    this.headerMagicValue = headerMagicValue;
+  }
+
+  /**
+   *
+   * @return a non negative number
+   */
+  public int magicLength() {
+    return headerMagicValue.length;
   }
 
   /**
@@ -39,14 +69,17 @@ public class HeaderParser {
    * @param bbuf this modifies position() if true has been returned
    * @return true if the remaining bytes in the byte buffer are headers message
    */
-  public static boolean isHeaderMessage(ByteBuffer bbuf) {
-    if (bbuf.remaining() < 4) {
+  public boolean isHeaderMessage(ByteBuffer bbuf) {
+    if (bbuf.remaining() < magicLength()) {
       return false;
     }
 
-    boolean isHeaderMessage = bbuf.getInt() == HEADER_VALUE_MAGIC;
+    boolean isHeaderMessage = true;
+    for (int i = 0; i < headerMagicValue.length; i++) {
+      isHeaderMessage = isHeaderMessage && headerMagicValue[i] == bbuf.get();
+    }
     if (!isHeaderMessage) {
-      bbuf.position(bbuf.position() - 4);
+      bbuf.position(bbuf.position() - magicLength());
     }
     return isHeaderMessage;
   }
@@ -57,7 +90,7 @@ public class HeaderParser {
    * @param headerMap non-null, mutable map implementation
    * @return a non-null map of key-value pairs.
    */
-  public static Map<Integer, byte[]> parseHeader(ByteBuffer src, Map<Integer, byte[]> headerMap) {
+  public Map<Integer, byte[]> parseHeader(ByteBuffer src, Map<Integer, byte[]> headerMap) {
     while (src.hasRemaining()) {
       int headerKey = src.getInt();
       if (!HeaderKeySpace.isKeyValid(headerKey)) {
@@ -79,7 +112,7 @@ public class HeaderParser {
    *             the caller can not assume any particular state of dest.
    * @param headers This writes nothing if headers is null.
    */
-  public static void writeHeader(ByteBuffer dest, Map<Integer, byte[]> headers) {
+  public void writeHeader(ByteBuffer dest, Map<Integer, byte[]> headers) {
     if (headers == null) {
       return;
     }
@@ -94,14 +127,14 @@ public class HeaderParser {
   }
 
   /**
-   * The serialized size of the header.
+   * The serialized size of all the headers.
    * @return 0 if headers is null else the number of bytes needed to represent the header key and value.
    */
-  public static int serializedHeaderSize(Map<Integer, byte[]> headers) {
+  public int serializedHeaderSize(Map<Integer, byte[]> headers) {
     if (headers == null) {
       return 0;
     }
-    int size = headers.size() * 8;
+    int size = headers.size() * 8; // size of all the keys and the value length fields
     for (byte[] headerValue : headers.values()) {
       size += headerValue.length;
     }
