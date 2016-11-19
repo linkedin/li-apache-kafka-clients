@@ -18,6 +18,7 @@ import com.linkedin.kafka.clients.consumer.LazyHeaderListMap;
 import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.nio.ByteBuffer;
+import java.util.Collection;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -38,20 +39,14 @@ public class ConsumerRecordsProcessor<K, V> {
 
   private static final Logger LOG = LoggerFactory.getLogger(ConsumerRecordsProcessor.class);
   private final MessageAssembler _messageAssembler;
-  private final Deserializer<K> _keyDeserializer;
-  private final Deserializer<V> _valueDeserializer;
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
   private final Map<TopicPartition, Long> partitionConsumerHighWatermarks;
   private final Auditor<K, V> _auditor;
 
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
-                                  Deserializer<K> keyDeserializer,
-                                  Deserializer<V> valueDeserializer,
                                   DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
                                   Auditor<K, V> auditor) {
     _messageAssembler = messageAssembler;
-    _keyDeserializer = keyDeserializer;
-    _valueDeserializer = valueDeserializer;
     _deliveredMessageOffsetTracker = deliveredMessageOffsetTracker;
     _auditor = auditor;
     partitionConsumerHighWatermarks = new HashMap<>();
@@ -66,22 +61,16 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param consumerRecords The consumer records to be filtered.
    * @return filtered consumer records.
    */
-  public ConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> consumerRecords) {
-    Map<TopicPartition, List<ConsumerRecord<K, V>>> filteredRecords = new HashMap<>();
-    for (ConsumerRecord<byte[], byte[]> record : consumerRecords) {
-      TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-      ExtensibleConsumerRecord handledRecord = handleConsumerRecordX(record);
-      // Only put record into map if it is not null
-      if (handledRecord != null) {
-        List<ConsumerRecord<K, V>> list = filteredRecords.get(tp);
-        if (list == null) {
-          list = new ArrayList<>();
-          filteredRecords.put(tp, list);
-        }
-        list.add(handledRecord);
+  public Collection<ConsumerRecord<byte[], byte[]>> process(Collection<ExtensibleConsumerRecord<byte[], byte[]>> consumerRecords) {
+    List<ConsumerRecord<byte[], byte[]>> list = new ArrayList<>();
+    for (ExtensibleConsumerRecord<byte[], byte[]> consumerRecord : consumerRecords) {
+      ExtensibleConsumerRecord handledRecord = filterAndAssembleRecords(consumerRecord);
+      if (handledRecord == null) {
+        continue;
       }
+      list.add(handledRecord);
     }
-    return new ConsumerRecords<K, V>(filteredRecords);
+    return list;
   }
 
 
@@ -290,72 +279,39 @@ public class ConsumerRecordsProcessor<K, V> {
     _auditor.close();
   }
 
-  private ExtensibleConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
-    TopicPartition tp = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
-    ExtensibleConsumerRecord<K, V> handledRecord = null;
-    K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
-    byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
-    V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
-    if (value != null) {
-      if (_auditor != null) {
-        _auditor.record(tp.topic(), key, value, consumerRecord.timestamp(), 1L,
-            (long) consumerRecord.value().length, AuditType.SUCCESS);
-      }
-      handledRecord = new ExtensibleConsumerRecord<K, V>(
-          consumerRecord.topic(),
-          consumerRecord.partition(),
-          consumerRecord.offset(),
-          consumerRecord.timestamp(),
-          consumerRecord.timestampType(),
-          consumerRecord.checksum(),
-          consumerRecord.serializedKeySize(),
-          valueBytes.length,
-          _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key()),
-          value,
-          null /* headers */);
-    }
-    return handledRecord;
-  }
 
-  //TODO: actually do large messages with headers
-  private ExtensibleConsumerRecord<K, V> handleConsumerRecordX(ConsumerRecord<byte[], byte[]> consumerRecord) {
-    if (consumerRecord.value() == null) {
-      return null;
+  //TODO: it would be better to do this with Java streams
+  private ExtensibleConsumerRecord<byte[], byte[]> filterAndAssembleRecords(ExtensibleConsumerRecord<byte[], byte[]> srcRecord) {
+    if (srcRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER) == null) {
+      //Not a large message segment
+      return srcRecord;
     }
 
-    ByteBuffer wrappedSrcValue = ByteBuffer.wrap(consumerRecord.value());
-    if (!HeaderParser.isHeaderMessage(wrappedSrcValue)) {
-      //Old protocol path
-      return handleConsumerRecord(consumerRecord);
-    } else {
-      //parse headers
-      Map<Integer, byte[]> headers = new LazyHeaderListMap(wrappedSrcValue);
-      K key = _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key());
-      V userValue = null;
-      byte[] userPayloadInHeader = headers.get(HeaderKeySpace.PAYLOAD_HEADER_KEY);
-      if (userPayloadInHeader != null) {
-        userValue = _valueDeserializer.deserialize(consumerRecord.topic(), userPayloadInHeader);
-      }
-      ExtensibleConsumerRecord<K, V> xConsumerRecord =
-        new ExtensibleConsumerRecord<>(consumerRecord.topic(), consumerRecord.partition(), consumerRecord.offset(),
-            consumerRecord.timestamp(), consumerRecord.timestampType(), consumerRecord.checksum(),
-            consumerRecord.serializedKeySize(), userPayloadInHeader.length, key, userValue, headers);
-      return xConsumerRecord;
-    }
-  }
-
-  private byte[] parseAndMaybeTrackRecord(TopicPartition tp, long messageOffset, byte[] bytes) {
-    MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
+    TopicPartition topicPartition = new TopicPartition(srcRecord.topic(), srcRecord.partition());
+    MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(topicPartition, srcRecord.offset(), srcRecord);
     if (assembledResult.messageBytes() != null) {
       // We skip the messages whose offset is smaller than the consumer high watermark.
-      if (shouldSkip(tp, messageOffset)) {
+      if (shouldSkip(topicPartition, srcRecord.offset())) {
         return null;
       }
       // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
-      long safeOffset = Math.min(messageOffset + 1, _messageAssembler.safeOffset(tp));
-      _deliveredMessageOffsetTracker.track(tp, messageOffset, safeOffset, assembledResult.messageStartingOffset(),
+      long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
+      _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, assembledResult.messageStartingOffset(),
           assembledResult.segmentOffsets());
-      return assembledResult.messageBytes();
+
+      int serializedKeySize =  assembledResult.isOriginalKeyIsNull() ? 0 : srcRecord.key().length;
+      byte[] key = assembledResult.isOriginalKeyIsNull() ? null : srcRecord.key();
+      int serializedValueSize = assembledResult.messageBytes().length;
+
+      ExtensibleConsumerRecord largeMessageRecord =
+        new ExtensibleConsumerRecord(srcRecord.topic(), srcRecord.partition(), srcRecord.offset() /* TODO: use src offset */,
+          srcRecord.timestamp(), srcRecord.timestampType(),
+          srcRecord.checksum(),
+          serializedKeySize, serializedValueSize,
+          key, assembledResult.messageBytes());
+      largeMessageRecord.copyHeadersFrom(srcRecord);
+
+      return largeMessageRecord;
     } else {
       return null;
     }

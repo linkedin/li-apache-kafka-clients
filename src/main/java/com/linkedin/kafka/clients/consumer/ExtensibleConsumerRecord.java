@@ -96,6 +96,13 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
     return headers.remove(headerKey);
   }
 
+  public void copyHeadersFrom(ExtensibleConsumerRecord<?, ?> other) {
+    //TODO: COW optimization?
+    if (other.headers != null) {
+      this.headers = new LazyHeaderListMap(other.headers);
+    }
+  }
+
   @Override
   public String toString() {
     return "ExtensibleConsumerRecord{header-count=" + (headers == null ? 0 : headers.size()) + " super=" + super.toString() + '}';

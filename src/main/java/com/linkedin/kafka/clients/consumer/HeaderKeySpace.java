@@ -19,8 +19,6 @@ public class HeaderKeySpace {
     //This does nothing
   }
 
-  public static final int PAYLOAD_HEADER_KEY = 1;
-
   public static final int LIKAFKA_PRIVATE_START = 0;
 
   public static final int LARGE_MESSAGE_SEGMENT_HEADER = 2;

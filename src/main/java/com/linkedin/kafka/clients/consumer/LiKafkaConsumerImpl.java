@@ -20,7 +20,6 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
@@ -61,7 +60,6 @@ import java.util.regex.Pattern;
  * <li>message.assembler.expiration.offset.gap</li>
  * <li>max.tracked.messages.per.partition</li>
  * <li>exception.on.message.dropped</li>
- * <li>segment.deserializer.class</li>
  * </ul>
  * and it also takes a "auditor.class" configuration for auditing. (see {@link LiKafkaConsumerConfig} for more
  * configuration details).
@@ -116,17 +114,12 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
 
-    // Instantiate segment deserializer if needed.
-    Deserializer segmentDeserializer = largeMessageSegmentDeserializer != null ? largeMessageSegmentDeserializer :
-        configs.getConfiguredInstance(LiKafkaConsumerConfig.SEGMENT_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
-    segmentDeserializer.configure(configs.originals(), false);
-
     // Instantiate message assembler if needed.
     int messageAssemblerCapacity = configs.getInt(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG);
     int messageAssemblerExpirationOffsetGap = configs.getInt(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_EXPIRATION_OFFSET_GAP_CONFIG);
     boolean exceptionOnMessageDropped = configs.getBoolean(LiKafkaConsumerConfig.EXCEPTION_ON_MESSAGE_DROPPED_CONFIG);
     MessageAssembler assembler = new MessageAssemblerImpl(messageAssemblerCapacity, messageAssemblerExpirationOffsetGap,
-        exceptionOnMessageDropped, segmentDeserializer);
+        exceptionOnMessageDropped);
 
     // Instantiate delivered message offset tracker if needed.
     int maxTrackedMessagesPerPartition = configs.getInt(LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG);

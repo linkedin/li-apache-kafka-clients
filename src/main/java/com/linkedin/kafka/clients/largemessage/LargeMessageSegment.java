@@ -154,6 +154,7 @@ public class LargeMessageSegment {
     return headerValue.array();
   }
 
+
   ByteBuffer segmentByteBuffer() {
     return _segment;
   }
@@ -182,6 +183,10 @@ public class LargeMessageSegment {
       _segment.get(copy);
       return copy;
     }
+  }
+
+  int sequenceNumber() {
+    return _sequenceNumber;
   }
 
   boolean originalKeyWasNull() {

@@ -88,6 +88,15 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
       this.headers = new TreeMap<>(other.headers); //TODO: copy on write?
     }
   }
+
+  /**
+   *
+   * @return this may return null
+   */
+  Map<Integer, byte[]> headers() {
+    return headers;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {

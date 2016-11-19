@@ -10,7 +10,6 @@
 
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
@@ -36,7 +35,6 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String EXCEPTION_ON_MESSAGE_DROPPED_CONFIG = "exception.on.message.dropped";
   public static final String KEY_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
   public static final String VALUE_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
-  public static final String SEGMENT_DESERIALIZER_CLASS_CONFIG = "segment.deserializer.class";
   public static final String AUDITOR_CLASS_CONFIG = "auditor.class";
   public static final String ENABLE_AUTO_COMMIT_CONFIG = ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
@@ -67,8 +65,6 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String KEY_DESERIALIZER_CLASS_DOC = "The key deserializer class for the consumer.";
 
   public static final String VALUE_DESERIALIZER_CLASS_DOC = "The value deserializer class for the consumer.";
-
-  public static final String SEGMENT_DESERIALIZER_CLASS_DOC = "The class used to deserialize the large message segments.";
 
   public static final String AUDITOR_CLASS_DOC = "The auditor class to use for the consumer";
 
@@ -113,11 +109,6 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 ByteArrayDeserializer.class.getName(),
                 Importance.HIGH,
                 VALUE_DESERIALIZER_CLASS_DOC)
-        .define(SEGMENT_DESERIALIZER_CLASS_CONFIG,
-                Type.CLASS,
-                DefaultSegmentDeserializer.class.getName(),
-                Importance.HIGH,
-                SEGMENT_DESERIALIZER_CLASS_DOC)
         .define(AUDITOR_CLASS_CONFIG,
                 Type.CLASS,
                 NoOpAuditor.class.getName(),

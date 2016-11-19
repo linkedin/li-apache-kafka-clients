@@ -12,7 +12,7 @@ import java.util.Set;
 
 
 /**
- *  This is a specialized map backed by a list instead of a more asymptotocally efficient data structure as our
+ *  This is a specialized map backed by a list instead of a more asymptotically efficient data structure as our
  *  benchmarks show that for small numbers of items this will be more efficient than using HashMap.
  *
  */
@@ -51,7 +51,7 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
     }
   };
 
-  private List<Entry> backingList;
+  private List<Map.Entry<Integer, byte[]>> backingList;
 
   private ByteBuffer headerSource;
 
@@ -59,7 +59,20 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
    * Construct a map without headers.
    */
   public LazyHeaderListMap() {
-    this(null);
+    this((ByteBuffer) null);
+  }
+
+  public LazyHeaderListMap(Map<Integer, byte[]> other) {
+    if (other instanceof LazyHeaderListMap) {
+      LazyHeaderListMap otherLazyHeaderListMap = (LazyHeaderListMap) other;
+      otherLazyHeaderListMap.lazyInit();
+      this.backingList = new ArrayList<>(otherLazyHeaderListMap.backingList);
+    } else {
+      this.backingList = new ArrayList<>(other.size());
+      for (Map.Entry<Integer, byte[]> otherEntry : other.entrySet()) {
+        this.backingList.add(otherEntry);
+      }
+    }
   }
 
   /**

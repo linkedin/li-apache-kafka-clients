@@ -10,6 +10,8 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+import java.nio.ByteBuffer;
 import org.apache.kafka.common.TopicPartition;
 
 import java.util.Map;
@@ -23,14 +25,15 @@ import java.util.Set;
 public interface MessageAssembler {
 
   /**
-   * Assemble the message segments to the original message.
-   * When the segment provided can complete an original message, the original message will be returned. Otherwise it
+   * Assemble the message segments to the original value.
+   * When the segment provided can complete an original value, the original value will be returned. Otherwise it
    * returns null.
    *
-   * @param segmentBytes a message segment in byte array format created by {@link MessageSplitter}
+   * @param srcRecord a message segment in byte array format created by {@link MessageSplitter}
+   *
    * @return The assemble result if a message is successfully assembled, otherwise returns null.
    */
-  AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes);
+  AssembleResult assemble(TopicPartition tp, long offset, ExtensibleConsumerRecord<byte[], byte[]> srcRecord);
 
   /**
    * This method should return the safe offset to commit for each partition.
@@ -72,16 +75,18 @@ public interface MessageAssembler {
    * The completed, large message value; all segments concatenated into one.
    */
   static class AssembleResult {
+    private final boolean _originalKeyIsNull;
     private final byte[] _messageBytes;
     private final long _messageStartingOffset;
     private final long _messageEndingOffset;
     private final Set<Long> _segmentOffsets;
 
-    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset, Set<Long> segmentOffsets) {
+    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset, Set<Long> segmentOffsets, boolean originalKeyIsNull) {
       _messageBytes = messageBytes;
       _messageStartingOffset = startingOffset;
       _messageEndingOffset = endingOffset;
       _segmentOffsets = segmentOffsets;
+      _originalKeyIsNull = originalKeyIsNull;
     }
 
     public byte[] messageBytes() {
@@ -98,6 +103,10 @@ public interface MessageAssembler {
 
     public Set<Long> segmentOffsets() {
       return _segmentOffsets;
+    }
+
+    public boolean isOriginalKeyIsNull() {
+      return _originalKeyIsNull;
     }
   }
 }
