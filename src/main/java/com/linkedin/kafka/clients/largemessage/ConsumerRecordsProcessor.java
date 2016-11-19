@@ -41,18 +41,12 @@ public class ConsumerRecordsProcessor<K, V> {
   private final MessageAssembler _messageAssembler;
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
   private final Map<TopicPartition, Long> partitionConsumerHighWatermarks;
-  private final Auditor<K, V> _auditor;
 
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
-                                  DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
-                                  Auditor<K, V> auditor) {
+                                  DeliveredMessageOffsetTracker deliveredMessageOffsetTracker) {
     _messageAssembler = messageAssembler;
     _deliveredMessageOffsetTracker = deliveredMessageOffsetTracker;
-    _auditor = auditor;
     partitionConsumerHighWatermarks = new HashMap<>();
-    if (_auditor == null) {
-      LOG.info("Auditing is disabled because no auditor is defined.");
-    }
   }
 
   /**
@@ -61,8 +55,8 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param consumerRecords The consumer records to be filtered.
    * @return filtered consumer records.
    */
-  public Collection<ConsumerRecord<byte[], byte[]>> process(Collection<ExtensibleConsumerRecord<byte[], byte[]>> consumerRecords) {
-    List<ConsumerRecord<byte[], byte[]>> list = new ArrayList<>();
+  public Collection<ExtensibleConsumerRecord<byte[], byte[]>> process(Collection<ExtensibleConsumerRecord<byte[], byte[]>> consumerRecords) {
+    List<ExtensibleConsumerRecord<byte[], byte[]>> list = new ArrayList<>();
     for (ExtensibleConsumerRecord<byte[], byte[]> consumerRecord : consumerRecords) {
       ExtensibleConsumerRecord handledRecord = filterAndAssembleRecords(consumerRecord);
       if (handledRecord == null) {
@@ -276,7 +270,6 @@ public class ConsumerRecordsProcessor<K, V> {
 
   public void close() {
     _messageAssembler.close();
-    _auditor.close();
   }
 
 
@@ -309,6 +302,7 @@ public class ConsumerRecordsProcessor<K, V> {
           srcRecord.checksum(),
           serializedKeySize, serializedValueSize,
           key, assembledResult.messageBytes());
+      //TODO: total header size is not accounted for
       largeMessageRecord.copyHeadersFrom(srcRecord);
 
       return largeMessageRecord;

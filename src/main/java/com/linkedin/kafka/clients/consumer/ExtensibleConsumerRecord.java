@@ -24,17 +24,20 @@ import org.apache.kafka.common.record.TimestampType;
  */
 public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
   private volatile Map<Integer, byte[]> headers;
+  private volatile int headersSize;
 
   public ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
       long checksum, int serializedKeySize, int serializedValueSize, K key, V value) {
     super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
+    headersSize = 0;
   }
 
   //TODO:  this really needs to be package private to hide the headers implementation, but ConsumerRecordsProcessor is in the largemessage package
-  public ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
-      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, byte[]> headers) {
+  ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
+      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, byte[]> headers, int headersSize) {
     super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
     this.headers = headers;
+    this.headersSize = headersSize;
   }
 
   /**
@@ -96,11 +99,27 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
     return headers.remove(headerKey);
   }
 
+  Map<Integer, byte[]> headers() {
+    return headers;
+  }
+
+  /**
+   * Copy headers from another record, overriding the headers on this record.
+   */
   public void copyHeadersFrom(ExtensibleConsumerRecord<?, ?> other) {
     //TODO: COW optimization?
     if (other.headers != null) {
+      this.headersSize = other.headersSize;
       this.headers = new LazyHeaderListMap(other.headers);
     }
+  }
+
+  /**
+   * This is the size of the headers that were received from the broker.  Headers added or removed after that point are
+   * not counted in this value.
+   */
+  public int headersSize() {
+    return headersSize;
   }
 
   @Override
