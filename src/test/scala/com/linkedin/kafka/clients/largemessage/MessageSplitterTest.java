@@ -18,7 +18,6 @@ import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import java.nio.ByteBuffer;
 import java.util.Collection;
-import java.util.Iterator;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
@@ -54,11 +53,11 @@ public class MessageSplitterTest {
 
     byte[] serializedMessage = stringSerializer.serialize("topic", message);
     ExtensibleProducerRecord<byte[], byte[]> producerRecord =
-        new ExtensibleProducerRecord<byte[], byte[]>("topic", 0, null, "key".getBytes(), serializedMessage);
+        new ExtensibleProducerRecord<>("topic", 0, null, "key".getBytes(), serializedMessage);
     Collection<ExtensibleProducerRecord<byte[], byte[]>> records = splitter.split(producerRecord);
     assertEquals(records.size(), 5, "Should have 5 segments.");
     MessageAssembler assembler = new MessageAssemblerImpl(10000, 10000, true);
-    Iterator<ExtensibleProducerRecord<byte[], byte[]>> it = records.iterator();
+
     int expectedSequenceNumber = 0;
     MessageAssembler.AssembleResult assembledMessage = null;
     int totalHeadersSize = 0;
@@ -66,10 +65,10 @@ public class MessageSplitterTest {
     for (ExtensibleProducerRecord<byte[], byte[]> splitRecord : records) {
       ExtensibleConsumerRecord<byte[], byte[]> splitConsumerRecord = TestUtils.producerRecordToConsumerRecord(splitRecord,
           expectedSequenceNumber, expectedSequenceNumber, null, 0, 0);
-      totalHeadersSize += splitRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER).length;
+      totalHeadersSize += splitRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER).length + 4 + 4;
       assembledMessage = assembler.assemble(tp, expectedSequenceNumber, splitConsumerRecord);
-      if (expectedSequenceNumber != 5) {
-        assertNull(assembledMessage);
+      if (expectedSequenceNumber != 4) {
+        assertNull(assembledMessage.messageBytes());
       }
 
       // Check that each segment looks good

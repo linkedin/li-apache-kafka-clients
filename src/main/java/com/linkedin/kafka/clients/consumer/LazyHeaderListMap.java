@@ -64,6 +64,10 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
 
   private ByteBuffer headerSource;
 
+  public LazyHeaderListMap() {
+    this((ByteBuffer) null);
+  }
+
   public LazyHeaderListMap(Map<Integer, byte[]> other) {
     if (other instanceof LazyHeaderListMap) {
       LazyHeaderListMap otherLazyHeaderListMap = (LazyHeaderListMap) other;
@@ -71,9 +75,7 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
       this.backingList = new ArrayList<>(otherLazyHeaderListMap.backingList);
     } else {
       this.backingList = new ArrayList<>(other.size());
-      for (Map.Entry<Integer, byte[]> otherEntry : other.entrySet()) {
-        this.backingList.add(otherEntry);
-      }
+      this.backingList.addAll(other.entrySet());
     }
   }
 
@@ -310,7 +312,94 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
    */
   @Override
   public Collection<byte[]> values() {
-    throw new UnsupportedOperationException();
+    lazyInit();
+    return new Collection<byte[]>() {
+
+      @Override
+      public int size() {
+        return backingList.size();
+      }
+
+      @Override
+      public boolean isEmpty() {
+        return backingList.isEmpty();
+      }
+
+      @Override
+      public boolean contains(Object o) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public Iterator<byte[]> iterator() {
+        return new Iterator<byte[]>() {
+          final int backingListSizeAtInitializationTime = backingList.size();
+          private int index = 0;
+
+          @Override
+          public boolean hasNext() {
+            if (backingListSizeAtInitializationTime != backingList.size()) {
+              throw new ConcurrentModificationException();
+            }
+            return index < backingList.size();
+          }
+
+          @Override
+          public byte[] next() {
+            if (backingListSizeAtInitializationTime != backingList.size()) {
+              throw new ConcurrentModificationException();
+            }
+
+            return backingList.get(index++).getValue();
+          }
+        };
+      }
+
+      @Override
+      public Object[] toArray() {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public <T> T[] toArray(T[] a) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean add(byte[] bytes) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean remove(Object o) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean containsAll(Collection<?> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean addAll(Collection<? extends byte[]> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean removeAll(Collection<?> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean retainAll(Collection<?> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public void clear() {
+        throw new UnsupportedOperationException();
+      }
+    };
   }
 
   /**

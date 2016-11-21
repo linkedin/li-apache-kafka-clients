@@ -9,8 +9,8 @@
  */
 package com.linkedin.kafka.clients.consumer;
 
+import com.linkedin.kafka.clients.utils.HeaderParser;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -66,11 +66,13 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
     }
 
     if (headers == null) {
-      headers = new HashMap<>();
+      headers = new LazyHeaderListMap();
     }
 
-    this.headers.put(headerKey, value);
+    headers.put(headerKey, value);
+    headersSize = HeaderParser.serializedHeaderSize(headers);
   }
+
 
   public Iterator<Integer> headerKeys() {
     if (headers == null) {

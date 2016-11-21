@@ -25,12 +25,12 @@ public interface MessageAssembler {
 
   /**
    * Assemble the message segments to the original value.
-   * When the segment provided can complete an original value, the original value will be returned. Otherwise it
-   * returns null.
+   * When the segment provided can complete an original value, the original value will be returned.
    *
    * @param srcRecord a message segment in byte array format created by {@link MessageSplitter}
    *
-   * @return The assemble result if a message is successfully assembled, otherwise returns null.
+   * @return The assemble result.  When a message is fully assembled this AssembleResult.messageBytes() will return non-null
+   * else it wil be null.
    */
   AssembleResult assemble(TopicPartition tp, long offset, ExtensibleConsumerRecord<byte[], byte[]> srcRecord);
 
@@ -71,7 +71,7 @@ public interface MessageAssembler {
   void close();
 
   /**
-   * The completed, large message value; all segments concatenated into one.
+   * The completely assembled original value else some kind of record of our current state.
    */
   static class AssembleResult {
     private final boolean _originalKeyIsNull;
@@ -81,7 +81,8 @@ public interface MessageAssembler {
     private final int _totalHeadersSize;
     private final Set<Long> _segmentOffsets;
 
-    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset, Set<Long> segmentOffsets, boolean originalKeyIsNull, int totalHeadersSize) {
+    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset, Set<Long> segmentOffsets,
+      boolean originalKeyIsNull, int totalHeadersSize) {
       _messageBytes = messageBytes;
       _messageStartingOffset = startingOffset;
       _messageEndingOffset = endingOffset;
@@ -90,6 +91,10 @@ public interface MessageAssembler {
       _totalHeadersSize = totalHeadersSize;
     }
 
+    /**
+     *
+     * @return This is null when the entire original value has not yet been received.
+     */
     public byte[] messageBytes() {
       return _messageBytes;
     }
