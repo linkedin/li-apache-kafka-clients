@@ -10,6 +10,8 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeMap;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -84,6 +86,14 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     if (other.headers != null) {
       this.headers = new TreeMap<>(other.headers); //TODO: copy on write?
     }
+  }
+
+  public Iterator<Integer> headerKeys() {
+    if (headers == null) {
+      return Collections.EMPTY_LIST.iterator();
+    }
+
+    return headers.keySet().iterator();
   }
 
   /**

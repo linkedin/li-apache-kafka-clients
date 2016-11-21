@@ -10,12 +10,17 @@
 
 package com.linkedin.kafka.clients.utils;
 
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 
+import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.Random;
 import java.util.UUID;
+import org.apache.kafka.common.record.TimestampType;
 
 import static org.testng.Assert.assertEquals;
 
@@ -57,5 +62,19 @@ public class TestUtils {
       stringBuiler.append(chars[Math.abs(random.nextInt()) % 16]);
     }
     return stringBuiler.toString();
+  }
+
+  public static ExtensibleConsumerRecord<byte[], byte[]> producerRecordToConsumerRecord(ExtensibleProducerRecord<byte[], byte[]> producerRecord,
+      long offset, long timestamp, TimestampType timestampType, int serializedKeySize, int serializedValueSize) {
+
+    ExtensibleConsumerRecord<byte[], byte[]> splitConsumerRecord =
+        new ExtensibleConsumerRecord<>(producerRecord.topic(), producerRecord.partition(), offset, timestamp,
+            timestampType, 0, serializedKeySize, serializedValueSize, producerRecord.key(), producerRecord.value());
+    Iterator<Integer> headerKeyIterator = producerRecord.headerKeys();
+    while (headerKeyIterator.hasNext()) {
+      Integer headerKey = headerKeyIterator.next();
+      splitConsumerRecord.header(headerKey, producerRecord.header(headerKey));
+    }
+    return splitConsumerRecord;
   }
 }

@@ -25,6 +25,8 @@ import static org.testng.Assert.fail;
  * Unit test for incomplete message.
  */
 public class LargeMessageTest {
+  private final int HEADER_SIZE = 12;
+
   private final int messageSizeInBytes = 15;
   private final int numberOfSegments = 2;
   private final UUID messageId = UUID.randomUUID();
@@ -40,11 +42,11 @@ public class LargeMessageTest {
     LargeMessageSegment segment0 = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments, messageSizeInBytes, 10);
     LargeMessageSegment segment1 = TestUtils.createLargeMessageSegment(messageId, 1, numberOfSegments, messageSizeInBytes, 5);
 
-    byte[] serializedMessage = message.addSegment(segment1, 1).serializedMessage();
+    byte[] serializedMessage = message.addSegment(segment1, 1, HEADER_SIZE).serializedMessage();
     assert serializedMessage == null;
 
     assertEquals(message.bufferedSizeInBytes(), 5, "5 bytes should be buffered");
-    serializedMessage = message.addSegment(segment0, 1).serializedMessage();
+    serializedMessage = message.addSegment(segment0, 1, HEADER_SIZE).serializedMessage();
     assert serializedMessage != null;
     assertEquals(message.bufferedSizeInBytes(), 15, "15 bytes should be buffered");
     assert serializedMessage.length == messageSizeInBytes;
@@ -62,7 +64,7 @@ public class LargeMessageTest {
         numberOfSegments);
 
     LargeMessageSegment zeroLengthSegment = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments, messageSizeInBytes, 0);
-    message.addSegment(zeroLengthSegment, 0);
+    message.addSegment(zeroLengthSegment, 0, HEADER_SIZE);
   }
 
   @Test(expectedExceptions = InvalidSegmentException.class)
@@ -75,8 +77,8 @@ public class LargeMessageTest {
 
     LargeMessageSegment segment0 = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments, messageSizeInBytes, 10);
     LargeMessageSegment segment1 = TestUtils.createLargeMessageSegment(messageId, 1, numberOfSegments, messageSizeInBytes, 10);
-    message.addSegment(segment0, 0);
-    message.addSegment(segment1, 1);
+    message.addSegment(segment0, 0, HEADER_SIZE);
+    message.addSegment(segment1, 1, HEADER_SIZE);
 
   }
 
@@ -89,10 +91,10 @@ public class LargeMessageTest {
         numberOfSegments);
 
     LargeMessageSegment segment = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments, messageSizeInBytes, 10);
-    message.addSegment(segment, 0);
+    message.addSegment(segment, 0, HEADER_SIZE);
     segment = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments + 1, messageSizeInBytes, 10);
     try {
-      message.addSegment(segment, numberOfSegments + 1);
+      message.addSegment(segment, numberOfSegments + 1, HEADER_SIZE);
       fail("Should throw exception.");
     } catch (Throwable t) {
       assertTrue(t.getMessage().startsWith("Detected UUID conflict"));
@@ -100,7 +102,7 @@ public class LargeMessageTest {
 
     segment = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments, messageSizeInBytes + 1, 10);
     try {
-      message.addSegment(segment, numberOfSegments);
+      message.addSegment(segment, numberOfSegments, HEADER_SIZE);
       fail("Should throw exception.");
     } catch (Throwable t) {
       assertTrue(t.getMessage().startsWith("Detected UUID conflict"));
