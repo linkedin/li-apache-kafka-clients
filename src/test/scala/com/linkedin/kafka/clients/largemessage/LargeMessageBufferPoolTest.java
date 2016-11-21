@@ -123,7 +123,6 @@ public class LargeMessageBufferPoolTest {
     long offset = 0;
     LargeMessageSegment m0Seg0 = TestUtils.createLargeMessageSegment(messageId0, 0, 3, 25, 10);
     LargeMessageSegment m0Seg1 = TestUtils.createLargeMessageSegment(messageId0, 1, 3, 25, 10);
-    LargeMessageSegment m0Seg2 = TestUtils.createLargeMessageSegment(messageId0, 3, 3, 25, 5);
     LargeMessageSegment m1Seg0 = TestUtils.createLargeMessageSegment(messageId1, 0, 3, 30, 10);
     LargeMessageSegment m1Seg1 = TestUtils.createLargeMessageSegment(messageId1, 1, 3, 30, 10);
     LargeMessageSegment m2Seg0 = TestUtils.createLargeMessageSegment(messageId2, 0, 3, 30, 10);
@@ -175,31 +174,15 @@ public class LargeMessageBufferPoolTest {
     TestUtils.verifyMessage(serializedMessage2, 30, 10);
   }
 
-  @Test
-  public void testSequenceNumberOutofRange() {
+  @Test(expectedExceptions = InvalidSegmentException.class)
+  public void testSequenceNumberOutOfRange() {
     UUID messageId = UUID.randomUUID();
-    TopicPartition tp = new TopicPartition("topic", 0);
-    LargeMessageBufferPool pool = new LargeMessageBufferPool(30, 20, false);
-    LargeMessageSegment segment = TestUtils.createLargeMessageSegment(messageId, 3, 3, 25, 5);
-    try {
-      pool.tryCompleteMessage(tp, 0, segment, segment.segmentHeader().length);
-      fail("Should throw large message exception for sequence number out of range.");
-    } catch (InvalidSegmentException ise) {
-      assertTrue(ise.getMessage().startsWith("Sequence number"));
-    }
+    TestUtils.createLargeMessageSegment(messageId, 3, 3, 25, 5);
   }
 
-  @Test
+  @Test(expectedExceptions = InvalidSegmentException.class)
   public void testNullMessageId() {
-    TopicPartition tp = new TopicPartition("topic", 0);
-    LargeMessageBufferPool pool = new LargeMessageBufferPool(30, 20, false);
-    LargeMessageSegment segment = TestUtils.createLargeMessageSegment(null, 2, 3, 25, 5);
-    try {
-      pool.tryCompleteMessage(tp, 0, segment, segment.segmentHeader().length);
-      fail("Should throw large message exception for null message id.");
-    } catch (InvalidSegmentException ise) {
-      assertTrue(ise.getMessage().startsWith("Message Id"));
-    }
+    TestUtils.createLargeMessageSegment(null, 2, 3, 25, 5);
   }
 
   @Test
@@ -212,7 +195,7 @@ public class LargeMessageBufferPoolTest {
       pool.tryCompleteMessage(tp, 0, segment, segment.segmentHeader().length);
       fail("Should throw large message exception for wrong segment size.");
     } catch (InvalidSegmentException ise) {
-      assertTrue(ise.getMessage().startsWith("Segment size should not be larger"));
+      assertTrue(ise.getMessage().startsWith("Saw single message segment size = 30"));
     }
   }
 

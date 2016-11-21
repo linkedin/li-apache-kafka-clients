@@ -141,7 +141,7 @@ public class LargeMessageSegment {
   byte[] segmentHeader() {
     ByteBuffer headerValue =
       ByteBuffer.allocate(1 /* version*/ + 8 + 8 /* uuid */ + 4 /* sequenceNumber */ + 4 /* numberOfSegments */ +
-      4 /* originalValueSize */);
+      4 /* originalValueSize */ + 1 /* originalWasNull */);
     headerValue.put(CURRENT_VERSION);
     headerValue.putLong(_messageId.getMostSignificantBits());
     headerValue.putLong(_messageId.getLeastSignificantBits());

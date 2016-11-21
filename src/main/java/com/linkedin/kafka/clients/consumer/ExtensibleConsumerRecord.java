@@ -55,7 +55,6 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
   }
 
   /**
-   * TODO:  Do we really want this?
    * This is here so that consumers can set some kind of header value if it was not set on the producer.  If the header
    * exists already then the header value is updated.
    * @param headerKey non-negative
@@ -64,10 +63,6 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
   public void header(int headerKey, byte[] value) {
     if (!HeaderKeySpace.isKeyValid(headerKey)) {
       throw new IllegalArgumentException("Header key " + headerKey + " is not valid.");
-    }
-
-    if (HeaderKeySpace.isKeyInPrivateRange(headerKey)) {
-      throw new IllegalArgumentException(("Key must not be in private range."));
     }
 
     if (headers == null) {

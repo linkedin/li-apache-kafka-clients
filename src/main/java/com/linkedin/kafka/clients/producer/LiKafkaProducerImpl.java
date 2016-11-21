@@ -18,7 +18,6 @@ import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
-import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Random;
@@ -174,8 +173,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     // prepare to handle large messages.
     _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
     _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
-    _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class) == null ?
-      new UUIDFactoryImpl() : configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
+    _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
 
     _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, _uuidFactory, new SimplePartitionerImpl());
 
