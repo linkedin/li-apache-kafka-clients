@@ -12,8 +12,6 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -28,7 +26,6 @@ import java.util.UUID;
  *   <li><b>segment:</b> The ByteBuffer of the segment.  The segment is the value part of the original producer.</li>
  * </ul>
  *
- * TODO: do I need this method?
  * Please notice that it is not guaranteed that the payload ByteBuffer has a dedicated underlying byte array. To
  * get a dedicated byte array representation of the payload, {@link #segmentArray()} method should be called.
  *
@@ -39,6 +36,7 @@ public class LargeMessageSegment {
   /**
    * Version history:
    * 0 - did not use headers.
+   * 1 - segment metadata is stored in a header
    */
   public static final byte CURRENT_VERSION = 1;
 

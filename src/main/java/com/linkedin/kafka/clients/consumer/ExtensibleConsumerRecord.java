@@ -9,7 +9,6 @@
  */
 package com.linkedin.kafka.clients.consumer;
 
-import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -22,7 +21,7 @@ import org.apache.kafka.common.record.TimestampType;
  * record is being received and an offset that points to the record in a Kafka partition.
  * This extension allows for user definable headers.
  */
-public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
+public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
   private volatile Map<Integer, byte[]> headers;
   private volatile int headersSize;
 
@@ -32,7 +31,6 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
     headersSize = 0;
   }
 
-  //TODO:  this really needs to be package private to hide the headers implementation, but ConsumerRecordsProcessor is in the largemessage package
   ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
       long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, byte[]> headers, int headersSize) {
     super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
@@ -41,7 +39,6 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
   }
 
   /**
-   * TODO:  should we allow the user to get the headers in the private address space.
    * @param headerKey
    * @return returns null if the headerKey does not exist or if this record does not have have headers.
    */
@@ -64,7 +61,7 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
    * @param headerKey non-negative
    * @param value non-null
    */
-  public void setHeader(int headerKey, byte[] value) {
+  public void header(int headerKey, byte[] value) {
     if (!HeaderKeySpace.isKeyValid(headerKey)) {
       throw new IllegalArgumentException("Header key " + headerKey + " is not valid.");
     }
@@ -112,6 +109,13 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K,V> {
       this.headersSize = other.headersSize;
       this.headers = new LazyHeaderListMap(other.headers);
     }
+  }
+
+  public void headersSize(int newHeadersSize) {
+    if (newHeadersSize < 0) {
+      throw new IllegalArgumentException("newHeadersSize must be a non-negative integer.");
+    }
+    this.headersSize = newHeadersSize;
   }
 
   /**

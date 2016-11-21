@@ -10,20 +10,12 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
-import com.linkedin.kafka.clients.auditing.AuditType;
-import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
-import com.linkedin.kafka.clients.consumer.LazyHeaderListMap;
-import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import java.nio.ByteBuffer;
 import java.util.Collection;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +27,7 @@ import java.util.Map;
 /**
  * This class processes consumer records returned by {@link org.apache.kafka.clients.consumer.KafkaConsumer#poll(long)}
  */
-public class ConsumerRecordsProcessor<K, V> {
+public class ConsumerRecordsProcessor {
 
   private static final Logger LOG = LoggerFactory.getLogger(ConsumerRecordsProcessor.class);
   private final MessageAssembler _messageAssembler;
@@ -296,13 +288,15 @@ public class ConsumerRecordsProcessor<K, V> {
       byte[] key = assembledResult.isOriginalKeyIsNull() ? null : srcRecord.key();
       int serializedValueSize = assembledResult.messageBytes().length;
 
+      //TODO: which offset to use?
       ExtensibleConsumerRecord largeMessageRecord =
-        new ExtensibleConsumerRecord(srcRecord.topic(), srcRecord.partition(), srcRecord.offset() /* TODO: use src offset */,
+        new ExtensibleConsumerRecord<>(srcRecord.topic(), srcRecord.partition(), srcRecord.offset(),
           srcRecord.timestamp(), srcRecord.timestampType(),
           srcRecord.checksum(),
           serializedKeySize, serializedValueSize,
           key, assembledResult.messageBytes());
-      //TODO: total header size is not accounted for
+      //TODO: checksums recomputed?
+      largeMessageRecord.headersSize(assembledResult.totalHeadersSize());
       largeMessageRecord.copyHeadersFrom(srcRecord);
 
       return largeMessageRecord;

@@ -11,7 +11,6 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
-import java.nio.ByteBuffer;
 import org.apache.kafka.common.TopicPartition;
 
 import java.util.Map;
@@ -79,14 +78,16 @@ public interface MessageAssembler {
     private final byte[] _messageBytes;
     private final long _messageStartingOffset;
     private final long _messageEndingOffset;
+    private final int _totalHeadersSize;
     private final Set<Long> _segmentOffsets;
 
-    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset, Set<Long> segmentOffsets, boolean originalKeyIsNull) {
+    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset, Set<Long> segmentOffsets, boolean originalKeyIsNull, int totalHeadersSize) {
       _messageBytes = messageBytes;
       _messageStartingOffset = startingOffset;
       _messageEndingOffset = endingOffset;
       _segmentOffsets = segmentOffsets;
       _originalKeyIsNull = originalKeyIsNull;
+      _totalHeadersSize = totalHeadersSize;
     }
 
     public byte[] messageBytes() {
@@ -107,6 +108,10 @@ public interface MessageAssembler {
 
     public boolean isOriginalKeyIsNull() {
       return _originalKeyIsNull;
+    }
+
+    public int totalHeadersSize() {
+      return _totalHeadersSize;
     }
   }
 }

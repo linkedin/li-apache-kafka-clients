@@ -1,3 +1,12 @@
+/**
+ * Copyright 2016 LinkedIn Corp. Licensed under the Apache License, Version 2.0 (the "License"); you may not use this
+ * file except in compliance with the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+ * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ */
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.utils.HeaderParser;
@@ -54,13 +63,6 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
   private List<Map.Entry<Integer, byte[]>> backingList;
 
   private ByteBuffer headerSource;
-
-  /**
-   * Construct a map without headers.
-   */
-  public LazyHeaderListMap() {
-    this((ByteBuffer) null);
-  }
 
   public LazyHeaderListMap(Map<Integer, byte[]> other) {
     if (other instanceof LazyHeaderListMap) {
@@ -138,7 +140,7 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
   public byte[] get(Object key) {
     lazyInit();
     //searching backwards means we get the last value that was put for some key
-    for (int i=backingList.size()-1; i >= 0; i--) {
+    for (int i = backingList.size() - 1; i >= 0; i--) {
       if (backingList.get(i).getKey().equals(key)) {
         return backingList.get(i).getValue();
       }

@@ -10,11 +10,8 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
-import com.linkedin.kafka.clients.consumer.LazyHeaderListMap;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.UUID;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 

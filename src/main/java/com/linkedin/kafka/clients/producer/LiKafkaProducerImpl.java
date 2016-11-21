@@ -80,7 +80,7 @@ import java.nio.ByteBuffer;
  * props.put("max.message.segment.bytes", 1000 * 1024);
  * props.put("segment.serializer", DefaultSegmentSerializer.class.getName());
  * props.put("auditor.class", LoggingAuditor.class.getName());
- * props.put("uuid.factory", UUIDFactoryImpl.class.getName());
+ * props.put("uuid.factory.class", UUIDFactoryImpl.class.getName());
  *
  * LiKafkaProducer<String, String> liKafkaProducer = new LiKafkaProducerImpl<>(props);
  * for(int i = 0; i < 100; i++)
@@ -241,7 +241,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       ExtensibleProducerRecord<byte[], byte[]> xRecord =
         new ExtensibleProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(), serializedKey, serializedValue);
       if (producerRecord instanceof ExtensibleProducerRecord) {
-        xRecord.copyHeadersFrom( (ExtensibleProducerRecord)producerRecord);
+        xRecord.copyHeadersFrom((ExtensibleProducerRecord) producerRecord);
       }
 
       Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords;

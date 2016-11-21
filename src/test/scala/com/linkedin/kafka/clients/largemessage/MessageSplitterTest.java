@@ -10,7 +10,10 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import com.linkedin.kafka.clients.utils.TestUtils;
+import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
+import java.util.Collection;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
@@ -19,7 +22,6 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.testng.annotations.Test;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.testng.Assert.assertEquals;
@@ -35,14 +37,14 @@ public class MessageSplitterTest {
     String message = TestUtils.getRandomString(1000);
     Serializer<String> stringSerializer = new StringSerializer();
     Deserializer<String> stringDeserializer = new StringDeserializer();
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
-    Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
-    MessageSplitter splitter = new MessageSplitterImpl(200, segmentSerializer);
+    MessageSplitter splitter = new MessageSplitterImpl(200, new UUIDFactoryImpl(), null);
 
     byte[] serializedMessage = stringSerializer.serialize("topic", message);
-    List<ProducerRecord<byte[], byte[]>> records = splitter.split("topic", id, serializedMessage);
+    ExtensibleProducerRecord<byte[], byte[]> producerRecord =
+        new ExtensibleProducerRecord<byte[], byte[]>("topic", 0, null, "key".getBytes(), serializedMessage);
+    Collection<ExtensibleProducerRecord<byte[], byte[]>> records = splitter.split(producerRecord);
     assertEquals(records.size(), 5, "Should have 6 segments.");
-    MessageAssembler assembler = new MessageAssemblerImpl(10000, 10000, true, segmentDeserializer);
+    MessageAssembler assembler = new MessageAssemblerImpl(10000, 10000, true);
     String assembledMessage = null;
     UUID uuid = null;
     for (int i = 0; i < records.size(); i++) {

@@ -32,6 +32,7 @@ public class LargeMessage {
   private final UUID _messageId;
   private final long _startingOffset;
   private long _bufferedBytes;
+  private int _totalHeadersSize;
 
   LargeMessage(TopicPartition tp, UUID messageId, long startingOffset, int originalValueSize, int numberOfSegments) {
     _originalValueSize = originalValueSize;
@@ -42,13 +43,14 @@ public class LargeMessage {
     _tp = tp;
     _messageId = messageId;
     _startingOffset = startingOffset;
+    _totalHeadersSize = 0;
   }
 
   public synchronized long bufferedSizeInBytes() {
     return _bufferedBytes;
   }
 
-  public synchronized SegmentAddResult addSegment(LargeMessageSegment segment, long offset) {
+  public synchronized SegmentAddResult addSegment(LargeMessageSegment segment, long offset, int headersSize) {
     int seq = segment.sequenceNumber();
     int segmentSize = segment.segmentByteBuffer().remaining();
     validateSegment(segment);
@@ -56,18 +58,19 @@ public class LargeMessage {
     if (!_segments.containsKey(seq)) {
       _segments.put(seq, segment.segmentByteBuffer());
       _bufferedBytes += segmentSize;
+      _totalHeadersSize += headersSize;
       if (_segments.size() == _numberOfSegments) {
         // If we have got all the segments, assemble the original serialized message.
-        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset, _segmentOffsets);
+        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset, _segmentOffsets, _totalHeadersSize);
       }
       // Add the segment offsets. We only track the segment offsets except the last segment.
       _segmentOffsets.add(offset);
     } else {
       // duplicate segment
-      return new SegmentAddResult(null, 0, _startingOffset, _segmentOffsets);
+      return new SegmentAddResult(null, 0, _startingOffset, _segmentOffsets, _totalHeadersSize);
     }
     // The segment is buffered, but it did not complete a large message.
-    return new SegmentAddResult(null, segmentSize, _startingOffset, _segmentOffsets);
+    return new SegmentAddResult(null, segmentSize, _startingOffset, _segmentOffsets, _totalHeadersSize);
   }
 
   public TopicPartition topicPartition() {
@@ -120,7 +123,9 @@ public class LargeMessage {
       payload.get(serializedMessage, segmentStart, payloadSize);
       segmentStart += payloadSize;
     }
-    assert (segmentStart == _originalValueSize);
+    if (segmentStart !=  _originalValueSize) {
+      throw new IllegalStateException("segmentStart " + segmentStart + " != originalValueSize " + _originalValueSize);
+    }
     return serializedMessage;
   }
 
@@ -132,12 +137,14 @@ public class LargeMessage {
     private final long _startingOffset;
     private final int _bytesAdded;
     private final Set<Long> _segmentOffsets;
+    private final int _totalHeadersSize;
 
-    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset, Set<Long> segmentOffsets) {
+    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset, Set<Long> segmentOffsets, int totalHeadersSize) {
       _serializedMessage = serializedMessage;
       _bytesAdded = bytesAdded;
       _startingOffset = startingOffset;
       _segmentOffsets = segmentOffsets;
+      _totalHeadersSize = totalHeadersSize;
     }
 
     /**
@@ -168,6 +175,10 @@ public class LargeMessage {
      */
     Set<Long> segmentOffsets() {
       return _segmentOffsets;
+    }
+
+    int totalHeadersSize() {
+      return _totalHeadersSize;
     }
   }
 

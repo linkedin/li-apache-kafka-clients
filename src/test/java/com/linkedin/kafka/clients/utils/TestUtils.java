@@ -34,7 +34,7 @@ public class TestUtils {
                                                               int segmentSize) {
     byte[] bytes = new byte[segmentSize];
     Arrays.fill(bytes, (byte) seq);
-    return new LargeMessageSegment(messageId, seq, numberOfSegments, messageSizeInBytes, ByteBuffer.wrap(bytes));
+    return new LargeMessageSegment(messageId, seq, numberOfSegments, messageSizeInBytes, false,  ByteBuffer.wrap(bytes));
   }
 
   public static void verifyMessage(byte[] serializedMessage, int messageSizeInBytes, int segmentSize) {

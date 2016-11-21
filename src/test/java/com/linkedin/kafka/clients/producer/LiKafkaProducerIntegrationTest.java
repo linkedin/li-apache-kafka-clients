@@ -111,7 +111,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     for (int i = 0; i < RECORD_COUNT; ++i) {
       String value = Integer.toString(i);
       ExtensibleProducerRecord producerRecord = new ExtensibleProducerRecord<>(tempTopic, null, null, null, value);
-      producerRecord.setHeader(HeaderKeySpace.PUBLIC_UNASSIGNED_START, EXPECTED_HEADER_VALUE);
+      producerRecord.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START, EXPECTED_HEADER_VALUE);
       producer.send(producerRecord);
     }
 

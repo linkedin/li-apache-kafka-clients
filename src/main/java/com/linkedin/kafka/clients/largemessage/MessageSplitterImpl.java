@@ -27,7 +27,7 @@ import java.util.UUID;
  * This class is used by {@link com.linkedin.kafka.clients.producer.LiKafkaProducerImpl} to split
  * serialized records.
  */
-public class MessageSplitterImpl<K, V> implements MessageSplitter<K,V> {
+public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
   // This class does not do anything with the original record, so no key serializer is needed.
   private final int _maxSegmentSize;
   private final UUIDFactory _uuidFactory;
@@ -90,7 +90,7 @@ public class MessageSplitterImpl<K, V> implements MessageSplitter<K,V> {
       ExtensibleProducerRecord<byte[], byte[]> segmentProducerRecord =
         new ExtensibleProducerRecord<>(previousRecord.topic(), partition, previousRecord.timestamp(), key, segment.segmentArray());
       segmentProducerRecord.copyHeadersFrom(previousRecord);
-      segmentProducerRecord.header(HeaderKeySpace.PAYLOAD_HEADER_KEY, segment.segmentHeader());
+      segmentProducerRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, segment.segmentHeader());
       segments.add(segmentProducerRecord);
     }
 

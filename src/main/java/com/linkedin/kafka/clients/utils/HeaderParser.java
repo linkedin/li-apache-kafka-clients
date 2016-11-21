@@ -11,7 +11,6 @@ package com.linkedin.kafka.clients.utils;
 
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.Map;
 
 

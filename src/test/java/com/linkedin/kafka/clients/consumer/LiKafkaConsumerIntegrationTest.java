@@ -13,9 +13,14 @@ package com.linkedin.kafka.clients.consumer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
+import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
+import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.TestUtils;
+import com.linkedin.kafka.clients.utils.UUIDFactory;
+import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
+import java.util.Iterator;
 import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -49,6 +54,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -606,47 +612,63 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   // 6: M3_SEG1(END)
   // 7: M4_SEG0(END)
   private void produceSyntheticMessages(String topic) {
-    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE, new DefaultSegmentSerializer());
+    UUIDFactory uuidFactory = new UUIDFactoryImpl();
+    int partition = 1;
+    SimplePartitioner simplePartitioner = new SimplePartitioner() {
+      @Override
+      public int partition(String topic) {
+        throw new IllegalStateException("Partitioner should not have been called.");
+      }
+    };
+
+    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE, uuidFactory, simplePartitioner);
 
     Properties props = new Properties();
     props.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
     Producer<byte[], byte[]> producer = new KafkaProducer<>(props, new ByteArraySerializer(), new ByteArraySerializer());
     // Prepare messages.
-    int messageSize = MAX_SEGMENT_SIZE + MAX_SEGMENT_SIZE / 2;
+    int twoSegmentSize = MAX_SEGMENT_SIZE + MAX_SEGMENT_SIZE / 2;
+    int oneSegmentSize = MAX_SEGMENT_SIZE / 2;
     // M0, 2 segments
-    UUID messageId0 = UUID.randomUUID();
-    String message0 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m0Segs = splitter.split(topic, 0, messageId0, message0.getBytes());
+    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m0Segs =
+        createSerializedProducerRecord(0, twoSegmentSize, splitter, topic, partition).iterator();
+
     // M1, 2 segments
-    UUID messageId1 = UUID.randomUUID();
-    String message1 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m1Segs = splitter.split(topic, 0, messageId1, message1.getBytes());
+    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m1Segs =
+        createSerializedProducerRecord(1, twoSegmentSize, splitter, topic, partition).iterator();
     // M2, 1 segment
-    UUID messageId2 = UUID.randomUUID();
-    String message2 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
-    List<ProducerRecord<byte[], byte[]>> m2Segs = splitter.split(topic, 0, messageId2, message2.getBytes());
+    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m2Segs =
+        createSerializedProducerRecord(2, oneSegmentSize, splitter, topic, partition).iterator();
     // M3, 2 segment
-    UUID messageId3 = UUID.randomUUID();
-    String message3 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m3Segs = splitter.split(topic, 0, messageId3, message3.getBytes());
+    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m3Segs =
+        createSerializedProducerRecord(3, twoSegmentSize, splitter, topic, partition).iterator();
     // M4, 1 segment
-    UUID messageId4 = UUID.randomUUID();
-    String message4 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
-    List<ProducerRecord<byte[], byte[]>> m4Segs = splitter.split(topic, 0, messageId4, message4.getBytes());
+    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m4Segs =
+        createSerializedProducerRecord(4, oneSegmentSize, splitter, topic, partition).iterator();
 
     try {
-      producer.send(m0Segs.get(0)).get();
-      producer.send(m1Segs.get(0)).get();
-      producer.send(m2Segs.get(0)).get();
-      producer.send(m3Segs.get(0)).get();
-      producer.send(m1Segs.get(1)).get();
-      producer.send(m0Segs.get(1)).get();
-      producer.send(m3Segs.get(1)).get();
-      producer.send(m4Segs.get(0)).get();
+      //This produces the sequence of records: 0, 1, 2, 3, 1, 0, 3, 4
+      producer.send(m0Segs.next()).get();
+      producer.send(m1Segs.next()).get();
+      producer.send(m2Segs.next()).get();
+      producer.send(m3Segs.next()).get();
+      producer.send(m1Segs.next()).get();
+      producer.send(m0Segs.next()).get();
+      producer.send(m3Segs.next()).get();
+      producer.send(m4Segs.next()).get();
     } catch (Exception e) {
       fail("Produce synthetic data failed.", e);
     }
     producer.close();
+  }
+
+  private Collection<ExtensibleProducerRecord<byte[], byte[]>> createSerializedProducerRecord(int messageId,
+      int messageSize, MessageSplitter splitter, String topic, int partition) {
+
+    String message0 = TestUtils.getRandomString(messageSize);
+    ExtensibleProducerRecord<byte[], byte[]> originalRecord0 =
+        new ExtensibleProducerRecord<>(topic, partition, null /* timestamp */, new byte[] { (byte)  messageId},  message0.getBytes());
+    return splitter.split(originalRecord0);
   }
 
   private class RebalanceTestConsumerThread extends Thread {

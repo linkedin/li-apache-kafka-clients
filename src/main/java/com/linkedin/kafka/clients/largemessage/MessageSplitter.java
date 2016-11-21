@@ -12,10 +12,6 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import java.util.Collection;
-import org.apache.kafka.clients.producer.ProducerRecord;
-
-import java.util.List;
-import java.util.UUID;
 
 /**
  * Message splitter for large messages
@@ -33,8 +29,6 @@ public interface MessageSplitter<K, V> {
    * then this may return a singleton collection with just previousRecord.
    */
   Collection<ExtensibleProducerRecord<byte[], byte[]>> split(ExtensibleProducerRecord<byte[], byte[]> previousRecord);
-
-
 
 }
 
