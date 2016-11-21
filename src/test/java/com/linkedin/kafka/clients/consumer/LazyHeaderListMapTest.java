@@ -1,12 +1,24 @@
+/**
+ * Copyright 2016 LinkedIn Corp. Licensed under the Apache License, Version 2.0 (the "License"); you may not use this
+ * file except in compliance with the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+ * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ */
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.utils.HeaderParser;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import org.junit.Assert;
 import org.testng.annotations.Test;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 
 public class LazyHeaderListMapTest {
 
@@ -26,5 +38,10 @@ public class LazyHeaderListMapTest {
     Assert.assertEquals(deserializedMap.size(), 2);
     Assert.assertArrayEquals(deserializedMap.get(0), VALUE_0);
     Assert.assertArrayEquals(deserializedMap.get(1), VALUE_1);
+
+    Iterator<Integer> keyIterator = deserializedMap.keySet().iterator();
+    assertEquals(keyIterator.next().intValue(), 0);
+    assertEquals(keyIterator.next().intValue(), 1);
+    assertFalse(keyIterator.hasNext());
   }
 }

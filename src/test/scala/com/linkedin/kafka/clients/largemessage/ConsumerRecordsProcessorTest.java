@@ -18,10 +18,7 @@ import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import java.util.Collection;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.common.serialization.Serializer;
@@ -29,7 +26,6 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -178,7 +174,6 @@ public class ConsumerRecordsProcessorTest {
     // The offset tracker now has 2, 4, 5 in it.
     TopicPartition tp = new TopicPartition("topic", 0);
 
-    UUID largeMessageId = UUID.randomUUID();
     byte[] largeMessage1Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));
     ExtensibleProducerRecord<byte[], byte[]> largeMessage =
         new ExtensibleProducerRecord<>("topic", tp.partition(), null, "key".getBytes(), largeMessage1Bytes);
@@ -189,8 +184,7 @@ public class ConsumerRecordsProcessorTest {
     // Let consumer record 6 be a large message segment.
     ExtensibleProducerRecord<byte[], byte[]> producerRecord6S0 = splitLargeMessage.next();
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord6 =
-        new ExtensibleConsumerRecord<>("topic", 0, 6, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), producerRecord6S0.value());
-    consumerRecord6.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, producerRecord6S0.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER));
+      TestUtils.producerRecordToConsumerRecord(producerRecord6S0, 6, 0L, TimestampType.CREATE_TIME, 0, 0);
 
     // Let consumer record 7 be a normal record.
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord7 =
@@ -199,8 +193,7 @@ public class ConsumerRecordsProcessorTest {
     // Let consumer record 8 completes consumer record 6
     ExtensibleProducerRecord<byte[], byte[]> producerRecord6S1 = splitLargeMessage.next();
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord8 =
-        new ExtensibleConsumerRecord<>("topic", 0, 8, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), producerRecord6S1.value());
-    consumerRecord8.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, producerRecord6S1.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER));
+      TestUtils.producerRecordToConsumerRecord(producerRecord6S1, 8, 0L, TimestampType.CREATE_TIME, 0, 0);
 
     recordList.add(consumerRecord6);
     recordList.add(consumerRecord7);
@@ -298,30 +291,31 @@ public class ConsumerRecordsProcessorTest {
 
     // Let consumer record 0 be a normal record.
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord0 =
-        new ExtensibleConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message0"));
+        new ExtensibleConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0,
+          "key".getBytes(), stringSerializer.serialize("topic", "message0"));
     // Let consumer record 1 be a large message segment
     ExtensibleProducerRecord<byte[], byte[]> producerRecord1S0 = splitLargeMessage1.next();
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord1 =
-        new ExtensibleConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), producerRecord1S0.value());
-    consumerRecord1.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, producerRecord1S0.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER));
+      TestUtils.producerRecordToConsumerRecord(producerRecord1S0, 1, 0L, TimestampType.CREATE_TIME, 0, 0);
+
     // Let consumer record 2 be a normal message
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord2 =
-        new ExtensibleConsumerRecord<>("topic", 0, 2, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message1"));
+        new ExtensibleConsumerRecord<>("topic", 0, 2, 0L, TimestampType.CREATE_TIME, 0, 0, 0,
+          "key".getBytes(), stringSerializer.serialize("topic", "message1"));
     // Let record 3 be a new large message segment
     ExtensibleProducerRecord<byte[], byte[]> producerRecord2S0 = splitLargeMessage2.next();
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord3 =
-        new ExtensibleConsumerRecord<>("topic", 0, 3, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), producerRecord2S0.value());
-    consumerRecord3.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, producerRecord2S0.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER));
+      TestUtils.producerRecordToConsumerRecord(producerRecord2S0, 3, 0L, TimestampType.CREATE_TIME, 0, 0);
+
     // let record 4 completes record 3
     ExtensibleProducerRecord<byte[], byte[]> producerRecord2S1 = splitLargeMessage2.next();
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord4 =
-        new ExtensibleConsumerRecord<>("topic", 0, 4, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), producerRecord2S1.value());
-    consumerRecord4.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, producerRecord2S1.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER));
+      TestUtils.producerRecordToConsumerRecord(producerRecord2S1, 4, 0L, TimestampType.CREATE_TIME, 0, 0);
+
     // let record 5 completes record 1
     ExtensibleProducerRecord<byte[], byte[]> producerRecord1S1 = splitLargeMessage1.next();
     ExtensibleConsumerRecord<byte[], byte[]> consumerRecord5 =
-        new ExtensibleConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage1.next().value());
-    consumerRecord5.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, producerRecord1S1.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER));
+      TestUtils.producerRecordToConsumerRecord(producerRecord1S1, 5, 0L, TimestampType.CREATE_TIME, 0, 0);
 
     // Construct the consumer records.
     List<ExtensibleConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();

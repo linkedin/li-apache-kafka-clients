@@ -19,7 +19,6 @@ import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.Iterator;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;

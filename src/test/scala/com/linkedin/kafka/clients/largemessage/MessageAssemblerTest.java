@@ -13,8 +13,6 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.serialization.Deserializer;
-import org.apache.kafka.common.serialization.Serializer;
 import org.testng.annotations.Test;
 
 import java.nio.ByteBuffer;

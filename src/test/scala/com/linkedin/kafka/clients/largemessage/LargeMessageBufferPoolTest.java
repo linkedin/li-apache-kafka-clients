@@ -42,19 +42,22 @@ public class LargeMessageBufferPoolTest {
     LargeMessageSegment m0Seg2 = TestUtils.createLargeMessageSegment(messageId0, 2, 3, 25, 5);
 
     // Step 1: insert message 0
-    assertEquals(pool.tryCompleteMessage(tp, offset++, m0Seg0, m0Seg0.segmentHeader().length).serializedMessage(), null, "No message should be completed");
+    assertEquals(pool.tryCompleteMessage(tp, offset++, m0Seg0, m0Seg0.segmentHeader().length).serializedMessage(), null,
+      "No message should be completed");
     assertEquals(pool.size(), 1, "Buffer pool size should be 1.");
     assertEquals(pool.bufferUsed(), 10, "Buffer pool buffered bytes should be 10.");
     assertEquals(pool.safeOffsets().size(), 1, "Safe offset map size should 1.");
     assertEquals(pool.safeOffsets().get(tp).longValue(), 0, "Safe offset for partition 0 should be 0.");
 
-    assertEquals(pool.tryCompleteMessage(tp, offset++, m0Seg1, m0Seg1.segmentHeader().length).serializedMessage(), null, "No message should be completed");
+    assertEquals(pool.tryCompleteMessage(tp, offset++, m0Seg1, m0Seg1.segmentHeader().length).serializedMessage(), null,
+      "No message should be completed");
     assertEquals(pool.size(), 1, "Buffer pool size should be 1.");
     assertEquals(pool.bufferUsed(), 20, "Buffer pool buffered bytes should be 20.");
     assertEquals(pool.safeOffsets().size(), 1, "Safe offset map size should 1.");
     assertEquals(pool.safeOffsets().get(tp).longValue(), 0, "Safe offset for partition 0 should be 0.");
 
-    assertEquals(pool.tryCompleteMessage(tp, offset++, m0Seg1, m0Seg1.segmentHeader().length).serializedMessage(), null, "No message should be completed on duplicates");
+    assertEquals(pool.tryCompleteMessage(tp, offset++, m0Seg1, m0Seg1.segmentHeader().length).serializedMessage(), null,
+      "No message should be completed on duplicates");
     assertEquals(pool.size(), 1, "Buffer pool size should be 1.");
     assertEquals(pool.bufferUsed(), 20, "Buffer pool buffered bytes should be 20.");
     assertEquals(pool.safeOffsets().size(), 1, "Safe offset map size should 1.");
@@ -63,7 +66,9 @@ public class LargeMessageBufferPoolTest {
     LargeMessage.SegmentAddResult segmentAddResult = pool.tryCompleteMessage(tp, offset, m0Seg2, m0Seg2.segmentHeader().length);
     assertNotNull(segmentAddResult.serializedMessage(), "Message 0 should be completed.");
     assertEquals(segmentAddResult.startingOffset(), 0, "Message starting offset should be 0");
-    assertEquals(segmentAddResult.totalHeadersSize(), m0Seg0.segmentHeader().length + m0Seg1.segmentHeader().length + m0Seg2.segmentHeader().length);
+    assertEquals(segmentAddResult.totalHeadersSize(),
+      m0Seg0.segmentHeader().length + m0Seg1.segmentHeader().length + m0Seg2.segmentHeader().length,
+      "Assembled message header size should be the total of the header sizes of the segments it assembled.");
 
     TestUtils.verifyMessage(segmentAddResult.serializedMessage(), 25, 10);
   }

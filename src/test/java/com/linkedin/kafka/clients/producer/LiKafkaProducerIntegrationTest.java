@@ -14,7 +14,6 @@ import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
-import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -106,12 +105,12 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     LiKafkaProducer<String, String> producer = createProducer(props);
     final String tempTopic = "testTopic" + new Random().nextInt(1000000);
 
-    final byte[] EXPECTED_HEADER_VALUE = new byte[] { 1, 2, 3};
+    final byte[] expectedHeaderValue = new byte[] { 1, 2, 3};
 
     for (int i = 0; i < RECORD_COUNT; ++i) {
       String value = Integer.toString(i);
       ExtensibleProducerRecord producerRecord = new ExtensibleProducerRecord<>(tempTopic, null, null, null, value);
-      producerRecord.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START, EXPECTED_HEADER_VALUE);
+      producerRecord.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START, expectedHeaderValue);
       producer.send(producerRecord);
     }
 
@@ -133,7 +132,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
         counts.set(index);
         messageCount++;
         byte[] headerValue = xRecord.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START);
-        assertEquals(headerValue, EXPECTED_HEADER_VALUE);
+        assertEquals(headerValue, expectedHeaderValue);
       }
     }
     consumer.close();
