@@ -299,7 +299,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     valueWithHeaders.putInt(xRecord.value().length);
     valueWithHeaders.put(xRecord.value());
 
-    if (valueWithHeaders.remaining() != 0) {
+    if (valueWithHeaders.hasRemaining()) {
       throw new IllegalStateException("Detected slack when writing headers to byte buffer.");
     }
 

@@ -31,8 +31,7 @@ import java.util.UUID;
  *
  */
 public class LargeMessageSegment {
-  // The segment information over head bytes when serialize.
-  public static final int SEGMENT_INFO_OVERHEAD = 16 + Integer.BYTES + Integer.BYTES + Integer.BYTES;
+
   /**
    * Version history:
    * 0 - did not use headers.
@@ -128,7 +127,6 @@ public class LargeMessageSegment {
     }
     this._originalKeyWasNull = headerReader.get() == 1;
     this._segment = segment;
-
   }
 
   @Override

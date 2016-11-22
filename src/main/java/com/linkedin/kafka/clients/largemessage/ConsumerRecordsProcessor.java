@@ -266,7 +266,7 @@ public class ConsumerRecordsProcessor {
   }
 
 
-  //TODO: it would be better to do this with Java streams
+  //TODO: it would be better to do this with Java streams?
   private ExtensibleConsumerRecord<byte[], byte[]> filterAndAssembleRecords(ExtensibleConsumerRecord<byte[], byte[]> srcRecord) {
     TopicPartition topicPartition = new TopicPartition(srcRecord.topic(), srcRecord.partition());
     if (srcRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER) == null) {
@@ -275,7 +275,6 @@ public class ConsumerRecordsProcessor {
       _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), Collections.emptySet());
       return srcRecord;
     }
-
 
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(topicPartition, srcRecord.offset(), srcRecord);
     if (assembledResult.messageBytes() != null) {

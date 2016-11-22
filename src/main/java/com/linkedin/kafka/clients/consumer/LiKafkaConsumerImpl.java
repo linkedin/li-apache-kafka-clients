@@ -234,7 +234,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       now = System.currentTimeMillis();
     } while (xRecords.isEmpty() && now < startMs + timeout);
 
-    Map<TopicPartition, List<ConsumerRecord<K, V>>> consumerRecords = new HashMap<>();
+    Map<TopicPartition, List<ConsumerRecord<K, V>>> consumerRecordsMap = new HashMap<>();
     for (ExtensibleConsumerRecord<byte[], byte[]> xRecord : xRecords) {
       ExtensibleConsumerRecord<K, V> userRecord = deserialize(xRecord);
       if (_auditor != null) {
@@ -244,14 +244,17 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
 
       TopicPartition topicPartition = new TopicPartition(userRecord.topic(), userRecord.partition());
-      List<ConsumerRecord<K, V>> listForTopicPartition = consumerRecords.get(topicPartition);
+      List<ConsumerRecord<K, V>> listForTopicPartition = consumerRecordsMap.get(topicPartition);
       if (listForTopicPartition == null) {
         listForTopicPartition = new ArrayList<>();
+        consumerRecordsMap.put(topicPartition, listForTopicPartition);
       }
 
       listForTopicPartition.add(userRecord);
     }
-    return new ConsumerRecords<>(consumerRecords);
+
+    ConsumerRecords<K, V> consumerRecords = new ConsumerRecords<>(consumerRecordsMap);
+    return consumerRecords;
   }
 
   private ExtensibleConsumerRecord<K, V> deserialize(ExtensibleConsumerRecord<byte[], byte[]> record) {
@@ -286,13 +289,19 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     rawByteBuffer.limit(rawByteBuffer.position() + headerSize);
     ByteBuffer headerByteBuffer = rawByteBuffer.slice();
     LazyHeaderListMap headers = new LazyHeaderListMap(headerByteBuffer);
-    int originalValueSize = rawByteBuffer.getInt();
-    byte[] originalValue = new byte[originalValueSize];
-    rawByteBuffer.get(originalValue);
+    rawByteBuffer.position(headerSize + 4 + 4);
+    rawByteBuffer.limit(rawByteBuffer.capacity());
+    int valueSize = rawByteBuffer.getInt();
+    byte[] value = new byte[valueSize];
+    rawByteBuffer.get(value);
+
+    if (rawByteBuffer.hasRemaining()) {
+      throw new IllegalStateException("Failed to consume all bytes in message buffer.");
+    }
     //TODO: recompute checksum?
-    return new ExtensibleConsumerRecord<byte[], byte[]>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(),
-        rawRecord.timestampType(), rawRecord.checksum(), rawRecord.serializedKeySize(), originalValueSize, rawRecord.key(),
-         originalValue, headers, headerSize + 4 /* magic size*/);
+    return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(),
+        rawRecord.timestampType(), rawRecord.checksum(), rawRecord.serializedKeySize(), valueSize, rawRecord.key(),
+         value, headers, headerSize + 4 /* magic size*/);
   }
 
   @Override
