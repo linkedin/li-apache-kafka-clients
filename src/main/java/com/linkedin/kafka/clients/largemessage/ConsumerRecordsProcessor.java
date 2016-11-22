@@ -269,43 +269,44 @@ public class ConsumerRecordsProcessor {
   //TODO: it would be better to do this with Java streams?
   private ExtensibleConsumerRecord<byte[], byte[]> filterAndAssembleRecords(ExtensibleConsumerRecord<byte[], byte[]> srcRecord) {
     TopicPartition topicPartition = new TopicPartition(srcRecord.topic(), srcRecord.partition());
+    long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
     if (srcRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER) == null) {
       //Not a large message segment
-      long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
       _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), Collections.emptySet());
       return srcRecord;
     }
 
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(topicPartition, srcRecord.offset(), srcRecord);
-    if (assembledResult.messageBytes() != null) {
-      // We skip the messages whose offset is smaller than the consumer high watermark.
-      if (shouldSkip(topicPartition, srcRecord.offset())) {
-        return null;
-      }
-      // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
-      long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
-      _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, assembledResult.messageStartingOffset(),
-          assembledResult.segmentOffsets());
-
-      int serializedKeySize =  assembledResult.isOriginalKeyIsNull() ? 0 : srcRecord.key().length;
-      byte[] key = assembledResult.isOriginalKeyIsNull() ? null : srcRecord.key();
-      int serializedValueSize = assembledResult.messageBytes().length;
-
-      //TODO: which offset to use?
-      ExtensibleConsumerRecord largeMessageRecord =
-        new ExtensibleConsumerRecord<>(srcRecord.topic(), srcRecord.partition(), srcRecord.offset(),
-          srcRecord.timestamp(), srcRecord.timestampType(),
-          srcRecord.checksum(),
-          serializedKeySize, serializedValueSize,
-          key, assembledResult.messageBytes());
-      //TODO: checksums recomputed?
-      largeMessageRecord.headersSize(assembledResult.totalHeadersSize());
-      largeMessageRecord.copyHeadersFrom(srcRecord);
-
-      return largeMessageRecord;
-    } else {
+    if (assembledResult.messageBytes() == null) {
+      //Not a complete, large message
       return null;
     }
+
+    if (shouldSkip(topicPartition, srcRecord.offset())) {
+      // We skip the messages whose offset is smaller than the consumer high watermark.
+      return null;
+    }
+
+    // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
+    _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, assembledResult.messageStartingOffset(),
+        assembledResult.segmentOffsets());
+
+    int serializedKeySize = assembledResult.isOriginalKeyIsNull() ? 0 : srcRecord.key().length;
+    byte[] key = assembledResult.isOriginalKeyIsNull() ? null : srcRecord.key();
+    int serializedValueSize = assembledResult.messageBytes().length;
+
+    //TODO: which offset to use?
+    ExtensibleConsumerRecord largeMessageRecord =
+      new ExtensibleConsumerRecord<>(srcRecord.topic(), srcRecord.partition(), srcRecord.offset(),
+        srcRecord.timestamp(), srcRecord.timestampType(),
+        srcRecord.checksum(),
+        serializedKeySize, serializedValueSize,
+        key, assembledResult.messageBytes());
+    //TODO: checksums recomputed?
+    largeMessageRecord.headersSize(assembledResult.totalHeadersSize());
+    largeMessageRecord.copyHeadersFrom(srcRecord);
+
+    return largeMessageRecord;
   }
 
   /**

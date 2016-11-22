@@ -261,7 +261,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     K key = _keyDeserializer.deserialize(record.topic(), record.key());
     V value = _valueDeserializer.deserialize(record.topic(), record.value());
     ExtensibleConsumerRecord<K, V> deserializedRecord =
-        new ExtensibleConsumerRecord<K, V>(record.topic(), record.partition(), record.offset(),
+        new ExtensibleConsumerRecord<>(record.topic(), record.partition(), record.offset(),
             record.timestamp(), record.timestampType(),
             record.checksum(),
             record.serializedKeySize(), record.serializedValueSize(),

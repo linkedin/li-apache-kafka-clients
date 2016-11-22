@@ -271,7 +271,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         for (ExtensibleProducerRecord<byte[], byte[]> segmentRecord : xRecords) {
           ProducerRecord<byte[], byte[]> segmentProducerRecord =
             serializeWithHeaders(segmentRecord);
-          future = _producer.send(segmentProducerRecord, errorLoggingCallback); //TODO: check this against old version
+          future = _producer.send(segmentProducerRecord, errorLoggingCallback);
         }
       }
       return future;

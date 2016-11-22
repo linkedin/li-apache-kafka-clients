@@ -21,6 +21,7 @@ import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import java.util.Iterator;
+import java.util.concurrent.ConcurrentSkipListMap;
 import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -67,7 +68,7 @@ import static org.testng.Assert.fail;
 public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
 
   private final int MESSAGE_COUNT = 1000;
-  private final Random RANDOM = new Random();
+  private final Random RANDOM = new Random(89808989809L);
   private final String TOPIC1 = "topic1";
   private final String TOPIC2 = "topic2";
   private final int NUM_PRODUCER = 2;
@@ -432,7 +433,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "consumer1");
     LiKafkaConsumer<String, String> consumer1 = createConsumer(props);
 
-    final Map<String, String> messageUnseen = new ConcurrentHashMap<>(messages);
+    final Map<String, String> messageUnseen = new ConcurrentSkipListMap<>(messages);
 
     Thread thread0 = new RebalanceTestConsumerThread(consumer0, messageUnseen, 0);
     Thread thread1 = new RebalanceTestConsumerThread(consumer1, messageUnseen, 1);
@@ -582,7 +583,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       for (int i = 0; i < MESSAGE_COUNT; i++) {
         // The message size is set to 100 - 1124, So we should have most of the messages to be large messages
         // while still have some ordinary size messages.
-        int messageSize = 100 + RANDOM.nextInt() % 1024;
+        int messageSize = 100 + RANDOM.nextInt(1024);
         final String messageId = UUID.randomUUID().toString().replace("-", "");
         final String message = messageId + TestUtils.getRandomString(messageSize);
 
@@ -595,11 +596,17 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
                 if (e == null) {
                   ackedMessages.add(messageId);
                 }
-                _messages.put(recordMetadata.topic() + "-" + recordMetadata.partition() + "-" + recordMetadata.offset(), message);
+                String messageId = messageId(recordMetadata.topic(), recordMetadata.partition(), recordMetadata.offset());
+                //System.out.println("Adding message: " + messageId);
+                _messages.put(messageId, message);
               }
             });
       }
     }
+  }
+
+  private static String messageId(String topic, int partition, long offset) {
+    return topic + "-" + partition + "-" + offset;
   }
 
   // Generic the following synthetic messages in order and produce to the same partition.
@@ -659,6 +666,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     } catch (Exception e) {
       fail("Produce synthetic data failed.", e);
     }
+    producer.flush();
     producer.close();
   }
 
@@ -689,10 +697,11 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     private void processConsumedRecord(ConsumerRecords<String, String> records) {
       for (ConsumerRecord<String, String> record : records) {
-        String messageId = record.topic() + "-" + record.partition() + "-" + record.offset();
+        String messageId = messageId(record.topic(), record.partition(), record.offset());
         String origMessage = _messageUnseen.get(messageId);
         assertEquals(record.value(), origMessage, "Message should be the same. partition = " +
             record.topic() + "-" + record.partition() + ", offset = " + record.offset());
+        System.out.println("Removing seen message \"" + messageId + "\".");
         _messageUnseen.remove(messageId);
       }
     }
