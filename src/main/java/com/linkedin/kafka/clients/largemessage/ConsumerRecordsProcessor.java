@@ -36,7 +36,7 @@ public class ConsumerRecordsProcessor<K, V> {
   private final Deserializer<K> _keyDeserializer;
   private final Deserializer<V> _valueDeserializer;
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
-  private final Map<TopicPartition, Long> partitionConsumerHighWatermarks;
+  private final Map<TopicPartition, Long> _partitionConsumerHighWatermark;
   private final Auditor<K, V> _auditor;
 
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
@@ -49,7 +49,7 @@ public class ConsumerRecordsProcessor<K, V> {
     _valueDeserializer = valueDeserializer;
     _deliveredMessageOffsetTracker = deliveredMessageOffsetTracker;
     _auditor = auditor;
-    partitionConsumerHighWatermarks = new HashMap<>();
+    _partitionConsumerHighWatermark = new HashMap<>();
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
     }
@@ -92,7 +92,7 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param tp The partition to get safe offset.
    * @return safe offset for the partition.
    */
-  public long safeOffset(TopicPartition tp) {
+  public Long safeOffset(TopicPartition tp) {
     return _deliveredMessageOffsetTracker.safeOffset(tp);
   }
 
@@ -127,7 +127,7 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param messageOffset the offset of a delivered message
    * @return The safe offset when the specified message is delivered.
    */
-  public long safeOffset(TopicPartition tp, long messageOffset) {
+  public Long safeOffset(TopicPartition tp, long messageOffset) {
     return _deliveredMessageOffsetTracker.safeOffset(tp, messageOffset);
   }
 
@@ -140,7 +140,7 @@ public class ConsumerRecordsProcessor<K, V> {
    *
    * @return a mapping from partitions to safe offsets.
    */
-  public Map<TopicPartition, OffsetAndMetadata> safeOffsets() {
+  public Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit() {
     Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit = new HashMap<>();
     for (Map.Entry<TopicPartition, Long> entry : _deliveredMessageOffsetTracker.safeOffsets().entrySet()) {
       safeOffsetsToCommit.put(entry.getKey(), new OffsetAndMetadata(entry.getValue()));
@@ -159,16 +159,29 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param offsetsToCommit the offset map user attempting commit.
    * @return the safe offset map that user should use to commit offsets.
    */
-  public Map<TopicPartition, OffsetAndMetadata> safeOffsets(Map<TopicPartition, OffsetAndMetadata> offsetsToCommit) {
+  public Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit(Map<TopicPartition, OffsetAndMetadata> offsetsToCommit,
+                                                                    boolean ignoreConsumerHighWatermark) {
     Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit = new HashMap<>();
     for (TopicPartition tp : offsetsToCommit.keySet()) {
-      // We need to minus one because the passed in offset map is the next offset to consume.
-      long messageOffset = offsetsToCommit.get(tp).offset() - 1;
-      long safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp, messageOffset);
-      // We need to combine the metadata with the consumer high watermark.
-      String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(offsetsToCommit.get(tp).metadata(),
-          messageOffset + 1);
-      OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(Math.min(safeOffsetToCommit, messageOffset + 1), wrappedMetadata);
+      long origOffset = offsetsToCommit.get(tp).offset();
+      Long safeOffsetToCommit = origOffset;
+      if (origOffset > 0) {
+        // We need to find the previous delivered offset from this partition and use its safe offset.
+        Long previousDeliveredOffset = _deliveredMessageOffsetTracker.closestDeliveredUpTo(tp, origOffset - 1);
+        if (previousDeliveredOffset != null) {
+          safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp, previousDeliveredOffset);
+        } else {
+          safeOffsetToCommit = _deliveredMessageOffsetTracker.earliestTrackedOffset(tp);
+          if (safeOffsetToCommit == null) {
+            safeOffsetToCommit = origOffset;
+          }
+        }
+      }
+      // We need to combine the metadata with the high watermark. High watermark should never rewind.
+      Long hw = _partitionConsumerHighWatermark.get(tp);
+      hw = (hw == null || ignoreConsumerHighWatermark) ? origOffset : Math.max(origOffset, hw);
+      String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(offsetsToCommit.get(tp).metadata(), hw);
+      OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(Math.min(safeOffsetToCommit, origOffset), wrappedMetadata);
       safeOffsetsToCommit.put(tp, offsetAndMetadata);
     }
     return safeOffsetsToCommit;
@@ -184,6 +197,15 @@ public class ConsumerRecordsProcessor<K, V> {
    */
   public long startingOffset(TopicPartition tp, long messageOffset) {
     return _deliveredMessageOffsetTracker.startingOffset(tp, messageOffset);
+  }
+
+  /**
+   * Get the earliest tracked offset for a partition.
+   * @param tp The given partition.
+   * @return the earliest tracked offset.
+   */
+  public Long earliestTrackedOffset(TopicPartition tp) {
+    return _deliveredMessageOffsetTracker.earliestTrackedOffset(tp);
   }
 
   /**
@@ -218,9 +240,9 @@ public class ConsumerRecordsProcessor<K, V> {
   }
 
   /**
-   * Mark the consumer high watermark for a partition. The consumer record processor will ignore the messages whose
-   * offset is less than the consumer high watermark. This is useful to avoid duplicates after a seek() or consumer
-   * rebalance. Notice that the consumer high watermark is not guaranteed to be last committed offset. It is only used
+   * Mark the high watermark for a partition. The consumer record processor will ignore the messages whose
+   * offset is less than the high watermark. This is useful to avoid duplicates after a seek() or consumer
+   * rebalance. Notice that the high watermark is not guaranteed to be last committed offset. It is only used
    * to explicitly specify the minimum acceptable message
    * <p>
    * Note: This the offset in seek won't be cleaned up if there is an automatic offset reset. User needs to
@@ -231,31 +253,31 @@ public class ConsumerRecordsProcessor<K, V> {
    */
   public void setPartitionConsumerHighWaterMark(TopicPartition tp, long offset) {
     // When user seek to an offset, the HW should be that offset - 1.
-    partitionConsumerHighWatermarks.put(tp, offset);
+    _partitionConsumerHighWatermark.put(tp, offset);
   }
 
   /**
-   * Clear all the consumer high watermarks tracked by the consumer record processor.
+   * Clear all the high watermarks tracked by the consumer record processor.
    */
   public void clearAllConsumerHighWaterMarks() {
-    partitionConsumerHighWatermarks.clear();
+    _partitionConsumerHighWatermark.clear();
   }
 
   /**
-   * @return The number of low watermarks in track.
+   * @return The number of high watermarks in track.
    */
   public int numConsumerHighWaterMarks() {
-    return partitionConsumerHighWatermarks.size();
+    return _partitionConsumerHighWatermark.size();
   }
 
   /**
-   * Get the consumer high watermark of a given partition.
+   * Get the high watermark of a given partition.
    *
-   * @param tp the partition to get low watermark.
-   * @return the low watermark of the given partition.
+   * @param tp the partition to get high watermark.
+   * @return the high watermark of the given partition.
    */
   public Long consumerHighWaterMarkForPartition(TopicPartition tp) {
-    return partitionConsumerHighWatermarks.get(tp);
+    return _partitionConsumerHighWatermark.get(tp);
   }
 
   /**
@@ -265,7 +287,7 @@ public class ConsumerRecordsProcessor<K, V> {
   public void clear() {
     _deliveredMessageOffsetTracker.clear();
     _messageAssembler.clear();
-    partitionConsumerHighWatermarks.clear();
+    _partitionConsumerHighWatermark.clear();
   }
 
   /**
@@ -276,7 +298,7 @@ public class ConsumerRecordsProcessor<K, V> {
   public void clear(TopicPartition tp) {
     _deliveredMessageOffsetTracker.clear(tp);
     _messageAssembler.clear(tp);
-    partitionConsumerHighWatermarks.remove(tp);
+    _partitionConsumerHighWatermark.remove(tp);
   }
 
   public void close() {
@@ -293,7 +315,7 @@ public class ConsumerRecordsProcessor<K, V> {
     if (value != null) {
       if (_auditor != null) {
         _auditor.record(tp.topic(), key, value, consumerRecord.timestamp(), 1L,
-            (long) consumerRecord.value().length, AuditType.SUCCESS);
+                        (long) consumerRecord.value().length, AuditType.SUCCESS);
       }
       handledRecord = new ConsumerRecord<>(
           consumerRecord.topic(),
@@ -313,16 +335,22 @@ public class ConsumerRecordsProcessor<K, V> {
   private byte[] parseAndMaybeTrackRecord(TopicPartition tp, long messageOffset, byte[] bytes) {
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
     if (assembledResult.messageBytes() != null) {
-      // We skip the messages whose offset is smaller than the consumer high watermark.
-      if (shouldSkip(tp, messageOffset)) {
-        return null;
-      }
+      boolean shouldSkip = shouldSkip(tp, messageOffset);
       // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
       long safeOffset = Math.min(messageOffset + 1, _messageAssembler.safeOffset(tp));
-      _deliveredMessageOffsetTracker.track(tp, messageOffset, safeOffset, assembledResult.messageStartingOffset(),
-          assembledResult.segmentOffsets());
-      return assembledResult.messageBytes();
+      _deliveredMessageOffsetTracker.track(tp,
+                                           messageOffset,
+                                           safeOffset,
+                                           assembledResult.messageStartingOffset(),
+                                           !shouldSkip);
+      // We skip the messages whose offset is smaller than the high watermark.
+      if (shouldSkip) {
+        return null;
+      } else {
+        return assembledResult.messageBytes();
+      }
     } else {
+      _deliveredMessageOffsetTracker.addNonMessageOffset(tp, messageOffset);
       return null;
     }
   }
@@ -338,7 +366,7 @@ public class ConsumerRecordsProcessor<K, V> {
    * @return true if the message should be skipped. Otherwise false.
    */
   private boolean shouldSkip(TopicPartition tp, long offset) {
-    Long hw = partitionConsumerHighWatermarks.get(tp);
+    Long hw = _partitionConsumerHighWatermark.get(tp);
     return hw != null && hw > offset;
   }
 }

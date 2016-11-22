@@ -15,7 +15,6 @@ import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
 import java.util.Map;
 
 
@@ -39,14 +38,14 @@ public class MessageAssemblerImpl implements MessageAssembler {
   public AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes) {
     LargeMessageSegment segment = _segmentDeserializer.deserialize(tp.topic(), segmentBytes);
     if (segment == null) {
-      return new AssembleResult(segmentBytes, offset, offset, Collections.emptySet());
+      return new AssembleResult(segmentBytes, offset, offset);
     } else {
       // Return immediately if it is a single segment message.
       if (segment.numberOfSegments == 1) {
-        return new AssembleResult(segment.payloadArray(), offset, offset, Collections.emptySet());
+        return new AssembleResult(segment.payloadArray(), offset, offset);
       } else {
         LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment);
-        return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset, result.segmentOffsets());
+        return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset);
       }
     }
   }

@@ -426,7 +426,7 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * safe offset.
    */
   @InterfaceOrigin.LiKafkaClients
-  long committedSafeOffset(TopicPartition partition);
+  Long committedSafeOffset(TopicPartition partition);
 
   /**
    * Get the metrics kept by the consumer
@@ -532,10 +532,10 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    *
    * @param tp            The topic partition to get safe offset
    * @param messageOffset the offset of a delivered message
-   * @return The safe offset when the specified message is delivered.
+   * @return The safe offset when the specified message is delivered. null if no message has been consumed from the partition.
    */
   @InterfaceOrigin.LiKafkaClients
-  long safeOffset(TopicPartition tp, long messageOffset);
+  Long safeOffset(TopicPartition tp, long messageOffset);
 
   /**
    * This method returns the current safe offset to commit for a specified partition.
@@ -545,16 +545,16 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * A safe offset will guarantee that all the segments of all incomplete messages will be consumed again if
    * the consumer accidentally dies.
    * If the safe offset of a partition is not available - no message has been delivered from that partition - the
-   * safe offset of the partition will be Long.MAX_VALUE.
+   * safe offset of the partition will be null.
    *
    * @param tp The partition to get safe offset.
-   * @return Safe offset for the partition. Long.MAX_VALUE is returned if no message has been delivered from the given
+   * @return Safe offset for the partition. null is returned if no message has been delivered from the given
    * partition.
    *
    * @see {@link #safeOffset(TopicPartition, long)}
    */
   @InterfaceOrigin.LiKafkaClients
-  long safeOffset(TopicPartition tp);
+  Long safeOffset(TopicPartition tp);
 
   /**
    * This method returns the safe offset to commit for each partition.

@@ -55,12 +55,12 @@ public class ConsumerRecordsProcessorTest {
     String message0 = "message0";
     ConsumerRecord<byte[], byte[]> consumerRecord0 =
         new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(),
-            stringSerializer.serialize("topic", message0));
+                             stringSerializer.serialize("topic", message0));
 
     // Let consumer record 1 be a large message.
     byte[] message1Bytes =
         segmentSerializer.serialize("topic",
-            TestUtils.createLargeMessageSegment(UUID.randomUUID(), 0, 2, 20, 10));
+                                    TestUtils.createLargeMessageSegment(UUID.randomUUID(), 0, 2, 20, 10));
     ConsumerRecord<byte[], byte[]> consumerRecord1 =
         new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message1Bytes);
 
@@ -124,19 +124,19 @@ public class ConsumerRecordsProcessorTest {
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
 
     consumerRecordsProcessor.process(records);
-    Map<TopicPartition, OffsetAndMetadata> safeOffsets = consumerRecordsProcessor.safeOffsets();
+    Map<TopicPartition, OffsetAndMetadata> safeOffsets = consumerRecordsProcessor.safeOffsetsToCommit();
     assertEquals(safeOffsets.size(), 1, "Safe offsets should contain one entry");
     assertEquals(safeOffsets.get(tp).offset(), 2, "Safe offset of topic partition 0 should be 2");
-    assertEquals(consumerRecordsProcessor.safeOffset(tp, 0L), 1, "safe offset should be 1");
-    assertEquals(consumerRecordsProcessor.safeOffset(tp, 1L), 2, "safe offset should be 2");
+    assertEquals(consumerRecordsProcessor.safeOffset(tp, 0L).longValue(), 1, "safe offset should be 1");
+    assertEquals(consumerRecordsProcessor.safeOffset(tp, 1L).longValue(), 2, "safe offset should be 2");
 
     Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
     offsetMap.put(tp, new OffsetAndMetadata(1L));
-    safeOffsets = consumerRecordsProcessor.safeOffsets(offsetMap);
+    safeOffsets = consumerRecordsProcessor.safeOffsetsToCommit(offsetMap, false);
     assertEquals(safeOffsets.get(tp).offset(), 1L, "Safe offset of topic partition 0 should be 1");
 
     offsetMap.put(tp, new OffsetAndMetadata(2L));
-    safeOffsets = consumerRecordsProcessor.safeOffsets(offsetMap);
+    safeOffsets = consumerRecordsProcessor.safeOffsetsToCommit(offsetMap, false);
     assertEquals(safeOffsets.get(tp).offset(), 2L, "Safe offset of topic partition 0 should be 2");
   }
 
@@ -147,24 +147,24 @@ public class ConsumerRecordsProcessorTest {
 
     // check safe offsets
     TopicPartition tp = new TopicPartition("topic", 0);
-    Map<TopicPartition, OffsetAndMetadata> safeOffsets = consumerRecordsProcessor.safeOffsets();
+    Map<TopicPartition, OffsetAndMetadata> safeOffsets = consumerRecordsProcessor.safeOffsetsToCommit();
     assertEquals(safeOffsets.size(), 1, "Safe offsets map should contain 1 entry");
-    assertEquals(consumerRecordsProcessor.safeOffset(tp, 0L), 1, "safe offset should be 1");
+    assertEquals(consumerRecordsProcessor.safeOffset(tp, 0L).longValue(), 1, "safe offset should be 1");
     try {
       consumerRecordsProcessor.safeOffset(tp, 1L);
       fail("Should throw exception because offset is invalid.");
     } catch (OffsetNotTrackedException onte) {
       assertTrue(onte.getMessage().startsWith("Offset 1 for partition"));
     }
-    assertEquals(consumerRecordsProcessor.safeOffset(tp, 2L), 1, "safe offset should be 1");
+    assertEquals(consumerRecordsProcessor.safeOffset(tp, 2L).longValue(), 1, "safe offset should be 1");
     try {
       consumerRecordsProcessor.safeOffset(tp, 3L);
       fail("Should throw exception because offset is invalid.");
     } catch (OffsetNotTrackedException onte) {
       assertTrue(onte.getMessage().startsWith("Offset 3 for partition"));
     }
-    assertEquals(consumerRecordsProcessor.safeOffset(tp, 4L), 1, "safe offset should be 1");
-    assertEquals(consumerRecordsProcessor.safeOffset(tp, 5L), 6, "safe offset should be 6");
+    assertEquals(consumerRecordsProcessor.safeOffset(tp, 4L).longValue(), 1, "safe offset should be 1");
+    assertEquals(consumerRecordsProcessor.safeOffset(tp, 5L).longValue(), 6, "safe offset should be 6");
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 4L), 3, "Starting offset of large message 2 should be 3");
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 5L), 1, "Starting offset of large message 1 should be 1");
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 0L), 0, "Starting offset of large message 0 should be 0");
@@ -195,7 +195,7 @@ public class ConsumerRecordsProcessorTest {
     // Let consumer record 7 be a normal record.
     ConsumerRecord<byte[], byte[]> consumerRecord7 =
         new ConsumerRecord<>("topic", 0, 7, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(),
-            stringSerializer.serialize("topic", "message7"));
+                             stringSerializer.serialize("topic", "message7"));
     // Let consumer record 8 completes consumer record 6
     ConsumerRecord<byte[], byte[]> consumerRecord8 =
         new ConsumerRecord<>("topic", 0, 8, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage.get(1).value());
@@ -209,7 +209,7 @@ public class ConsumerRecordsProcessorTest {
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
     consumerRecordsProcessor.process(records);
     // Now the offset tracker should have 4, 5, 6, 8 in side it.
-    assertEquals(consumerRecordsProcessor.safeOffset(tp, 7L), 6, "safe offset should be 6");
+    assertEquals(consumerRecordsProcessor.safeOffset(tp, 7L).longValue(), 6, "safe offset should be 6");
 
     try {
       consumerRecordsProcessor.safeOffset(tp, 2L);
@@ -274,7 +274,7 @@ public class ConsumerRecordsProcessorTest {
     consumerRecordsProcessor.process(getConsumerRecords());
 
     assertEquals(consumerRecordsProcessor.delivered(new TopicPartition("topic", 0)).longValue(), 5L,
-        "The last deivered message should be 5");
+                 "The last deivered message should be 5");
 
     assertNull(consumerRecordsProcessor.delivered(new TopicPartition("topic", 1)));
   }
@@ -334,12 +334,12 @@ public class ConsumerRecordsProcessorTest {
     MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false, segmentDeserializer);
     DeliveredMessageOffsetTracker deliveredMessageOffsetTracker = new DeliveredMessageOffsetTracker(4);
     return new ConsumerRecordsProcessor<>(assembler, stringDeserializer, stringDeserializer,
-        deliveredMessageOffsetTracker, null);
+                                          deliveredMessageOffsetTracker, null);
   }
 
   private byte[] wrapMessageBytes(Serializer<LargeMessageSegment> segmentSerializer, byte[] messageBytes) {
     return segmentSerializer.serialize("topic",
-        new LargeMessageSegment(UUID.randomUUID(), 0, 1, messageBytes.length,
-            ByteBuffer.wrap(messageBytes)));
+                                       new LargeMessageSegment(UUID.randomUUID(), 0, 1, messageBytes.length,
+                                                               ByteBuffer.wrap(messageBytes)));
   }
 }

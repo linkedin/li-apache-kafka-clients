@@ -135,25 +135,29 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
       LOG.info("Starting auditor...");
       try {
         while (!_shutdown) {
-          long now = _time.milliseconds();
-          if (now >= _nextTick + _reportingDelayMs) {
-            tick();
-          }
           try {
-            Thread.sleep(Math.max(0, _nextTick + _reportingDelayMs - now));
-          } catch (InterruptedException ie) {
-            // Let it go.
+            long now = _time.milliseconds();
+            if (now >= _nextTick + _reportingDelayMs) {
+              tick();
+            }
+            try {
+              Thread.sleep(Math.max(0, _nextTick + _reportingDelayMs - now));
+            } catch (InterruptedException ie) {
+              // Let it go.
+            }
+          } catch (Exception e) {
+            // We catch all the exceptions from the user's onTick() call but not exit.
+            LOG.error("Auditor encounter exception.", e);
           }
         }
-      } catch (Throwable t) {
-        LOG.error("Logging auditor encounter exception.", t);
       } finally {
         _currentStats.close();
         _nextStats.close();
+        _shutdown = true;
         onClosed(_currentStats, _nextStats);
       }
     } else {
-      LOG.info("Auto auditing is set to {}. Automatic ticking is disabled.", _enableAutoTick);
+      LOG.info("Auto auditing is set to false. Automatic ticking is disabled.");
     }
   }
 

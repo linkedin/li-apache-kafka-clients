@@ -25,7 +25,6 @@ import java.util.UUID;
  */
 public class LargeMessage {
   private final Map<Integer, ByteBuffer> _segments;
-  private final Set<Long> _segmentOffsets;
   private final int _messageSize;
   private final int _numberOfSegments;
   private final TopicPartition _tp;
@@ -37,7 +36,6 @@ public class LargeMessage {
     _messageSize = messageSize;
     _numberOfSegments = numberOfSegments;
     _segments = new HashMap<>();
-    _segmentOffsets = new HashSet<>();
     _bufferedBytes = 0;
     _tp = tp;
     _messageId = messageId;
@@ -58,16 +56,14 @@ public class LargeMessage {
       _bufferedBytes += segmentSize;
       if (_segments.size() == _numberOfSegments) {
         // If we have got all the segments, assemble the original serialized message.
-        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset, _segmentOffsets);
+        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset);
       }
-      // Add the segment offsets. We only track the segment offsets except the last segment.
-      _segmentOffsets.add(offset);
     } else {
       // duplicate segment
-      return new SegmentAddResult(null, 0, _startingOffset, _segmentOffsets);
+      return new SegmentAddResult(null, 0, _startingOffset);
     }
     // The segment is buffered, but it did not complete a large message.
-    return new SegmentAddResult(null, segmentSize, _startingOffset, _segmentOffsets);
+    return new SegmentAddResult(null, segmentSize, _startingOffset);
   }
 
   public TopicPartition topicPartition() {
@@ -131,13 +127,11 @@ public class LargeMessage {
     private final byte[] _serializedMessage;
     private final long _startingOffset;
     private final int _bytesAdded;
-    private final Set<Long> _segmentOffsets;
 
-    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset, Set<Long> segmentOffsets) {
+    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset) {
       _serializedMessage = serializedMessage;
       _bytesAdded = bytesAdded;
       _startingOffset = startingOffset;
-      _segmentOffsets = segmentOffsets;
     }
 
     /**
@@ -161,13 +155,6 @@ public class LargeMessage {
      */
     long startingOffset() {
       return _startingOffset;
-    }
-
-    /**
-     * @return the segment offsets of this large message.
-     */
-    Set<Long> segmentOffsets() {
-      return _segmentOffsets;
     }
   }
 

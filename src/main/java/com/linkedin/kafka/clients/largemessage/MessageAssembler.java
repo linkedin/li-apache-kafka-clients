@@ -72,13 +72,11 @@ public interface MessageAssembler {
     private final byte[] _messageBytes;
     private final long _messageStartingOffset;
     private final long _messageEndingOffset;
-    private final Set<Long> _segmentOffsets;
 
-    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset, Set<Long> segmentOffsets) {
+    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset) {
       _messageBytes = messageBytes;
       _messageStartingOffset = startingOffset;
       _messageEndingOffset = endingOffset;
-      _segmentOffsets = segmentOffsets;
     }
 
     public byte[] messageBytes() {
@@ -93,8 +91,5 @@ public interface MessageAssembler {
       return _messageEndingOffset;
     }
 
-    public Set<Long> segmentOffsets() {
-      return _segmentOffsets;
-    }
   }
 }

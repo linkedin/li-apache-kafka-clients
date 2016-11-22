@@ -11,6 +11,8 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
+import java.util.Collections;
+import java.util.Iterator;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,102 +52,110 @@ public class DeliveredMessageOffsetTracker {
    * @param messageOffset         the offset of the message
    * @param safeOffset            the safe offset when this message is delivered
    * @param messageStartingOffset the starting offset of this message.
+   * @param delivered             whether the message was delivered.
    */
-  public void track(TopicPartition tp, long messageOffset, long safeOffset, long messageStartingOffset, Set<Long> segmentOffsets) {
-    LOG.debug("Tracking offset for partition {}: messageOffset = {}, safeOffset = {}, messageStartingOffset = {}, " +
-        "other segments = {}", tp, messageOffset, safeOffset, messageStartingOffset, segmentOffsets);
+  public void track(TopicPartition tp, long messageOffset, long safeOffset, long messageStartingOffset, boolean delivered) {
+    LOG.debug("Tracking offset for partition {}: messageOffset = {}, safeOffset = {}, messageStartingOffset = {}",
+              tp, messageOffset, safeOffset, messageStartingOffset);
+    PartitionOffsetTracker offsetTracker = getAndMaybeCreateOffsetTracker(tp, messageOffset);
+    offsetTracker.updateCurrentSafeOffset(safeOffset);
+    // Only update the delivered offset if the message was delivered.
+    if (delivered) {
+      offsetTracker.updateDelivered(messageOffset);
+    }
+
+    if (messageOffset != messageStartingOffset || safeOffset != messageOffset + 1) {
+      MessageStartingAndSafeOffset messageOffsetInfo = new MessageStartingAndSafeOffset(safeOffset, messageStartingOffset);
+      offsetTracker.put(messageOffset, messageOffsetInfo);
+      LOG.trace("Tracked message({}): {}. Tracked Offset Range: [{}, {}]", messageOffset, messageOffsetInfo,
+                offsetTracker.earliestTrackedDeliveredOffset(), offsetTracker.delivered());
+    }
+  }
+
+  /**
+   * Add a non message offset to track, i.e. a large message segment.
+   *
+   * @param tp the topic partition of a
+   * @param offset the offset of the non large message.
+   */
+  public void addNonMessageOffset(TopicPartition tp, long offset) {
+    PartitionOffsetTracker offsetTracker = getAndMaybeCreateOffsetTracker(tp, offset);
+    offsetTracker.trackNonMessageOffsets(Collections.singleton(offset));
+  }
+
+  private PartitionOffsetTracker getAndMaybeCreateOffsetTracker(TopicPartition tp, long offset) {
     PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
     if (offsetTracker == null) {
       synchronized (this) {
         offsetTracker = _offsetTrackerMap.get(tp);
         if (offsetTracker == null) {
-          offsetTracker = new PartitionOffsetTracker(messageOffset);
+          offsetTracker = new PartitionOffsetTracker(offset);
           _offsetTrackerMap.put(tp, offsetTracker);
         }
       }
     }
-    offsetTracker.updateCurrentSafeOffset(safeOffset);
-    offsetTracker.updateDelivered(messageOffset);
-    if (messageOffset != messageStartingOffset || safeOffset != messageOffset + 1) {
-      MessageStartingAndSafeOffset messageOffsetInfo = new MessageStartingAndSafeOffset(safeOffset, messageStartingOffset);
-      offsetTracker.put(messageOffset, messageOffsetInfo);
-      offsetTracker.trackNonMessageOffsets(segmentOffsets);
-      LOG.trace("Tracked message({}): {}. Tracked Offset Range: [{}, {}]", messageOffset, messageOffsetInfo,
-          offsetTracker.earliestTrackedDeliveredOffset(), offsetTracker.delivered());
-    }
+    return offsetTracker;
   }
 
-  public long safeOffset(TopicPartition tp) {
+  public Long safeOffset(TopicPartition tp) {
     PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
-    if (offsetTracker == null) {
-      return Long.MAX_VALUE;
-    } else {
-      return offsetTracker.currentSafeOffset();
-    }
+    return offsetTracker == null ? null : offsetTracker.currentSafeOffset();
   }
 
-  public long safeOffset(TopicPartition tp, long messageOffset) {
+  public Long safeOffset(TopicPartition tp, long messageOffset) {
     PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
-    if (offsetTracker == null) {
-      // No message has been delivered for this topic partition. Accept whatever offset user provided.
-      return Long.MAX_VALUE;
+    // If the message offset is negative, we simply return Long.MaxValue.
+    if (messageOffset < 0 || offsetTracker == null) {
+      // No message has been consumed for this topic partition. Accept whatever offset user provided.
+      return null;
     } else if (!offsetTracker.isTrackedMessageOffset(messageOffset)) {
       // Message offset has been evicted.
       throw new OffsetNotTrackedException("Offset " + messageOffset + " for partition " + tp
-          + " is either invalid or has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
-          + ", " + offsetTracker.delivered() + "], SafeOffset = " + offsetTracker.currentSafeOffset());
+                                              + " is either invalid or has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
+                                              + ", " + offsetTracker.delivered() + "], SafeOffset = " + offsetTracker.currentSafeOffset());
     }
     return offsetTracker.get(messageOffset).safeOffset;
   }
 
   public Map<TopicPartition, Long> safeOffsets() {
     Map<TopicPartition, Long> safeOffsetMap = new HashMap<>();
-    for (TopicPartition tp : _offsetTrackerMap.keySet()) {
-      PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
-      safeOffsetMap.put(tp, offsetTracker.currentSafeOffset());
+    for (Map.Entry<TopicPartition, PartitionOffsetTracker> entry : _offsetTrackerMap.entrySet()) {
+      safeOffsetMap.put(entry.getKey(), entry.getValue().currentSafeOffset());
     }
     return safeOffsetMap;
   }
 
   public long startingOffset(TopicPartition tp, long messageOffset) {
     PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
-    if (offsetTracker == null) {
+    if (!hasDeliveredMessages(offsetTracker)) {
       // No message delivered for this topic partition. The starting offset is the message offset.
       return messageOffset;
     } else if (!offsetTracker.isTrackedMessageOffset(messageOffset)) {
       // Message offset has been evicted.
       throw new OffsetNotTrackedException("Offset " + messageOffset + " for partition " + tp
-          + " is either invalid or has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
-          + ", " + offsetTracker.delivered() + "], SafeOffset = " + offsetTracker.currentSafeOffset());
+                                              + " is either invalid or has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
+                                              + ", " + offsetTracker.delivered() + "], SafeOffset = " + offsetTracker.currentSafeOffset());
     }
     return offsetTracker.get(messageOffset).messageStartingOffset;
   }
 
   public Long closestDeliveredUpTo(TopicPartition tp, long upToMessageOffset) {
     PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
-    if (offsetTracker == null) {
+    if (!hasDeliveredMessages(offsetTracker)) {
       return null;
     } else if (!offsetTracker.isOffsetInTrackedRange(upToMessageOffset)) {
       // Message offset has been evicted.
       throw new OffsetNotTrackedException("Most recently delivered message for partition " + tp + " before offset "
-          + upToMessageOffset + " has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
-          + ", " + offsetTracker.delivered() + "]");
+                                              + upToMessageOffset + " has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
+                                              + ", " + offsetTracker.delivered() + "]");
     }
 
-    Long delivered = offsetTracker.closestDeliveredUpTo(upToMessageOffset);
-    if (delivered == null) {
-      // This means although the offset is within the tracked range, all the tracked offsets before this offset
-      // are the offsets of large message segment. So we cannot find a last delivered offset before this offset.
-      throw new OffsetNotTrackedException("Most recently delivered message for partition " + tp + " before offset "
-          + upToMessageOffset + " has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
-          + ", " + offsetTracker.delivered() + "]");
-    }
     return offsetTracker.closestDeliveredUpTo(upToMessageOffset);
   }
 
   public Long delivered(TopicPartition tp) {
     PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
-    if (offsetTracker == null) {
+    if (!hasDeliveredMessages(offsetTracker)) {
       return null;
     } else {
       return offsetTracker.delivered();
@@ -155,9 +165,16 @@ public class DeliveredMessageOffsetTracker {
   public Map<TopicPartition, Long> delivered() {
     Map<TopicPartition, Long> deliveredMap = new HashMap<>();
     for (Map.Entry<TopicPartition, PartitionOffsetTracker> entry : _offsetTrackerMap.entrySet()) {
-      deliveredMap.put(entry.getKey(), entry.getValue().delivered());
+      if (hasDeliveredMessages(entry.getValue())) {
+        deliveredMap.put(entry.getKey(), entry.getValue().delivered());
+      }
     }
     return deliveredMap;
+  }
+
+  public Long earliestTrackedOffset(TopicPartition tp) {
+    PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
+    return offsetTracker == null ? null : offsetTracker.earliestTrackedOffset();
   }
 
   public void clear() {
@@ -168,16 +185,21 @@ public class DeliveredMessageOffsetTracker {
     _offsetTrackerMap.remove(tp);
   }
 
+  private boolean hasDeliveredMessages(PartitionOffsetTracker offsetTracker) {
+    return offsetTracker != null && offsetTracker.delivered() > 0;
+  }
+
   private class PartitionOffsetTracker extends LinkedHashMap<Long, MessageStartingAndSafeOffset> {
     volatile private long _earliestTrackedOffset;
     private long _currentSafeOffset;
-    private long _delivered;
+    private Long _delivered;
     private TreeSet<Long> _nonMessageOffsets;
 
-    PartitionOffsetTracker(long firstDelivered) {
-      _currentSafeOffset = -1;
-      _earliestTrackedOffset = firstDelivered;
+    PartitionOffsetTracker(Long earliestTrackedOffset) {
+      _currentSafeOffset = earliestTrackedOffset;
+      _earliestTrackedOffset = earliestTrackedOffset;
       _nonMessageOffsets = new TreeSet<>();
+      _delivered = -1L;
     }
 
     void updateCurrentSafeOffset(long currentSafeOffset) {
@@ -190,6 +212,10 @@ public class DeliveredMessageOffsetTracker {
 
     long currentSafeOffset() {
       return _currentSafeOffset;
+    }
+
+    long earliestTrackedOffset() {
+      return _earliestTrackedOffset;
     }
 
     /**
@@ -218,7 +244,7 @@ public class DeliveredMessageOffsetTracker {
       return messageOffset >= _earliestTrackedOffset && messageOffset <= _delivered;
     }
 
-    long delivered() {
+    Long delivered() {
       return _delivered;
     }
 
@@ -246,10 +272,19 @@ public class DeliveredMessageOffsetTracker {
       boolean shouldRemove = this.size() > _maxMessagesToTrack;
       if (shouldRemove) {
         _earliestTrackedOffset = entry.getKey() + 1;
-        _nonMessageOffsets.tailSet(_earliestTrackedOffset);
+        // Remove all the old offsets from the non-message set.
+        Iterator<Long> iter = _nonMessageOffsets.iterator();
+        while (iter.hasNext()) {
+          long offset = iter.next();
+          if (offset < entry.getKey()) {
+            iter.remove();
+          } else {
+            break;
+          }
+        }
         LOG.trace("Removed message({}) from delivered message offset tracker. New earliest tracked offset = {}, " +
-                "total message tracked = {}, total invalid offsets = {}", entry.getKey(), _earliestTrackedOffset,
-            this.size(), _nonMessageOffsets.size());
+                      "total message tracked = {}, total invalid offsets = {}", entry.getKey(), _earliestTrackedOffset,
+                  this.size(), _nonMessageOffsets.size());
       }
       return shouldRemove;
     }
