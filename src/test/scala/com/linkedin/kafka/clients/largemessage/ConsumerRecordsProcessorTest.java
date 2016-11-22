@@ -220,7 +220,8 @@ public class ConsumerRecordsProcessorTest {
     TopicPartition tp = new TopicPartition("topic", 0);
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 4L), 3, "Starting offset of large message 2 should be 3");
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 5L), 1, "Starting offset of large message 1 should be 1");
-    assertEquals(consumerRecordsProcessor.startingOffset(tp, 0L), 0, "Starting offset of large message 0 should be 0");
+    //starting offset of message 0 is not known because it is not a large message
+    assertEquals(consumerRecordsProcessor.startingOffset(tp, 0L), 0, "Starting offset of normal message 0 should be 6");
   }
 
   @Test
@@ -267,6 +268,16 @@ public class ConsumerRecordsProcessorTest {
     assertNull(consumerRecordsProcessor.delivered(new TopicPartition("topic", 1)));
   }
 
+  /**
+   * Generates the sequence of records:
+   * <pre>
+   *   m0   -- not a large message
+   *   m1s0
+   *   m2s0
+   *   m2s1 -- completes m2
+   *   m1s1 -- completes m1
+   * </pre>
+   */
   private List<ExtensibleConsumerRecord<byte[], byte[]>> getConsumerRecords() {
     Serializer<String> stringSerializer = new StringSerializer();
     // Create two large messages.

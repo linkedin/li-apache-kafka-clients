@@ -52,6 +52,8 @@ public class DeliveredMessageOffsetTracker {
    * @param messageOffset         the offset of the message
    * @param safeOffset            the safe offset when this message is delivered
    * @param messageStartingOffset the starting offset of this message.
+   * @param segmentOffsets        if the message is segmented then what are its offsets?  This should be empty for
+   *                              non-large messages.
    */
   public void track(TopicPartition tp, long messageOffset, long safeOffset, long messageStartingOffset, Set<Long> segmentOffsets) {
     LOG.debug("Tracking offset for partition {}: messageOffset = {}, safeOffset = {}, messageStartingOffset = {}, " +
