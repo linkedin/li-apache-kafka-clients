@@ -214,6 +214,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         _lastAutoCommitMs = now;
       }
       ConsumerRecords<byte[], byte[]> rawRecords = _kafkaConsumer.poll(expireMs - now);
+
       // Check if we have enough consumer high watermark for a partition. The consumer high watermark is cleared during
       // rebalance. We make this check so that after rebalance we do not deliver duplicate messages to the user.
       if (!rawRecords.isEmpty() && _consumerRecordsProcessor.numConsumerHighWaterMarks() < assignment().size()) {
@@ -228,7 +229,6 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       }
 
-      System.out.println("rawRecords.count() " + rawRecords.count());
       xRecords = toXRecords(rawRecords);
       xRecords = _consumerRecordsProcessor.process(xRecords);
 

@@ -38,6 +38,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -67,6 +69,8 @@ import static org.testng.Assert.fail;
  */
 public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
 
+  private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerIntegrationTest.class);
+
   private final int MESSAGE_COUNT = 1000;
   private Random _random;
   private final String TOPIC1 = "topic1";
@@ -75,6 +79,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   private final int THREADS_PER_PRODUCER = 2;
   private final int NUM_PARTITIONS = 4;
   private final int MAX_SEGMENT_SIZE = 200;
+  private final int SYNTHETIC_PARTITION = 1;
   private Map<String, String> _messages;
 
   @Override
@@ -92,14 +97,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   @Override
   public void setUp() {
     super.setUp();
-    _messages = new ConcurrentSkipListMap<>();
-    _random = new Random(23423423);
-    try {
-      produceMessages(_messages, TOPIC1);
-      produceMessages(_messages, TOPIC2);
-    } catch (InterruptedException e) {
-      throw new RuntimeException("Message producing phase failed.", e);
-    }
   }
 
   @AfterMethod
@@ -131,7 +128,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      TopicPartition tp = new TopicPartition(topic, 0);
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION);
       consumer.assign(Collections.singleton(tp));
 
       // Now seek to message offset 0
@@ -211,7 +208,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
     try {
-      TopicPartition tp = new TopicPartition(topic, 0);
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION);
       consumer.assign(Collections.singleton(tp));
 
       while (consumer.poll(10).isEmpty()) {
@@ -286,7 +283,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
 
     try {
-      TopicPartition tp = new TopicPartition(topic, 0);
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION);
       consumer.assign(Collections.singleton(tp));
       consumer.poll(1000); // M2
       consumer.commitSync();
@@ -321,7 +318,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      TopicPartition tp = new TopicPartition(topic, 0);
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION);
       consumer.assign(Collections.singleton(tp));
       consumer.poll(1000); // M2
       final AtomicBoolean offsetCommitted = new AtomicBoolean(false);
@@ -342,6 +339,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   @Test
   public void testSeekAfterAssignmentChange() {
+    produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     // All the consumers should have the same group id.
     props.setProperty("group.id", "testSeekAfterAssignmentChange");
@@ -376,6 +374,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   @Test
   public void testUnsubscribe() {
+    produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     // All the consumers should have the same group id.
     props.setProperty("group.id", "testUnsubscribe");
@@ -415,6 +414,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    */
   @Test
   public void testRebalance() {
+    produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     // All the consumers should have the same group id.
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testRebalance");
@@ -474,6 +474,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    */
   @Test
   public void testCommitAndResume() throws InterruptedException {
+    produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     // Make sure we start to consume from the beginning.
     props.setProperty("auto.offset.reset", "earliest");
@@ -609,22 +610,40 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
 
+  /**
+   * This is a key we use to check what records have been produced.
+   */
   private static String messageId(String topic, int partition, long offset) {
     return topic + "-" + partition + "-" + offset;
   }
 
-  // Generic the following synthetic messages in order and produce to the same partition.
-  // 0: M0_SEG0
-  // 1: M1_SEG0
-  // 2: M2_SEG0(END)
-  // 3: M3_SEG0
-  // 4: M1_SEG1(END)
-  // 5: M0_SEG1(END)
-  // 6: M3_SEG1(END)
-  // 7: M4_SEG0(END)
+
+  private void produceRecordsWithKafkaProducer() {
+    _messages = new ConcurrentSkipListMap<>();
+    _random = new Random(23423423);
+    try {
+      produceMessages(_messages, TOPIC1);
+      produceMessages(_messages, TOPIC2);
+    } catch (InterruptedException e) {
+      throw new RuntimeException("Message producing phase failed.", e);
+    }
+  }
+
+  /** Generate the following synthetic messages in order and produce to the same partition.
+   * <pre>
+   * 0: M0_SEG0
+   * 1: M1_SEG0
+   * 2: M2_SEG0(END)
+   * 3: M3_SEG0
+   * 4: M1_SEG1(END)
+   * 5: M0_SEG1(END)
+   * 6: M3_SEG1(END)
+   * 7: M4_SEG0(END)
+   * </pre>
+   */
   private void produceSyntheticMessages(String topic) {
     UUIDFactory uuidFactory = new UUIDFactoryImpl();
-    int partition = 1;
+    int partition = SYNTHETIC_PARTITION;
     SimplePartitioner simplePartitioner = new SimplePartitioner() {
       @Override
       public int partition(String topic) {
@@ -670,8 +689,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     } catch (Exception e) {
       fail("Produce synthetic data failed.", e);
     }
-    producer.flush();
     producer.close();
+    LOG.info("Producing synthetic data on topic \"" + topic + " is complete.");
   }
 
   private Collection<ProducerRecord<byte[], byte[]>> createSerializedProducerRecord(int messageId,
