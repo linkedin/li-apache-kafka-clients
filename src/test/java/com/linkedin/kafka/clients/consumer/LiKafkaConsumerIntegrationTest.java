@@ -15,6 +15,7 @@ import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
+import com.linkedin.kafka.clients.producer.LiKafkaProducerImpl;
 import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
@@ -37,8 +38,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
-import org.testng.annotations.AfterTest;
-import org.testng.annotations.BeforeTest;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -53,7 +54,6 @@ import java.util.Properties;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 
@@ -68,14 +68,14 @@ import static org.testng.Assert.fail;
 public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
 
   private final int MESSAGE_COUNT = 1000;
-  private final Random RANDOM = new Random(89808989809L);
+  private Random _random;
   private final String TOPIC1 = "topic1";
   private final String TOPIC2 = "topic2";
   private final int NUM_PRODUCER = 2;
   private final int THREADS_PER_PRODUCER = 2;
   private final int NUM_PARTITIONS = 4;
   private final int MAX_SEGMENT_SIZE = 200;
-  private final Map<String, String> messages = new ConcurrentHashMap<>();
+  private Map<String, String> _messages;
 
   @Override
   public Properties overridingProps() {
@@ -88,19 +88,21 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * This test will have a topic with some partitions having interleaved large messages as well as some ordinary
    * sized messages. The topic will be used for all the sub-tests.
    */
-  @BeforeTest
+  @BeforeMethod
   @Override
   public void setUp() {
     super.setUp();
+    _messages = new ConcurrentSkipListMap<>();
+    _random = new Random(23423423);
     try {
-      produceMessages(messages, TOPIC1);
-      produceMessages(messages, TOPIC2);
+      produceMessages(_messages, TOPIC1);
+      produceMessages(_messages, TOPIC2);
     } catch (InterruptedException e) {
       throw new RuntimeException("Message producing phase failed.", e);
     }
   }
 
-  @AfterTest
+  @AfterMethod
   @Override
   public void tearDown() {
     super.tearDown();
@@ -343,7 +345,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     Properties props = new Properties();
     // All the consumers should have the same group id.
     props.setProperty("group.id", "testSeekAfterAssignmentChange");
-    // Make sure we start to consume from the beginningtp1.
+    // Make sure we start to consume from the beginning
     props.setProperty("auto.offset.reset", "earliest");
     // Consumer at most 100 messages per poll
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "100");
@@ -433,7 +435,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "consumer1");
     LiKafkaConsumer<String, String> consumer1 = createConsumer(props);
 
-    final Map<String, String> messageUnseen = new ConcurrentSkipListMap<>(messages);
+    final Map<String, String> messageUnseen = new ConcurrentSkipListMap<>(_messages);
 
     Thread thread0 = new RebalanceTestConsumerThread(consumer0, messageUnseen, 0);
     Thread thread1 = new RebalanceTestConsumerThread(consumer1, messageUnseen, 1);
@@ -456,7 +458,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   /**
    * This test mimics the following sequence:
    * 1. User started a consumer to consume
-   * 2. Consumer commits offset according to the message it recevies.
+   * 2. Consumer commits offset according to the message it receives.
    * 3. A consumer die/close at some point
    * 4. Another consumer in the same group starts and try to resume from committed offsets.
    * The partitions that is consumed should have many interleaved messages. After stopping and resuming consumption,
@@ -485,8 +487,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       // Subscribe to the partitions.
       consumer.subscribe(Arrays.asList(TOPIC1, TOPIC2));
 
-      // Create a new map to record unseen messages which initially contains all the produced messages.
-      Map<String, String> messagesUnseen = new HashMap<>(messages);
+      // Create a new map to record unseen messages which initially contains all the produced _messages.
+      Map<String, String> messagesUnseen = new HashMap<>(_messages);
 
       long startTime = System.currentTimeMillis();
       int numMessagesConsumed = 0;
@@ -526,8 +528,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
 
-  // This method produce a bunch of messages in an interleaved way. The messages will contain both large message
-  // and ordinary messages.
+  /**
+   * This method produce a bunch of messages in an interleaved way.
+   * @param messages will contain both large message and ordinary messages.
+   */
   private void produceMessages(Map<String, String> messages, String topic) throws InterruptedException {
     Properties props = new Properties();
     // Enable large messages.
@@ -583,7 +587,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       for (int i = 0; i < MESSAGE_COUNT; i++) {
         // The message size is set to 100 - 1124, So we should have most of the messages to be large messages
         // while still have some ordinary size messages.
-        int messageSize = 100 + RANDOM.nextInt(1024);
+        int messageSize = 100 + _random.nextInt(1024);
         final String messageId = UUID.randomUUID().toString().replace("-", "");
         final String message = messageId + TestUtils.getRandomString(messageSize);
 
@@ -637,20 +641,20 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     int twoSegmentSize = MAX_SEGMENT_SIZE + MAX_SEGMENT_SIZE / 2;
     int oneSegmentSize = MAX_SEGMENT_SIZE / 2;
     // M0, 2 segments
-    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m0Segs =
+    Iterator<ProducerRecord<byte[], byte[]>> m0Segs =
         createSerializedProducerRecord(0, twoSegmentSize, splitter, topic, partition).iterator();
 
     // M1, 2 segments
-    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m1Segs =
+    Iterator<ProducerRecord<byte[], byte[]>> m1Segs =
         createSerializedProducerRecord(1, twoSegmentSize, splitter, topic, partition).iterator();
     // M2, 1 segment
-    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m2Segs =
+    Iterator<ProducerRecord<byte[], byte[]>> m2Segs =
         createSerializedProducerRecord(2, oneSegmentSize, splitter, topic, partition).iterator();
     // M3, 2 segment
-    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m3Segs =
+    Iterator<ProducerRecord<byte[], byte[]>> m3Segs =
         createSerializedProducerRecord(3, twoSegmentSize, splitter, topic, partition).iterator();
     // M4, 1 segment
-    Iterator<ExtensibleProducerRecord<byte[], byte[]>> m4Segs =
+    Iterator<ProducerRecord<byte[], byte[]>> m4Segs =
         createSerializedProducerRecord(4, oneSegmentSize, splitter, topic, partition).iterator();
 
     try {
@@ -670,13 +674,19 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     producer.close();
   }
 
-  private Collection<ExtensibleProducerRecord<byte[], byte[]>> createSerializedProducerRecord(int messageId,
+  private Collection<ProducerRecord<byte[], byte[]>> createSerializedProducerRecord(int messageId,
       int messageSize, MessageSplitter splitter, String topic, int partition) {
 
     String message0 = TestUtils.getRandomString(messageSize);
     ExtensibleProducerRecord<byte[], byte[]> originalRecord0 =
         new ExtensibleProducerRecord<>(topic, partition, null /* timestamp */, new byte[] { (byte)  messageId},  message0.getBytes());
-    return splitter.split(originalRecord0);
+
+    Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords = splitter.split(originalRecord0);
+    List<ProducerRecord<byte[], byte[]>> producerRecords = new ArrayList<>();
+    for (ExtensibleProducerRecord<byte[], byte[]> xRecord : xRecords) {
+      producerRecords.add(LiKafkaProducerImpl.serializeWithHeaders(xRecord));
+    }
+    return producerRecords;
   }
 
   private class RebalanceTestConsumerThread extends Thread {

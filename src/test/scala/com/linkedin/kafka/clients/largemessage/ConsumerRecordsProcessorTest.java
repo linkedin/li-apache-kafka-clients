@@ -131,7 +131,9 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testSafeOffsetWithLargeMessage() throws IOException {
     ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords());
+    Collection<ExtensibleConsumerRecord<byte[], byte[]>> processedRecords =
+      consumerRecordsProcessor.process(getConsumerRecords());
+    assertEquals(processedRecords.size(), 4);
 
     // check safe offsets
     TopicPartition tp = new TopicPartition("topic", 0);
@@ -263,7 +265,7 @@ public class ConsumerRecordsProcessorTest {
     consumerRecordsProcessor.process(getConsumerRecords());
 
     assertEquals(consumerRecordsProcessor.delivered(new TopicPartition("topic", 0)).longValue(), 5L,
-        "The last deivered message should be 5");
+        "The last delivered message should be 5");
 
     assertNull(consumerRecordsProcessor.delivered(new TopicPartition("topic", 1)));
   }
@@ -271,11 +273,12 @@ public class ConsumerRecordsProcessorTest {
   /**
    * Generates the sequence of records:
    * <pre>
-   *   m0   -- not a large message
-   *   m1s0
-   *   m2s0
-   *   m2s1 -- completes m2
-   *   m1s1 -- completes m1
+   *   0 m0   -- not a large message
+   *   1 m1s0
+   *   2 m2   -- not a a large message
+   *   3 m3s0
+   *   4 m3s1 -- completes m3
+   *   5 m1s1 -- completes m1
    * </pre>
    */
   private List<ExtensibleConsumerRecord<byte[], byte[]>> getConsumerRecords() {

@@ -228,6 +228,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       }
 
+      System.out.println("rawRecords.count() " + rawRecords.count());
       xRecords = toXRecords(rawRecords);
       xRecords = _consumerRecordsProcessor.process(xRecords);
 

@@ -84,7 +84,7 @@ public class LargeMessageBufferPool {
         _incompleteMessageByPartition.put(tp, uuidSetForPartition);
       }
       uuidSetForPartition.add(messageId);
-      _offsetTracker.maybeTrackMessage(tp, messageId, offset);
+      _offsetTracker.trackMessage(tp, messageId, offset);
     }
 
     // Expire message if necessary.

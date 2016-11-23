@@ -19,8 +19,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -37,13 +37,13 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
   // Runs testing against running kafka host
   private static final int RECORD_COUNT = 1000;
 
-  @BeforeClass
+  @BeforeMethod
   @Override
   public void setUp() {
     super.setUp();
   }
 
-  @AfterClass
+  @AfterMethod
   @Override
   public void tearDown() {
     super.tearDown();

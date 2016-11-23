@@ -284,7 +284,10 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     }
   }
 
-  private ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord) {
+  /**
+   * This is public for testing.
+   */
+  public static ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord) {
     int headersSize = HeaderParser.serializedHeaderSize(xRecord.headers());
     int serializedValueSize = xRecord.value() == null ? 0 : xRecord.value().length +
           4 + // magic size
