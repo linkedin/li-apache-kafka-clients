@@ -30,7 +30,7 @@ public interface MessageAssembler {
    * @param srcRecord a message segment in byte array format created by {@link MessageSplitter}
    *
    * @return The assemble result.  When a message is fully assembled this AssembleResult.messageBytes() will return non-null
-   * else it wil be null.
+   * else it wil be null.  If this returns null then srcRecord was not a large message segment.
    */
   AssembleResult assemble(TopicPartition tp, long offset, ExtensibleConsumerRecord<byte[], byte[]> srcRecord);
 

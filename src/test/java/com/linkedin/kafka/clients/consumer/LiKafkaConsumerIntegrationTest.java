@@ -21,8 +21,13 @@ import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -49,7 +54,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -61,6 +65,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.fail;
 
 
@@ -71,7 +76,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerIntegrationTest.class);
 
-  private final int MESSAGE_COUNT = 1000;
+  private final int MESSAGE_COUNT = 100;
   private Random _random;
   private final String TOPIC1 = "topic1";
   private final String TOPIC2 = "topic2";
@@ -80,7 +85,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   private final int NUM_PARTITIONS = 4;
   private final int MAX_SEGMENT_SIZE = 200;
   private final int SYNTHETIC_PARTITION = 1;
-  private Map<String, String> _messages;
+  private ConcurrentMap<String, String> _messages;
 
   @Override
   public Properties overridingProps() {
@@ -107,14 +112,14 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   /**
    * This test tests the seek behavior using the following synthetic data.
-   * 0: M0_SEG0
-   * 1: M1_SEG0
-   * 2: M2_SEG0(END)
-   * 3: M3_SEG0
+   * 0: M0_SEG0(START)
+   * 1: M1_SEG0(START)
+   * 2: M2_SEG0(START)(END)
+   * 3: M3_SEG0(START)
    * 4: M1_SEG1(END)
    * 5: M0_SEG1(END)
    * 6: M3_SEG1(END)
-   * 7: M4_SEG0(END)
+   * 7: M4_SEG0(START)(END)
    */
   @Test
   public void testSeek() {
@@ -489,8 +494,12 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.subscribe(Arrays.asList(TOPIC1, TOPIC2));
 
       // Create a new map to record unseen messages which initially contains all the produced _messages.
-      Map<String, String> messagesUnseen = new HashMap<>(_messages);
+      Map<String, String> messagesUnseen = new ConcurrentSkipListMap<>(new MessageIdComparator());
+      messagesUnseen.putAll(_messages);
 
+//      for (String key : messagesUnseen.keySet()) {
+//        System.out.println(key);
+//      }
       long startTime = System.currentTimeMillis();
       int numMessagesConsumed = 0;
       int lastCommitAndResume = 0;
@@ -501,14 +510,15 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         records = consumer.poll(100);
 
         for (ConsumerRecord<String, String> record : records) {
-          String messageId = record.topic() + "-" + record.partition() + "-" + record.offset();
+          String messageId = messageId(record.topic(), record.partition(), record.offset());
           // We should not see any duplicate message.
           String origMessage = messagesUnseen.get(messageId);
-          assertEquals(record.value(), origMessage, "Message should be the same.");
+          //System.out.println("Got \"" + messageId + "\".");
+          assertEquals(record.value(), origMessage, "Message with id \"" + messageId + "\" should be the same.");
           messagesUnseen.remove(messageId);
           offsetMap.put(new TopicPartition(record.topic(), record.partition()), new OffsetAndMetadata(record.offset() + 1));
           numMessagesConsumed++;
-          // We try to stop and recreate a consumer every 1000 messages and at most stop and resume 4 times.
+          // We try to stop and recreate a consumer every MESSAGE_COUNT messages and at most stop and resume 4 times.
           if (lastCommitAndResume + (NUM_PRODUCER * THREADS_PER_PRODUCER * MESSAGE_COUNT) / 4 < numMessagesConsumed &&
               numCommitAndResume < 4 && offsetMap.size() == NUM_PARTITIONS) {
             consumer.commitSync(offsetMap);
@@ -533,7 +543,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * This method produce a bunch of messages in an interleaved way.
    * @param messages will contain both large message and ordinary messages.
    */
-  private void produceMessages(Map<String, String> messages, String topic) throws InterruptedException {
+  private void produceMessages(ConcurrentMap<String, String> messages, String topic) throws InterruptedException {
     Properties props = new Properties();
     // Enable large messages.
     props.setProperty("large.message.enabled", "true");
@@ -569,13 +579,33 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
 
+  private static final class MessageIdComparator implements Comparator<String> {
+
+    @Override
+    public int compare(String o1, String o2) {
+      String[] parts1 = o1.split("-");
+      String[] parts2 = o2.split("-");
+
+      int diff = parts1[0].compareTo(parts2[0]);
+      if (diff != 0) {
+        return diff;
+      }
+      diff = Integer.parseInt(parts1[1]) - Integer.parseInt(parts2[1]);
+      if (diff != 0) {
+        return diff;
+      }
+
+      return Integer.parseInt(parts1[2]) - Integer.parseInt(parts2[2]);
+    }
+  }
+
   private class ProducerThread extends Thread {
     private final LiKafkaProducer<String, String> _producer;
-    private final Map<String, String> _messages;
+    private final ConcurrentMap<String, String> _messages;
     private final String _topic;
 
     public ProducerThread(LiKafkaProducer<String, String> producer,
-                          Map<String, String> messages,
+                          ConcurrentMap<String, String> messages,
                           String topic) {
       _producer = producer;
       _messages = messages;
@@ -584,28 +614,42 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     @Override
     public void run() {
-      final Set<String> ackedMessages = new HashSet<>();
+      final Set<String> ackedMessages = new ConcurrentSkipListSet<>();
+      CountDownLatch waitForProducerCallbacks = new CountDownLatch(MESSAGE_COUNT);
       for (int i = 0; i < MESSAGE_COUNT; i++) {
         // The message size is set to 100 - 1124, So we should have most of the messages to be large messages
         // while still have some ordinary size messages.
         int messageSize = 100 + _random.nextInt(1024);
-        final String messageId = UUID.randomUUID().toString().replace("-", "");
-        final String message = messageId + TestUtils.getRandomString(messageSize);
+        final String uuid = UUID.randomUUID().toString().replace("-", "");
+        final String message = uuid + TestUtils.getRandomString(messageSize);
 
         _producer.send(new ProducerRecord<>(_topic, message),
             new Callback() {
               @Override
               public void onCompletion(RecordMetadata recordMetadata, Exception e) {
                 // The callback should have been invoked only once.
-                assertFalse(ackedMessages.contains(messageId));
+                assertFalse(ackedMessages.contains(uuid));
                 if (e == null) {
-                  ackedMessages.add(messageId);
+                  ackedMessages.add(uuid);
+                } else {
+                  e.printStackTrace();
                 }
+                assertNull(e);
                 String messageId = messageId(recordMetadata.topic(), recordMetadata.partition(), recordMetadata.offset());
                 //System.out.println("Adding message: " + messageId);
                 _messages.put(messageId, message);
+                waitForProducerCallbacks.countDown();
               }
             });
+      }
+
+      _producer.flush();
+      try {
+        if (!waitForProducerCallbacks.await(20, TimeUnit.SECONDS)) {
+          throw new IllegalStateException("Still waiting for " + waitForProducerCallbacks.getCount() + " callbacks to execute.");
+        }
+      } catch (InterruptedException ie) {
+        throw new IllegalStateException(ie);
       }
     }
   }
@@ -730,7 +774,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         String origMessage = _messageUnseen.get(messageId);
         assertEquals(record.value(), origMessage, "Message should be the same. partition = " +
             record.topic() + "-" + record.partition() + ", offset = " + record.offset());
-        System.out.println("Removing seen message \"" + messageId + "\".");
+        //System.out.println("Removing seen message \"" + messageId + "\".");
         _messageUnseen.remove(messageId);
       }
     }

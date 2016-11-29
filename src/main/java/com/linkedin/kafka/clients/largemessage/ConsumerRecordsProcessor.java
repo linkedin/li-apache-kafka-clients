@@ -11,7 +11,6 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
-import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collection;
 import java.util.Collections;
@@ -269,23 +268,22 @@ public class ConsumerRecordsProcessor {
   //TODO: it would be better to do this with Java streams?
   private ExtensibleConsumerRecord<byte[], byte[]> filterAndAssembleRecords(ExtensibleConsumerRecord<byte[], byte[]> srcRecord) {
     TopicPartition topicPartition = new TopicPartition(srcRecord.topic(), srcRecord.partition());
+    MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(topicPartition, srcRecord.offset(), srcRecord);
     if (shouldSkip(topicPartition, srcRecord.offset())) {
       return null;
     }
-    if (srcRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER) == null) {
+    long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
+    if (assembledResult == null) {
       //Not a large message segment
-      long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
       _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), Collections.emptySet());
       return srcRecord;
     }
 
-    MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(topicPartition, srcRecord.offset(), srcRecord);
     if (assembledResult.messageBytes() == null) {
       //Not a complete, large message
       return null;
     }
 
-    long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
     _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, assembledResult.messageStartingOffset(),
         assembledResult.segmentOffsets());
 

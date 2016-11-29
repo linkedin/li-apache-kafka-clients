@@ -264,13 +264,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
         ProducerRecord<byte[], byte[]> headerlessByteRecord =
           new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(), serializedKey, serializedValue);
-        future = _producer.send(headerlessByteRecord);
+        future = _producer.send(headerlessByteRecord, errorLoggingCallback);
       } else {
         _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
 
         for (ExtensibleProducerRecord<byte[], byte[]> segmentRecord : xRecords) {
-          ProducerRecord<byte[], byte[]> segmentProducerRecord =
-            serializeWithHeaders(segmentRecord);
+          ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord);
           future = _producer.send(segmentProducerRecord, errorLoggingCallback);
         }
       }

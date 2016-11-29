@@ -37,7 +37,7 @@ public class MessageAssemblerImpl implements MessageAssembler {
   @Override
   public AssembleResult assemble(TopicPartition tp, long offset, ExtensibleConsumerRecord<byte[], byte[]> segmentRecord) {
     if (segmentRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER) == null) {
-      throw new IllegalArgumentException("Not a large message segment.");
+      return null;
     }
 
     LargeMessageSegment segment =
