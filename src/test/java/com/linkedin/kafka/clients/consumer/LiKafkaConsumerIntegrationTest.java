@@ -487,6 +487,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty("group.id", "testCommitAndResume");
     // Reduce the fetch size for each partition to make sure we will poll() multiple times.
     props.setProperty("max.partition.fetch.bytes", "64000");
+    // This test manipulates committed offsets so disable autocommit
+    props.setProperty("enable.auto.commit", "false");
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
 
     try {
