@@ -255,7 +255,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
       int headerSize = xRecords.size() * _headerParser.magicSize() /* magic size*/;
       for (ExtensibleProducerRecord xProducerRecord : xRecords) {
-        headerSize += HeaderParser.serializedHeaderSize(xProducerRecord.headers());
+        int headerForXRecord = HeaderParser.serializedHeaderSize(xProducerRecord.headers());
+        if (headerForXRecord > HeaderParser.MAX_SERIALIZED_HEADER_SIZE) {
+          throw new IllegalStateException("The serialized size of all headers, " + headerForXRecord +
+            ", exceeds the maximum size allowed,  " + HeaderParser.MAX_SERIALIZED_HEADER_SIZE);
+        }
+        headerSize += headerForXRecord;
       }
 
       sizeInBytes += headerSize;
@@ -263,7 +268,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       Future<RecordMetadata> future = null;
       // Are we sending a regular record without headers that is not large
       if (!(producerRecord instanceof ExtensibleProducerRecord) && xRecords.size() == 1) {
-        sizeInBytes -= _headerParser.magicSize(); /* magic size */
+        sizeInBytes -= _headerParser.magicSize();
         _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
         ProducerRecord<byte[], byte[]> headerlessByteRecord =
           new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(), serializedKey, serializedValue);
