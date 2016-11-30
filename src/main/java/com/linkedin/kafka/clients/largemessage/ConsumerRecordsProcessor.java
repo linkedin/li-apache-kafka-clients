@@ -298,8 +298,8 @@ public class ConsumerRecordsProcessor {
         serializedKeySize, serializedValueSize,
         key, assembledResult.messageBytes());
     //TODO: checksums recomputed?
-    largeMessageRecord.headersSize(assembledResult.totalHeadersSize());
     largeMessageRecord.copyHeadersFrom(srcRecord);
+    largeMessageRecord.headersSize(assembledResult.totalHeadersSize());
 
     return largeMessageRecord;
   }

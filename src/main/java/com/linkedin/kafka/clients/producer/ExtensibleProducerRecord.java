@@ -10,6 +10,7 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
+import com.linkedin.kafka.clients.utils.HeaderParser;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
@@ -80,6 +81,10 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
       headers = new TreeMap<>();
     }
     headers.put(headerKey, headerValue);
+  }
+
+  public int headersSize() {
+    return HeaderParser.serializedHeaderSize(headers());
   }
 
   public void copyHeadersFrom(ExtensibleProducerRecord<K, V> other) {
