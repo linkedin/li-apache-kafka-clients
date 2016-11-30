@@ -11,6 +11,7 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
+import com.linkedin.kafka.clients.consumer.LiKafkaConsumerConfig;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import org.apache.kafka.clients.producer.Producer;
@@ -38,6 +39,9 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String VALUE_SERIALIZER_CLASS_CONFIG = ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG;
   public static final String CURRENT_PRODUCER = "current.producer";
   public static final String UUID_FACTORY_CLASS_CONFIG = "uuid.factory.class";
+  public static final String LI_KAFKA_MAGIC_CONFIG = LiKafkaConsumerConfig.LI_KAFKA_MAGIC_CONFIG;
+
+  public static final String LI_KAFKA_MAGIC_DOC = LiKafkaConsumerConfig.LI_KAFKA_MAGIC_DOC;
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +
@@ -69,7 +73,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(AUDITOR_CLASS_CONFIG, Type.CLASS, NoOpAuditor.class.getName(), Importance.MEDIUM, AUDITOR_CLASS_DOC)
         .define(KEY_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, KEY_SERIALIZER_CLASS_DOC)
         .define(VALUE_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, VALUE_SERIALIZER_CLASS_DOC)
-        .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactoryImpl.class, Importance.MEDIUM, UUID_FACTORY_CLASS_DOC);
+        .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactoryImpl.class, Importance.MEDIUM, UUID_FACTORY_CLASS_DOC)
+        .define(LI_KAFKA_MAGIC_CONFIG, Type.STRING, Importance.LOW, LI_KAFKA_MAGIC_DOC);
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {

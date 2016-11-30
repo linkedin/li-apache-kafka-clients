@@ -11,6 +11,7 @@
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
+import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
@@ -36,8 +37,13 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String KEY_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
   public static final String VALUE_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
   public static final String AUDITOR_CLASS_CONFIG = "auditor.class";
+  public static final String LI_KAFKA_MAGIC_CONFIG = "likafka.magic";
   public static final String ENABLE_AUTO_COMMIT_CONFIG = ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
+
+  public static final String LI_KAFKA_MAGIC_DOC = "Configures the magic number that is used to distinguish a " +
+    " message produced by " + LiKafkaProducer.class.getName() + ".  Probably you don't want to configure this unless you " +
+    " are getting collisions between the default magic number and your data.  Format is hexadecimal string. No 0x prefix.";
 
   public static final String MESSAGE_ASSEMBLER_BUFFER_CAPACITY_DOC = "The maximum number of bytes the message assembler " +
       " uses to buffer the incomplete large message segments. The capacity is shared by messages from all the topics. " +
@@ -123,7 +129,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 Type.INT,
                 "30000",
                 Importance.LOW,
-                AUTO_COMMIT_INTERVAL_MS_DOC);
+                AUTO_COMMIT_INTERVAL_MS_DOC)
+        .define(LI_KAFKA_MAGIC_CONFIG,
+                Type.STRING,
+                Importance.LOW,
+                LI_KAFKA_MAGIC_DOC);
+
 
   }
 

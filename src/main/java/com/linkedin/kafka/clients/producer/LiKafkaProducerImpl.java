@@ -21,6 +21,7 @@ import com.linkedin.kafka.clients.utils.UUIDFactory;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Random;
+import javax.xml.bind.DatatypeConverter;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -130,6 +131,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final AtomicInteger _numThreadsInSend;
   private final UUIDFactory _uuidFactory;
   private volatile boolean _closed;
+  private final HeaderParser _headerParser;
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null);
@@ -184,6 +186,13 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _auditor.start();
     _numThreadsInSend = new AtomicInteger(0);
     _closed = false;
+
+    if (configs.getString(LiKafkaProducerConfig.LI_KAFKA_MAGIC_CONFIG) == null) {
+      _headerParser = new HeaderParser();
+    } else {
+      byte[] magic = DatatypeConverter.parseHexBinary(configs.getString(LiKafkaProducerConfig.LI_KAFKA_MAGIC_CONFIG));
+      _headerParser = new HeaderParser(magic);
+    }
   }
 
   @Override
@@ -250,7 +259,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         xRecords = Collections.singleton(xRecord);
       }
 
-      int headerSize = xRecords.size() * 4 /* magic size*/;
+      int headerSize = xRecords.size() * _headerParser.magicSize() /* magic size*/;
       for (ExtensibleProducerRecord xProducerRecord : xRecords) {
         headerSize += HeaderParser.serializedHeaderSize(xProducerRecord.headers());
       }
@@ -260,7 +269,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       Future<RecordMetadata> future = null;
       // Are we sending a regular record without headers that is not large
       if (!(producerRecord instanceof ExtensibleProducerRecord) && xRecords.size() == 1) {
-        sizeInBytes -= 4; /* magic size */
+        sizeInBytes -= _headerParser.magicSize(); /* magic size */
         _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
         ProducerRecord<byte[], byte[]> headerlessByteRecord =
           new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(), serializedKey, serializedValue);
@@ -269,7 +278,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
 
         for (ExtensibleProducerRecord<byte[], byte[]> segmentRecord : xRecords) {
-          ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord);
+          ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord, _headerParser);
           future = _producer.send(segmentProducerRecord, errorLoggingCallback);
         }
       }
@@ -286,16 +295,16 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   /**
    * This is public for testing.
    */
-  public static ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord) {
+  public static ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord, HeaderParser headerParser) {
     int headersSize = HeaderParser.serializedHeaderSize(xRecord.headers());
     int serializedValueSize = xRecord.value() == null ? 0 : xRecord.value().length +
-          4 + // magic size
+          headerParser.magicSize() + // magic size
           4 + // headers size size
           headersSize +
           4; // user value length)
 
     ByteBuffer valueWithHeaders = ByteBuffer.allocate(serializedValueSize);
-    valueWithHeaders.putInt(HeaderParser.HEADER_VALUE_MAGIC);
+    headerParser.writeMagicTo(valueWithHeaders);
     valueWithHeaders.putInt(headersSize);
     HeaderParser.writeHeader(valueWithHeaders, xRecord.headers());
     valueWithHeaders.putInt(xRecord.value().length);

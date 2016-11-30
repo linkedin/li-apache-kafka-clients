@@ -70,6 +70,8 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
     }
 
     headers.put(headerKey, value);
+    //TODO:  probably do not want to update the header size since that will throw off auditing since this was never
+    //transmitted over the wire.
     headersSize = HeaderParser.serializedHeaderSize(headers);
   }
 

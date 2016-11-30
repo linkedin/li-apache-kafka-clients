@@ -19,6 +19,7 @@ import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.nio.ByteBuffer;
+import javax.xml.bind.DatatypeConverter;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -79,6 +80,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final Deserializer<K> _keyDeserializer;
   private final Deserializer<V> _valueDeserializer;
   private final Auditor<K, V> _auditor;
+  private final HeaderParser _headerParser;
 
   public LiKafkaConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null, null);
@@ -144,6 +146,13 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     // Instantiate offset commit callback.
     _offsetCommitCallback = new LiKafkaOffsetCommitCallback();
+
+    if (configs.getString(LiKafkaConsumerConfig.LI_KAFKA_MAGIC_CONFIG) == null) {
+      _headerParser = new HeaderParser();
+    } else {
+      byte[] magic = DatatypeConverter.parseHexBinary(configs.getString(LiKafkaConsumerConfig.LI_KAFKA_MAGIC_CONFIG));
+      _headerParser = new HeaderParser(magic);
+    }
   }
 
   @Override
@@ -281,7 +290,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   private ExtensibleConsumerRecord<byte[], byte[]> toXRecord(ConsumerRecord<byte[], byte[]> rawRecord) {
     ByteBuffer rawByteBuffer = ByteBuffer.wrap(rawRecord.value() == null ? new byte[0] : rawRecord.value());
-    if (!HeaderParser.isHeaderMessage(rawByteBuffer)) {
+    if (!_headerParser.isHeaderMessage(rawByteBuffer)) {
       return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(), rawRecord.timestampType(),
           rawRecord.checksum(), rawRecord.serializedKeySize(), rawRecord.serializedValueSize(), rawRecord.key(), rawRecord.value(), null, 0);
     }
@@ -290,7 +299,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     rawByteBuffer.limit(rawByteBuffer.position() + headerSize);
     ByteBuffer headerByteBuffer = rawByteBuffer.slice();
     LazyHeaderListMap headers = new LazyHeaderListMap(headerByteBuffer);
-    rawByteBuffer.position(headerSize + 4 + 4);
+    rawByteBuffer.position(headerSize + _headerParser.magicSize() + 4);
     rawByteBuffer.limit(rawByteBuffer.capacity());
     int valueSize = rawByteBuffer.getInt();
     byte[] value = new byte[valueSize];
@@ -302,7 +311,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     //TODO: recompute checksum?
     return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(),
         rawRecord.timestampType(), rawRecord.checksum(), rawRecord.serializedKeySize(), valueSize, rawRecord.key(),
-         value, headers, headerSize + 4 /* magic size*/);
+         value, headers, headerSize + _headerParser.magicSize() /* magic size*/);
   }
 
   @Override

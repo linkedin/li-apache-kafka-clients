@@ -59,8 +59,13 @@ public class HeaderParser {
    *
    * @return a non negative number
    */
-  public int magicLength() {
+  public int magicSize() {
     return headerMagicValue.length;
+  }
+
+
+  public void writeMagicTo(ByteBuffer bbuf) {
+    bbuf.put(headerMagicValue);
   }
 
   /**
@@ -69,7 +74,7 @@ public class HeaderParser {
    * @return true if the remaining bytes in the byte buffer are headers message
    */
   public boolean isHeaderMessage(ByteBuffer bbuf) {
-    if (bbuf.remaining() < magicLength()) {
+    if (bbuf.remaining() < magicSize()) {
       return false;
     }
 
@@ -78,7 +83,7 @@ public class HeaderParser {
       isHeaderMessage = isHeaderMessage && headerMagicValue[i] == bbuf.get();
     }
     if (!isHeaderMessage) {
-      bbuf.position(bbuf.position() - magicLength());
+      bbuf.position(bbuf.position() - magicSize());
     }
     return isHeaderMessage;
   }
@@ -89,7 +94,7 @@ public class HeaderParser {
    * @param headerMap non-null, mutable map implementation
    * @return a non-null map of key-value pairs.
    */
-  public Map<Integer, byte[]> parseHeader(ByteBuffer src, Map<Integer, byte[]> headerMap) {
+  public static Map<Integer, byte[]> parseHeader(ByteBuffer src, Map<Integer, byte[]> headerMap) {
     while (src.hasRemaining()) {
       int headerKey = src.getInt();
       if (!HeaderKeySpace.isKeyValid(headerKey)) {
@@ -111,7 +116,7 @@ public class HeaderParser {
    *             the caller can not assume any particular state of dest.
    * @param headers This writes nothing if headers is null.
    */
-  public void writeHeader(ByteBuffer dest, Map<Integer, byte[]> headers) {
+  public static void writeHeader(ByteBuffer dest, Map<Integer, byte[]> headers) {
     if (headers == null) {
       return;
     }
@@ -129,7 +134,7 @@ public class HeaderParser {
    * The serialized size of all the headers.
    * @return 0 if headers is null else the number of bytes needed to represent the header key and value.
    */
-  public int serializedHeaderSize(Map<Integer, byte[]> headers) {
+  public static int serializedHeaderSize(Map<Integer, byte[]> headers) {
     if (headers == null) {
       return 0;
     }
