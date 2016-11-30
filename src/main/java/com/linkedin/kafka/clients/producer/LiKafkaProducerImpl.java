@@ -379,10 +379,16 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        LOG.error(String.format("Unable to send record (key, value) (%s, %s) to kafka topic %s",
-            (_value != null) ? _value.toString() : "[none]",
-            (_key != null) ? _key : "[none]",
-            _topic), e);
+        if (LOG.isErrorEnabled()) {
+          //Prevent megabytes of data from being dumped to logs with large message support errors.  Good times!
+          StringBuilder valueToString = new StringBuilder(_value == null ? "[none]" : _value.toString());
+          if (valueToString.length() > 128) {
+            valueToString.setLength(128);
+            valueToString.append("TRUNCATED");
+          }
+          LOG.error(String.format("Unable to send record (key, value) (%s, %s) to kafka topic %s",
+            _key != null ? _key : "[none]", valueToString.toString() , _topic), e);
+        }
         // Audit the failure.
         _auditor.record(_topic, _key, _value, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
       } else {

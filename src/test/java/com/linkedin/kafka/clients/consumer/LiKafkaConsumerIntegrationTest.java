@@ -27,7 +27,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -76,7 +75,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerIntegrationTest.class);
 
-  private final int MESSAGE_COUNT = 100;
+  private final int MESSAGE_COUNT = 1000;
   private Random _random;
   private final String TOPIC1 = "topic1";
   private final String TOPIC2 = "topic2";
@@ -499,9 +498,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       Map<String, String> messagesUnseen = new ConcurrentSkipListMap<>(new MessageIdComparator());
       messagesUnseen.putAll(_messages);
 
-//      for (String key : messagesUnseen.keySet()) {
-//        System.out.println(key);
-//      }
       long startTime = System.currentTimeMillis();
       int numMessagesConsumed = 0;
       int lastCommitAndResume = 0;
@@ -515,14 +511,13 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           String messageId = messageId(record.topic(), record.partition(), record.offset());
           // We should not see any duplicate message.
           String origMessage = messagesUnseen.get(messageId);
-          //System.out.println("Got \"" + messageId + "\".");
           assertEquals(record.value(), origMessage, "Message with id \"" + messageId + "\" should be the same.");
           messagesUnseen.remove(messageId);
           offsetMap.put(new TopicPartition(record.topic(), record.partition()), new OffsetAndMetadata(record.offset() + 1));
           numMessagesConsumed++;
           // We try to stop and recreate a consumer every MESSAGE_COUNT messages and at most stop and resume 4 times.
           if (lastCommitAndResume + (NUM_PRODUCER * THREADS_PER_PRODUCER * MESSAGE_COUNT) / 4 < numMessagesConsumed &&
-              numCommitAndResume < 4 && offsetMap.size() == NUM_PARTITIONS) {
+              numCommitAndResume < 4 && offsetMap.size() == NUM_PARTITIONS * 2) {
             consumer.commitSync(offsetMap);
             consumer.close();
             offsetMap.clear();
@@ -638,20 +633,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
                 }
                 assertNull(e);
                 String messageId = messageId(recordMetadata.topic(), recordMetadata.partition(), recordMetadata.offset());
-                //System.out.println("Adding message: " + messageId);
                 _messages.put(messageId, message);
                 waitForProducerCallbacks.countDown();
               }
             });
-      }
-
-      _producer.flush();
-      try {
-        if (!waitForProducerCallbacks.await(20, TimeUnit.SECONDS)) {
-          throw new IllegalStateException("Still waiting for " + waitForProducerCallbacks.getCount() + " callbacks to execute.");
-        }
-      } catch (InterruptedException ie) {
-        throw new IllegalStateException(ie);
       }
     }
   }
@@ -776,7 +761,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         String origMessage = _messageUnseen.get(messageId);
         assertEquals(record.value(), origMessage, "Message should be the same. partition = " +
             record.topic() + "-" + record.partition() + ", offset = " + record.offset());
-        //System.out.println("Removing seen message \"" + messageId + "\".");
         _messageUnseen.remove(messageId);
       }
     }
