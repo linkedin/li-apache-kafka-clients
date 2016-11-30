@@ -12,6 +12,7 @@ package com.linkedin.kafka.clients.utils;
 import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import javax.xml.bind.DatatypeConverter;
 
 
 /**
@@ -19,21 +20,22 @@ import java.util.Map;
  */
 public class HeaderParser {
 
-  /**
-   * When this is present in the first 8 bytes of a record value this indicates a record value that suports headers.
-   */
-  private static final long HEADER_MAGIC
+  public static final long DEFAULT_HEADER_MAGIC
     // All this bit manipulation makes this number look like an invalid UTF8 encoded string if someone starts to read it
     // within the first 7 bytes
     = (0x4c6d4eef4b7a44L | 0b11000000_11000000_11000000_11000000_11000000_11000000_11000000_11000000L) &
         0b11011111_11011111_11011111_11011111_11011111_11011111_11011111_11011111L;
 
 
-  private static final byte[] HEADER_MAGIC_AS_BYTES;
+  private static final byte[] DEFAULT_HEADER_MAGIC_AS_BYTES;
   static {
     ByteBuffer bbuf = ByteBuffer.allocate(8);
-    bbuf.putLong(HEADER_MAGIC);
-    HEADER_MAGIC_AS_BYTES = bbuf.array();
+    bbuf.putLong(DEFAULT_HEADER_MAGIC);
+    DEFAULT_HEADER_MAGIC_AS_BYTES = bbuf.array();
+  }
+
+  public static String defaultMagicAsString() {
+    return DatatypeConverter.printHexBinary(DEFAULT_HEADER_MAGIC_AS_BYTES);
   }
 
   private final byte[] headerMagicValue;
@@ -45,7 +47,15 @@ public class HeaderParser {
 
 
   public HeaderParser() {
-    this(HEADER_MAGIC_AS_BYTES);
+    this(DEFAULT_HEADER_MAGIC_AS_BYTES);
+  }
+
+  /**
+   *
+   * @param hexString just 0-9A-Z no 0x prefix
+   */
+  public HeaderParser(String hexString) {
+    this(DatatypeConverter.parseHexBinary(hexString));
   }
 
   public HeaderParser(byte[] headerMagicValue) {
@@ -63,7 +73,9 @@ public class HeaderParser {
     return headerMagicValue.length;
   }
 
-
+  /**
+   * When this is present in the first 8 bytes of a record value this indicates a record value that suports headers.
+   */
   public void writeMagicTo(ByteBuffer bbuf) {
     bbuf.put(headerMagicValue);
   }
@@ -80,7 +92,7 @@ public class HeaderParser {
 
     boolean isHeaderMessage = true;
     for (int i = 0; i < headerMagicValue.length; i++) {
-      isHeaderMessage = isHeaderMessage && headerMagicValue[i] == bbuf.get();
+      isHeaderMessage = headerMagicValue[i] == bbuf.get() && isHeaderMessage;
     }
     if (!isHeaderMessage) {
       bbuf.position(bbuf.position() - magicSize());

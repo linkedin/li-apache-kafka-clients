@@ -12,6 +12,7 @@ package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
+import com.linkedin.kafka.clients.utils.HeaderParser;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
@@ -132,6 +133,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 AUTO_COMMIT_INTERVAL_MS_DOC)
         .define(LI_KAFKA_MAGIC_CONFIG,
                 Type.STRING,
+                HeaderParser.defaultMagicAsString(),
                 Importance.LOW,
                 LI_KAFKA_MAGIC_DOC);
 

@@ -21,7 +21,6 @@ import com.linkedin.kafka.clients.utils.UUIDFactory;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Random;
-import javax.xml.bind.DatatypeConverter;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -187,12 +186,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _numThreadsInSend = new AtomicInteger(0);
     _closed = false;
 
-    if (configs.getString(LiKafkaProducerConfig.LI_KAFKA_MAGIC_CONFIG) == null) {
-      _headerParser = new HeaderParser();
-    } else {
-      byte[] magic = DatatypeConverter.parseHexBinary(configs.getString(LiKafkaProducerConfig.LI_KAFKA_MAGIC_CONFIG));
-      _headerParser = new HeaderParser(magic);
-    }
+    _headerParser = new HeaderParser(configs.getString(LiKafkaProducerConfig.LI_KAFKA_MAGIC_CONFIG));
   }
 
   @Override

@@ -19,7 +19,6 @@ import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.nio.ByteBuffer;
-import javax.xml.bind.DatatypeConverter;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -147,12 +146,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     // Instantiate offset commit callback.
     _offsetCommitCallback = new LiKafkaOffsetCommitCallback();
 
-    if (configs.getString(LiKafkaConsumerConfig.LI_KAFKA_MAGIC_CONFIG) == null) {
-      _headerParser = new HeaderParser();
-    } else {
-      byte[] magic = DatatypeConverter.parseHexBinary(configs.getString(LiKafkaConsumerConfig.LI_KAFKA_MAGIC_CONFIG));
-      _headerParser = new HeaderParser(magic);
-    }
+    _headerParser = new HeaderParser(configs.getString(LiKafkaConsumerConfig.LI_KAFKA_MAGIC_CONFIG));
   }
 
   @Override

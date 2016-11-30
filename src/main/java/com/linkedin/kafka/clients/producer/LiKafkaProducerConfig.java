@@ -12,6 +12,7 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumerConfig;
+import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import org.apache.kafka.clients.producer.Producer;
@@ -74,7 +75,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(KEY_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, KEY_SERIALIZER_CLASS_DOC)
         .define(VALUE_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, VALUE_SERIALIZER_CLASS_DOC)
         .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactoryImpl.class, Importance.MEDIUM, UUID_FACTORY_CLASS_DOC)
-        .define(LI_KAFKA_MAGIC_CONFIG, Type.STRING, Importance.LOW, LI_KAFKA_MAGIC_DOC);
+        .define(LI_KAFKA_MAGIC_CONFIG, Type.STRING, HeaderParser.defaultMagicAsString(), Importance.LOW, LI_KAFKA_MAGIC_DOC);
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {
