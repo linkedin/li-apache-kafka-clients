@@ -24,6 +24,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.consumer.internals.NoOpConsumerRebalanceListener;
 import org.apache.kafka.common.Metric;
@@ -406,6 +407,12 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     return _consumerRecordsProcessor.safeOffset(tp);
   }
 
+
+  @Override
+  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
+    return _kafkaConsumer.offsetsForTimes(timestampsToSearch);
+  }
+
   @Override
   public Map<TopicPartition, Long> safeOffsets() {
     Map<TopicPartition, Long> safeOffsets = new HashMap<>();
@@ -413,6 +420,16 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       safeOffsets.put(entry.getKey(), entry.getValue().offset());
     }
     return safeOffsets;
+  }
+
+  @Override
+  public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
+    return _kafkaConsumer.beginningOffsets(partitions);
+  }
+
+  @Override
+  public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
+    return _kafkaConsumer.endOffsets(partitions);
   }
 
   @Override
