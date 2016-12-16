@@ -300,7 +300,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     try {
       TopicPartition tp = new TopicPartition(topic, 0);
       consumer.assign(Collections.singleton(tp));
-      consumer.poll(5000); // M2
+      assertEquals(consumer.poll(5000).count(), 1, "Should have consumed 1 message"); // M2
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
@@ -372,13 +372,13 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // Consume some messages
     ConsumerRecords<String, String> records = null;
     while (records == null || records.isEmpty()) {
-      records = consumer.poll(1000);
+      records = consumer.poll(5000);
     }
 
     consumer.assign(Collections.singleton(tp1));
     records = null;
     while (records == null || records.isEmpty()) {
-      records = consumer.poll(1000);
+      records = consumer.poll(5000);
     }
     // we should be able to seek on tp 0 after assignment change.
     consumer.assign(Arrays.asList(tp0, tp1));
@@ -401,7 +401,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     try {
       ConsumerRecords<String, String> records = null;
       while (records == null || !records.isEmpty()) {
-        records = consumer.poll(1000);
+        records = consumer.poll(5000);
       }
 
       // Seek forward should work.
