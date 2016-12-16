@@ -289,33 +289,49 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       _kafkaConsumer.commitAsync(offsetsToCommit, _offsetCommitCallback);
     }
   }
-
+  
   @Override
   public void seek(TopicPartition partition, long offset) {
-    // We only check the consumer record processor if user is seeking backward.
+    // The offset seeks is a complicated case, there are four situations to be handled differently.
+    // 1. Before the earliest consumed message. An OffsetNotTrackedException will be thrown in this case.
+    // 2. At or after the earliest consumed message but before the first delivered message. We will seek to the earliest
+    //    tracked offset in this case to avoid losing messages.
+    // 3. After the first delivered message but before the last delivered message, we seek to the safe offset of the 
+    //    closest delivered message before the sought to offset.
+    // 4. After the lastDelivered message. We seek to the user provided offset.
+    // 
+    // In addition, there are two special cases we can handle more intelligently.
+    // 5. User seeks to the last committed offsets. We will reload the committed information instead of naively seeking 
+    //    in this case.
+    // 6. User seeks to the current position. Do nothing, i.e. not clean up the internal information.
     Long lastDeliveredFromPartition = _consumerRecordsProcessor.delivered(partition);
     // Do nothing if user wants to seek to the last delivered + 1.
     if (lastDeliveredFromPartition != null && offset == lastDeliveredFromPartition + 1) {
+      // Case 6
       return;
     }
-    // If the user is seeking to the last committed offset, we use the last committed information.
     OffsetAndMetadata committed = committed(partition);
     if (committed != null && committed.offset() == offset) {
+      // Case 5: If the user is seeking to the last committed offset, we use the last committed information.
       seekToCommitted(Collections.singleton(partition));
     } else {
       // Now we really need to seek. We only do the sanity check if the user is seeking backward. If user is seeking
       // forward, there is no large message awareness.
       Long offsetToSeek = offset;
+      // Case 4 if the following if statement is false
       if (lastDeliveredFromPartition != null && offset <= lastDeliveredFromPartition) {
         // We need to seek to the smaller one of the starting offset and safe offset to ensure we do not lose
         // any message starting from that offset.
-        Long mostRecentlyConsumed = _consumerRecordsProcessor.closestDeliveredUpTo(partition, offset);
-        if (mostRecentlyConsumed != null && mostRecentlyConsumed == offset) {
+        Long closestDeliveredBeforeOffset = _consumerRecordsProcessor.closestDeliveredUpTo(partition, offset);
+        if (closestDeliveredBeforeOffset != null && closestDeliveredBeforeOffset == offset) {
+          // Case 2
           offsetToSeek = Math.min(_consumerRecordsProcessor.startingOffset(partition, offset),
                                   _consumerRecordsProcessor.safeOffset(partition, offset));
-        } else if (mostRecentlyConsumed != null && mostRecentlyConsumed < offset) {
-          offsetToSeek = _consumerRecordsProcessor.safeOffset(partition, mostRecentlyConsumed);
+        } else if (closestDeliveredBeforeOffset != null && closestDeliveredBeforeOffset < offset) {
+          // case 3
+          offsetToSeek = _consumerRecordsProcessor.safeOffset(partition, closestDeliveredBeforeOffset);
         } else {
+          // Case 1
           // If there is no recently delivered offset, we use the earliest tracked offset.
           offsetToSeek = _consumerRecordsProcessor.earliestTrackedOffset(partition);
           assert offsetToSeek != null;
@@ -483,8 +499,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   /**
    * A helper function that converts the last delivered offset map to the offset to commit.
    * This function is tricky and handles the following scenarios:
-   * 1. Some messages has been delivered from a partition.
-   * 2. No message was delivered, but some messages were consumed.
+   * 1. Some messages has been delivered (returned to the user) from a partition.
+   * 2. No message was delivered, but some messages were consumed (read from broker).
    * 3. No message was delivered, and no message was consumed.
    * 4. User called seek().
    *

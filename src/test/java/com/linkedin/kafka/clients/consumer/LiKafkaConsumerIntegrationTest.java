@@ -300,7 +300,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     try {
       TopicPartition tp = new TopicPartition(topic, 0);
       consumer.assign(Collections.singleton(tp));
-      consumer.poll(1000); // M2
+      consumer.poll(5000); // M2
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
@@ -312,7 +312,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.seek(tp, consumer.committed(tp).offset());
       assertEquals(consumer.position(tp), 0, "The committed safe offset should be 0");
 
-      ConsumerRecords<String, String> records = consumer.poll(1000); // M1
+      ConsumerRecords<String, String> records = consumer.poll(5000); // M1
 
       assertEquals(records.count(), 1, "There should be only one record.");
       assertEquals(records.iterator().next().offset(), 4, "The message offset should be 4");
@@ -336,7 +336,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
       TopicPartition tp = new TopicPartition(topic, 0);
       consumer.assign(Collections.singleton(tp));
-      consumer.poll(1000); // M2
+      consumer.poll(5000); // M2
       final AtomicBoolean offsetCommitted = new AtomicBoolean(false);
       consumer.commitAsync(new OffsetCommitCallback() {
         @Override
@@ -493,7 +493,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // All the consumers should have the same group id.
     props.setProperty("group.id", "testCommitAndResume");
     // Reduce the fetch size for each partition to make sure we will poll() multiple times.
-    props.setProperty("max.partition.fetch.bytes", "64000");
+    props.setProperty("max.partition.fetch.bytes", "6400");
+    props.setProperty("enable.auto.commit", "false");
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
 
     try {
@@ -522,7 +523,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           numMessagesConsumed++;
           // We try to stop and recreate a consumer every 1000 messages and at most stop and resume 4 times.
           if (lastCommitAndResume + (NUM_PRODUCER * THREADS_PER_PRODUCER * MESSAGE_COUNT) / 4 < numMessagesConsumed &&
-              numCommitAndResume < 4 && offsetMap.size() == NUM_PARTITIONS) {
+              numCommitAndResume < 4 && offsetMap.size() == 2 * NUM_PARTITIONS) {
+            System.out.println(String.format("Committing offsets for %s, %d",
+                                             new TopicPartition(record.topic(), record.partition()),
+                                             record.offset() + 1));
             consumer.commitSync(offsetMap);
             consumer.close();
             offsetMap.clear();

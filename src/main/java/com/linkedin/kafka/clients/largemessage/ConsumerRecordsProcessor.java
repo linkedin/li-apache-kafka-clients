@@ -211,6 +211,7 @@ public class ConsumerRecordsProcessor<K, V> {
   /**
    * This method will return the most recently delivered message whose offset is smaller or equals to the specified
    * offset.
+   * The delivered messages are the messages returned to the users.
    *
    * @param tp            The partition to get the most recently delivered offset.
    * @param messageOffset the specified offset
@@ -222,7 +223,8 @@ public class ConsumerRecordsProcessor<K, V> {
   }
 
   /**
-   * Return the offset of the last delivered message of a partition.
+   * Return the offset of the last delivered message of a partition. 
+   * The delivered messages are the messages returned to the users.
    *
    * @param tp the partition
    * @return the offset of the last delivered message from the given partition.
@@ -233,6 +235,9 @@ public class ConsumerRecordsProcessor<K, V> {
   }
 
   /**
+   * Return the offsets of the delivered messages for all partitions.
+   * The delivered messages are the messages returned to the users.
+   * 
    * @return the offsets of the last delivered messages for all the partitions.
    */
   public Map<TopicPartition, Long> delivered() {
