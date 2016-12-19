@@ -29,12 +29,36 @@ public class LiKafkaClientsUtils {
     return bytes;
   }
 
-  public static long offsetFromWrappedMetadata(String metadata) {
-    return Long.parseLong(metadata.substring(0, metadata.indexOf(',')));
+  /**
+   * Get the user offset from the metadata of the committed offsets.
+   * @param metadata the associated metadata.
+   * @return the committed user offset, null if there is no such offset. (i.e. the metadata is not committed by 
+   *         a LiKafkaConsumer.
+   */
+  public static Long offsetFromWrappedMetadata(String metadata) {
+    // handle the offset committed by raw KafkaConsumers
+    if (metadata == null) {
+      return null;
+    } else {
+      int separatorIndex = metadata.indexOf(',');
+      if (separatorIndex < 0) {
+        return null;
+      } else {
+        try {
+          return Long.parseLong(metadata.substring(0, separatorIndex));
+        } catch (NumberFormatException nfe) {
+          return null;
+        }
+      }
+    }
   }
 
   public static String metadataFromWrappedMetadata(String metadata) {
-    return metadata.substring(metadata.indexOf(',') + 1);
+    if (metadata == null || metadata.isEmpty()) {
+      return metadata;
+    } else {
+      return metadata.substring(metadata.indexOf(',') + 1);
+    }
   }
 
   public static String wrapMetadataWithOffset(String metadata, long offset) {

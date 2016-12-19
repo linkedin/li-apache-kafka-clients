@@ -17,10 +17,12 @@ import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import kafka.server.KafkaConfig;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.producer.Callback;
@@ -350,6 +352,49 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       }
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+    }
+  }
+  
+  @Test
+  public void testCommittedOnOffsetsCommittedByRawConsumer() {
+    String topic = "testCommittedOnOffsetsCommittedByRawConsumer";
+    TopicPartition tp = new TopicPartition(topic, 0);
+    produceSyntheticMessages(topic);
+    Properties props = new Properties();
+    // All the consumers should have the same group id.
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommittedOnOffsetsCommittedByRawConsumer");
+    
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props); 
+        Consumer<byte[], byte[]> rawConsumer = new KafkaConsumer<>(getConsumerProperties(props))) {
+      consumer.assign(Collections.singleton(tp));
+      rawConsumer.assign(Collections.singleton(tp));
+      // Test commit an offset without metadata
+      rawConsumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(0L)));
+      OffsetAndMetadata offsetAndMetadata = consumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), 0L);
+      assertEquals(offsetAndMetadata.metadata(), "");
+    }
+
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props);
+        Consumer<byte[], byte[]> rawConsumer = new KafkaConsumer<>(getConsumerProperties(props))) {
+      consumer.assign(Collections.singleton(tp));
+      rawConsumer.assign(Collections.singleton(tp));
+      // Test commit an offset with metadata containing no comma
+      rawConsumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(1L, "test")));
+      OffsetAndMetadata offsetAndMetadata = consumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), 1L);
+      assertEquals(offsetAndMetadata.metadata(), "test");
+    }
+
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props);
+        Consumer<byte[], byte[]> rawConsumer = new KafkaConsumer<>(getConsumerProperties(props))) {
+      consumer.assign(Collections.singleton(tp));
+      rawConsumer.assign(Collections.singleton(tp));
+      // Test commit an offset with metadata containing a comma
+      rawConsumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(2L, "test,test")));
+      OffsetAndMetadata offsetAndMetadata = consumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), 2L);
+      assertEquals(offsetAndMetadata.metadata(), "test,test");
     }
   }
 

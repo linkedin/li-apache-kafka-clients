@@ -370,8 +370,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
       _kafkaConsumer.seek(tp, offsetAndMetadata.offset());
       _consumerRecordsProcessor.clear(tp);
-      long lw = LiKafkaClientsUtils.offsetFromWrappedMetadata(offsetAndMetadata.metadata());
-      _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, lw);
+      Long hw = LiKafkaClientsUtils.offsetFromWrappedMetadata(offsetAndMetadata.metadata());
+      if (hw == null) {
+        hw = offsetAndMetadata.offset();
+      }
+      _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, hw);
     }
   }
 
@@ -389,8 +392,14 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     OffsetAndMetadata offsetAndMetadata = _kafkaConsumer.committed(partition);
     if (offsetAndMetadata != null) {
       String rawMetadata = offsetAndMetadata.metadata();
-      long userOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(rawMetadata);
-      String userMetadata = LiKafkaClientsUtils.metadataFromWrappedMetadata(rawMetadata);
+      Long userOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(rawMetadata);
+      String userMetadata;
+      if (userOffset == null) {
+        userOffset = offsetAndMetadata.offset();
+        userMetadata = offsetAndMetadata.metadata();
+      } else {
+        userMetadata = LiKafkaClientsUtils.metadataFromWrappedMetadata(rawMetadata);
+      }
       offsetAndMetadata = new OffsetAndMetadata(userOffset, userMetadata);
     }
     return offsetAndMetadata;
@@ -484,7 +493,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       OffsetAndMetadata committed = _kafkaConsumer.committed(entry.getKey());
       if (committed != null) {
         Long committedUserOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(committed.metadata());
-        if (entry.getValue().offset() == committedUserOffset) {
+        if (committedUserOffset != null && entry.getValue().offset() == committedUserOffset) {
           long safeOffset = committed.offset();
           String userMetadata = entry.getValue().metadata();
           String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(userMetadata, committedUserOffset);

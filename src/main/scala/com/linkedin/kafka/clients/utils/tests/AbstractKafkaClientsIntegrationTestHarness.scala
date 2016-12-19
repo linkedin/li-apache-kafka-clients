@@ -47,6 +47,15 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
    * @return A LiKafkaConsumer which is ready to use.
    */
   def createConsumer(props: Properties = null): LiKafkaConsumer[String, String] = {
+    new LiKafkaConsumerImpl(getConsumerProperties(props))
+  }
+
+  /**
+   * Get the default consumer properties. 
+   * @param props the properties that users want to specify
+   * @return the consumer properties ready to instantiate a consumer
+   */
+  def getConsumerProperties(props: Properties = null): Properties = {
     val consumerProps = Option(props).getOrElse(new Properties())
     maybeSetProperties(consumerProps, ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapUrl)
     maybeSetProperties(consumerProps, ConsumerConfig.GROUP_ID_CONFIG, "testingConsumer")
@@ -57,7 +66,7 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
     maybeSetProperties(consumerProps, ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
     maybeSetProperties(consumerProps, ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
     maybeSetProperties(consumerProps, LiKafkaConsumerConfig.SEGMENT_DESERIALIZER_CLASS_CONFIG, classOf[DefaultSegmentDeserializer].getName)
-    new LiKafkaConsumerImpl(consumerProps)
+    consumerProps
   }
 
   /**
