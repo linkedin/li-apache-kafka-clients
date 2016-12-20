@@ -13,15 +13,16 @@ package com.linkedin.kafka.clients.consumer;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
-import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import kafka.server.KafkaConfig;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.producer.Callback;
@@ -51,9 +52,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.fail;
+import static org.testng.Assert.*;
 
 
 /**
@@ -112,6 +111,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * 5: M0_SEG1(END)
    * 6: M3_SEG1(END)
    * 7: M4_SEG0(END)
+   * 8: M5_SEG0
+   * 9: M5_SEG1(END)
    */
   @Test
   public void testSeek() {
@@ -130,41 +131,47 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
       // Now seek to message offset 0
       consumer.seek(tp, 0);
-      verifyMessagesAfterSeek(consumer, Arrays.asList(2L, 4L, 5L, 6L, 7L));
+      verifyMessagesAfterSeek(consumer, Arrays.asList(2L, 4L, 5L, 6L, 7L, 9L));
 
-      // Now seek to message offset 1 which is not a message offset. An exception should be thrown because
-      // there is no earlier delivered message.
-      try {
-        consumer.seek(tp, 1);
-        fail("Should throw OffsetNotTrackedException");
-      } catch (OffsetNotTrackedException onte) {
-        // let it go.
-      }
+      // Now seek to message offset 1 which is not a message offset and is earlier than the first delivered message.
+      // in this case, the consumer will seek to the safe offset of the partition.
+      consumer.seek(tp, 1);
+      assertEquals(consumer.position(tp), 0L, "The position should be 0 after the seek.");
+      verifyMessagesAfterSeek(consumer, Arrays.asList(2L, 4L, 5L, 6L, 7L, 9L));
 
       // Now seek to message offset 2
       consumer.seek(tp, 2);
-      verifyMessagesAfterSeek(consumer, Arrays.asList(2L, 4L, 5L, 6L, 7L));
+      verifyMessagesAfterSeek(consumer, Arrays.asList(2L, 4L, 5L, 6L, 7L, 9L));
 
       // Now seek to message offset 3, it is a non message offset. The consumer will actually seek to safe offset
       // of 2. m2 should be ignored and m1 should be delivered.
       consumer.seek(tp, 3);
-      verifyMessagesAfterSeek(consumer, Arrays.asList(4L, 5L, 6L, 7L));
+      verifyMessagesAfterSeek(consumer, Arrays.asList(4L, 5L, 6L, 7L, 9L));
 
       // Now seek to message offset 4, m1 should be delivered but m2 should not be delivered.
       consumer.seek(tp, 4);
-      verifyMessagesAfterSeek(consumer, Arrays.asList(4L, 5L, 6L, 7L));
+      verifyMessagesAfterSeek(consumer, Arrays.asList(4L, 5L, 6L, 7L, 9L));
 
       // Now seek to message offset 5, m0 should be delivered but m1 and m2 should not be delivered.
       consumer.seek(tp, 5);
-      verifyMessagesAfterSeek(consumer, Arrays.asList(5L, 6L, 7L));
+      verifyMessagesAfterSeek(consumer, Arrays.asList(5L, 6L, 7L, 9L));
 
       // Now seek to message offset 6, m3 should be delivered but m2 should not be delivered.
       consumer.seek(tp, 6);
-      verifyMessagesAfterSeek(consumer, Arrays.asList(6L, 7L));
+      assertEquals(consumer.position(tp), 3L);
+      verifyMessagesAfterSeek(consumer, Arrays.asList(6L, 7L, 9L));
 
       // Now seek to message offset 7, m4 should be delivered but m2 should not be delivered.
       consumer.seek(tp, 7);
-      verifyMessagesAfterSeek(consumer, Arrays.asList(7L));
+      verifyMessagesAfterSeek(consumer, Arrays.asList(7L, 9L));
+
+      // Now seek to message offset 8, m5 should be delivered.
+      consumer.seek(tp, 8);
+      verifyMessagesAfterSeek(consumer, Arrays.asList(9L));
+
+      // Now seek to message offset 9, m5 should be delivered.
+      consumer.seek(tp, 9);
+      verifyMessagesAfterSeek(consumer, Arrays.asList(9L));
     }
   }
 
@@ -206,42 +213,53 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
     try {
       TopicPartition tp = new TopicPartition(topic, 0);
-      consumer.assign(Collections.singleton(tp));
+      TopicPartition tp1 = new TopicPartition(topic, 1);
+      consumer.assign(Arrays.asList(tp, tp1));
 
       while (consumer.poll(10).isEmpty()) {
         // M2
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
-      assertEquals(consumer.committedSafeOffset(tp), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.position(tp1), 2L, "The position of partition 1 should be 2.");
+      assertEquals(consumer.committedSafeOffset(tp1).longValue(), 0L, "The committed safe offset for partition 1 should be 0.");
+      assertEquals(consumer.committed(tp1).offset(), 2L, "The committed offset for partition 1 should be 2.");
 
       while (consumer.poll(10).isEmpty()) {
         // M1
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(5, ""), "The committed user offset should be 5");
-      assertEquals(consumer.committedSafeOffset(tp), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(4)));
+      assertEquals(consumer.committed(tp).offset(), 4, "The committed user offset should 4");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
 
       while (consumer.poll(10).isEmpty()) {
         // M0
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(6, ""), "The committed user offset should be 6");
-      assertEquals(consumer.committedSafeOffset(tp), 3, "The committed actual offset should be 3");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 3, "The committed actual offset should be 3");
 
       while (consumer.poll(10).isEmpty()) {
         // M3
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(7, ""), "The committed user offset should be 7");
-      assertEquals(consumer.committedSafeOffset(tp), 7, "The committed actual offset should be 7");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 7, "The committed actual offset should be 7");
 
       while (consumer.poll(10).isEmpty()) {
         // M4
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(8, ""), "The committed user offset should be 8");
-      assertEquals(consumer.committedSafeOffset(tp), 8, "The committed actual offset should be 8");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 8, "The committed actual offset should be 8");
+
+      // test commit offset 0
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(0)));
+      assertEquals(consumer.committed(tp), new OffsetAndMetadata(0, ""), "The committed user offset should be 0");
 
       consumer.close();
       consumer = createConsumer(props);
@@ -249,7 +267,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.seekToCommitted(Collections.singleton(tp));
       consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(8, "new commit")));
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(8, "new commit"));
-      assertEquals(consumer.committedSafeOffset(tp), 8);
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 8);
     } finally {
       consumer.close();
     }
@@ -265,6 +283,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * 5: M0_SEG1(END)
    * 6: M3_SEG1(END)
    * 7: M4_SEG0(END)
+   * 8: M5_SEG0
+   * 9: M5_SEG1(END)
    */
   @Test
   public void testSeekToCommitted() {
@@ -282,18 +302,19 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     try {
       TopicPartition tp = new TopicPartition(topic, 0);
       consumer.assign(Collections.singleton(tp));
-      consumer.poll(1000); // M2
+      assertEquals(consumer.poll(5000).count(), 1, "Should have consumed 1 message"); // M2
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
-      assertEquals(consumer.committedSafeOffset(tp), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
 
       consumer.close();
       consumer = createConsumer(props);
       consumer.assign(Collections.singleton(tp));
-      consumer.seekToCommitted(Collections.singleton(tp));
+      // This should work the same as seekToCommitted.
+      consumer.seek(tp, consumer.committed(tp).offset());
       assertEquals(consumer.position(tp), 0, "The committed safe offset should be 0");
 
-      ConsumerRecords<String, String> records = consumer.poll(1000); // M1
+      ConsumerRecords<String, String> records = consumer.poll(5000); // M1
 
       assertEquals(records.count(), 1, "There should be only one record.");
       assertEquals(records.iterator().next().offset(), 4, "The message offset should be 4");
@@ -317,7 +338,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
       TopicPartition tp = new TopicPartition(topic, 0);
       consumer.assign(Collections.singleton(tp));
-      consumer.poll(1000); // M2
+      consumer.poll(5000); // M2
       final AtomicBoolean offsetCommitted = new AtomicBoolean(false);
       consumer.commitAsync(new OffsetCommitCallback() {
         @Override
@@ -330,7 +351,50 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         consumer.poll(10);
       }
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
-      assertEquals(consumer.committedSafeOffset(tp), 0, "The committed actual offset should be 0");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+    }
+  }
+  
+  @Test
+  public void testCommittedOnOffsetsCommittedByRawConsumer() {
+    String topic = "testCommittedOnOffsetsCommittedByRawConsumer";
+    TopicPartition tp = new TopicPartition(topic, 0);
+    produceSyntheticMessages(topic);
+    Properties props = new Properties();
+    // All the consumers should have the same group id.
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommittedOnOffsetsCommittedByRawConsumer");
+    
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props); 
+        Consumer<byte[], byte[]> rawConsumer = new KafkaConsumer<>(getConsumerProperties(props))) {
+      consumer.assign(Collections.singleton(tp));
+      rawConsumer.assign(Collections.singleton(tp));
+      // Test commit an offset without metadata
+      rawConsumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(0L)));
+      OffsetAndMetadata offsetAndMetadata = consumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), 0L);
+      assertEquals(offsetAndMetadata.metadata(), "");
+    }
+
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props);
+        Consumer<byte[], byte[]> rawConsumer = new KafkaConsumer<>(getConsumerProperties(props))) {
+      consumer.assign(Collections.singleton(tp));
+      rawConsumer.assign(Collections.singleton(tp));
+      // Test commit an offset with metadata containing no comma
+      rawConsumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(1L, "test")));
+      OffsetAndMetadata offsetAndMetadata = consumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), 1L);
+      assertEquals(offsetAndMetadata.metadata(), "test");
+    }
+
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props);
+        Consumer<byte[], byte[]> rawConsumer = new KafkaConsumer<>(getConsumerProperties(props))) {
+      consumer.assign(Collections.singleton(tp));
+      rawConsumer.assign(Collections.singleton(tp));
+      // Test commit an offset with metadata containing a comma
+      rawConsumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(2L, "test,test")));
+      OffsetAndMetadata offsetAndMetadata = consumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), 2L);
+      assertEquals(offsetAndMetadata.metadata(), "test,test");
     }
   }
 
@@ -353,17 +417,17 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // Consume some messages
     ConsumerRecords<String, String> records = null;
     while (records == null || records.isEmpty()) {
-      records = consumer.poll(1000);
+      records = consumer.poll(5000);
     }
 
     consumer.assign(Collections.singleton(tp1));
     records = null;
     while (records == null || records.isEmpty()) {
-      records = consumer.poll(1000);
+      records = consumer.poll(5000);
     }
     // we should be able to seek on tp 0 after assignment change.
     consumer.assign(Arrays.asList(tp0, tp1));
-    assertEquals(consumer.safeOffset(tp0), Long.MAX_VALUE, "The safe offset for " + tp0 + " should be Long.MAX_VALUE now.");
+    assertEquals(consumer.safeOffset(tp0), null, "The safe offset for " + tp0 + " should be null now.");
     // We should be able to seek to 0 freely.
     consumer.seek(tp0, 0);
   }
@@ -382,7 +446,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     try {
       ConsumerRecords<String, String> records = null;
       while (records == null || !records.isEmpty()) {
-        records = consumer.poll(1000);
+        records = consumer.poll(5000);
       }
 
       // Seek forward should work.
@@ -474,7 +538,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // All the consumers should have the same group id.
     props.setProperty("group.id", "testCommitAndResume");
     // Reduce the fetch size for each partition to make sure we will poll() multiple times.
-    props.setProperty("max.partition.fetch.bytes", "64000");
+    props.setProperty("max.partition.fetch.bytes", "6400");
+    props.setProperty("enable.auto.commit", "false");
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
 
     try {
@@ -503,7 +568,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           numMessagesConsumed++;
           // We try to stop and recreate a consumer every 1000 messages and at most stop and resume 4 times.
           if (lastCommitAndResume + (NUM_PRODUCER * THREADS_PER_PRODUCER * MESSAGE_COUNT) / 4 < numMessagesConsumed &&
-              numCommitAndResume < 4 && offsetMap.size() == NUM_PARTITIONS) {
+              numCommitAndResume < 4 && offsetMap.size() == 2 * NUM_PARTITIONS) {
+            System.out.println(String.format("Committing offsets for %s, %d",
+                                             new TopicPartition(record.topic(), record.partition()),
+                                             record.offset() + 1));
             consumer.commitSync(offsetMap);
             consumer.close();
             offsetMap.clear();
@@ -586,17 +654,17 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         final String message = messageId + TestUtils.getRandomString(messageSize);
 
         _producer.send(new ProducerRecord<>(_topic, message),
-            new Callback() {
-              @Override
-              public void onCompletion(RecordMetadata recordMetadata, Exception e) {
-                // The callback should have been invoked only once.
-                assertFalse(ackedMessages.contains(messageId));
-                if (e == null) {
-                  ackedMessages.add(messageId);
-                }
-                _messages.put(recordMetadata.topic() + "-" + recordMetadata.partition() + "-" + recordMetadata.offset(), message);
-              }
-            });
+                       new Callback() {
+                         @Override
+                         public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+                           // The callback should have been invoked only once.
+                           assertFalse(ackedMessages.contains(messageId));
+                           if (e == null) {
+                             ackedMessages.add(messageId);
+                           }
+                           _messages.put(recordMetadata.topic() + "-" + recordMetadata.partition() + "-" + recordMetadata.offset(), message);
+                         }
+                       });
       }
     }
   }
@@ -610,6 +678,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   // 5: M0_SEG1(END)
   // 6: M3_SEG1(END)
   // 7: M4_SEG0(END)
+  // 8: M5_SEG0
+  // 9: M5_SEG1(END)
   private void produceSyntheticMessages(String topic) {
     MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE, new DefaultSegmentSerializer());
 
@@ -638,6 +708,14 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     UUID messageId4 = UUID.randomUUID();
     String message4 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
     List<ProducerRecord<byte[], byte[]>> m4Segs = splitter.split(topic, 0, messageId4, message4.getBytes());
+    // M5, 2 segments
+    UUID messageId5 = UUID.randomUUID();
+    String message5 = TestUtils.getRandomString(messageSize);
+    List<ProducerRecord<byte[], byte[]>> m5Segs = splitter.split(topic, 0, messageId5, message5.getBytes());
+
+    // Add two more segment to partition 1 for corner case test.
+    List<ProducerRecord<byte[], byte[]>> m0SegsPart1 = splitter.split(topic, 1, messageId0, message0.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m1SegsPart1 = splitter.split(topic, 1, messageId1, message1.getBytes());
 
     try {
       producer.send(m0Segs.get(0)).get();
@@ -648,6 +726,12 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       producer.send(m0Segs.get(1)).get();
       producer.send(m3Segs.get(1)).get();
       producer.send(m4Segs.get(0)).get();
+      producer.send(m5Segs.get(0)).get();
+      producer.send(m5Segs.get(1)).get();
+
+      producer.send(m0SegsPart1.get(0)).get();
+      producer.send(m1SegsPart1.get(0)).get();
+
     } catch (Exception e) {
       fail("Produce synthetic data failed.", e);
     }

@@ -17,6 +17,7 @@ import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import java.util.Collections;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -101,10 +102,10 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @SuppressWarnings("unchecked")
   private LiKafkaConsumerImpl(LiKafkaConsumerConfig configs,
-                             Deserializer<K> keyDeserializer,
-                             Deserializer<V> valueDeserializer,
-                             Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
-                             Auditor<K, V> consumerAuditor) {
+                              Deserializer<K> keyDeserializer,
+                              Deserializer<V> valueDeserializer,
+                              Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
+                              Auditor<K, V> consumerAuditor) {
 
     _autoCommitEnabled = configs.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG);
     _autoCommitInterval = configs.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG);
@@ -125,7 +126,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     int messageAssemblerExpirationOffsetGap = configs.getInt(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_EXPIRATION_OFFSET_GAP_CONFIG);
     boolean exceptionOnMessageDropped = configs.getBoolean(LiKafkaConsumerConfig.EXCEPTION_ON_MESSAGE_DROPPED_CONFIG);
     MessageAssembler assembler = new MessageAssemblerImpl(messageAssemblerCapacity, messageAssemblerExpirationOffsetGap,
-        exceptionOnMessageDropped, segmentDeserializer);
+                                                          exceptionOnMessageDropped, segmentDeserializer);
 
     // Instantiate delivered message offset tracker if needed.
     int maxTrackedMessagesPerPartition = configs.getInt(LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG);
@@ -147,11 +148,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     // Instantiate consumer record processor
     _consumerRecordsProcessor = new ConsumerRecordsProcessor<>(assembler, kDeserializer, vDeserializer,
-        messageOffsetTracker, auditor);
+                                                               messageOffsetTracker, auditor);
 
     // Instantiate consumer rebalance listener
     _consumerRebalanceListener = new LiKafkaConsumerRebalanceListener<>(_consumerRecordsProcessor,
-        this, _autoCommitEnabled);
+                                                                        this, _autoCommitEnabled);
 
     // Instantiate offset commit callback.
     _offsetCommitCallback = new LiKafkaOffsetCommitCallback();
@@ -225,8 +226,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         _lastAutoCommitMs = now;
       }
       ConsumerRecords<byte[], byte[]> rawRecords = _kafkaConsumer.poll(expireMs - now);
-      // Check if we have enough consumer high watermark for a partition. The consumer high watermark is cleared during
-      // rebalance. We make this check so that after rebalance we do not deliver duplicate messages to the user.
+      // Check if we have enough high watermark for a partition. The high watermark is cleared during rebalance.
+      // We make this check so that after rebalance we do not deliver duplicate messages to the user.
       if (!rawRecords.isEmpty() && _consumerRecordsProcessor.numConsumerHighWaterMarks() < assignment().size()) {
         for (TopicPartition tp : rawRecords.partitions()) {
           if (_consumerRecordsProcessor.consumerHighWaterMarkForPartition(tp) == null) {
@@ -246,64 +247,102 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void commitSync() {
-    commitSync(toOffsetAndMetadataMap(_consumerRecordsProcessor.delivered()));
+    // Preserve the high watermark.
+    commitOffsets(currentOffsetAndMetadataMap(), false, null, true);
   }
 
   @Override
   public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
-    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = getOffsetsToCommit(offsets);
-    LOG.trace("Committing offsets synchronously: {}", offsetsToCommit);
-    _kafkaConsumer.commitSync(offsetsToCommit);
+    // ignore the high watermark.
+    commitOffsets(offsets, true, null, true);
   }
 
   @Override
   public void commitAsync() {
-    commitAsync(toOffsetAndMetadataMap(_consumerRecordsProcessor.delivered()), null);
+    commitOffsets(currentOffsetAndMetadataMap(), false, null, false);
   }
 
   @Override
   public void commitAsync(OffsetCommitCallback callback) {
-    commitAsync(toOffsetAndMetadataMap(_consumerRecordsProcessor.delivered()), callback);
+    // preserve the high watermark.
+    commitOffsets(currentOffsetAndMetadataMap(), false, callback, false);
   }
 
   @Override
   public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
-    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = getOffsetsToCommit(offsets);
-    LOG.trace("Committing offsets asynchronously: {}", offsetsToCommit);
-    _offsetCommitCallback.setUserCallback(callback);
-    _kafkaConsumer.commitAsync(offsetsToCommit, _offsetCommitCallback);
+    // Ignore the high watermark.
+    commitOffsets(offsets, false, null, true);
   }
 
+  // Private function to avoid duplicate code.
+  private void commitOffsets(Map<TopicPartition, OffsetAndMetadata> offsets,
+                             boolean ignoreConsumerHighWatermark,
+                             OffsetCommitCallback callback,
+                             boolean sync) {
+    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = getOffsetsToCommit(offsets, ignoreConsumerHighWatermark);
+    if (sync) {
+      LOG.trace("Committing offsets synchronously: {}", offsetsToCommit);
+      _kafkaConsumer.commitSync(offsetsToCommit);
+    } else {
+      LOG.trace("Committing offsets asynchronously: {}", offsetsToCommit);
+      _offsetCommitCallback.setUserCallback(callback);
+      _kafkaConsumer.commitAsync(offsetsToCommit, _offsetCommitCallback);
+    }
+  }
+  
   @Override
   public void seek(TopicPartition partition, long offset) {
-    // We only check the consumer record processor if user is seeking backward.
+    // The offset seeks is a complicated case, there are four situations to be handled differently.
+    // 1. Before the earliest consumed message. An OffsetNotTrackedException will be thrown in this case.
+    // 2. At or after the earliest consumed message but before the first delivered message. We will seek to the earliest
+    //    tracked offset in this case to avoid losing messages.
+    // 3. After the first delivered message but before the last delivered message, we seek to the safe offset of the 
+    //    closest delivered message before the sought to offset.
+    // 4. After the lastDelivered message. We seek to the user provided offset.
+    // 
+    // In addition, there are two special cases we can handle more intelligently.
+    // 5. User seeks to the last committed offsets. We will reload the committed information instead of naively seeking 
+    //    in this case.
+    // 6. User seeks to the current position. Do nothing, i.e. not clean up the internal information.
     Long lastDeliveredFromPartition = _consumerRecordsProcessor.delivered(partition);
     // Do nothing if user wants to seek to the last delivered + 1.
     if (lastDeliveredFromPartition != null && offset == lastDeliveredFromPartition + 1) {
+      // Case 6
       return;
     }
-    // Now we really need to seek. We only do the sanity check if the user is seeking backward. If user is seeking
-    // forward, there is no large message awareness.
-    long offsetToSeek = offset;
-    if (lastDeliveredFromPartition != null && offset <= lastDeliveredFromPartition) {
-      // We need to seek to the smaller one of the starting offset and safe offset to ensure we do not lose
-      // any message starting from that offset.
-      Long mostRecentlyConsumed = _consumerRecordsProcessor.closestDeliveredUpTo(partition, offset);
-      if (mostRecentlyConsumed == offset) {
-        // User is seeking to a valid consumed offset.
-        offsetToSeek = Math.min(_consumerRecordsProcessor.startingOffset(partition, offset),
-            _consumerRecordsProcessor.safeOffset(partition, offset));
-      } else if (mostRecentlyConsumed < offset) {
-        // User is seeking to an offset that is not corresponding to a consumed message.
-        // We use the safe offset of the most recently delivered offset in this case.
-        offsetToSeek = _consumerRecordsProcessor.safeOffset(partition, mostRecentlyConsumed);
+    OffsetAndMetadata committed = committed(partition);
+    if (committed != null && committed.offset() == offset) {
+      // Case 5: If the user is seeking to the last committed offset, we use the last committed information.
+      seekToCommitted(Collections.singleton(partition));
+    } else {
+      // Now we really need to seek. We only do the sanity check if the user is seeking backward. If user is seeking
+      // forward, there is no large message awareness.
+      Long offsetToSeek = offset;
+      // Case 4 if the following if statement is false
+      if (lastDeliveredFromPartition != null && offset <= lastDeliveredFromPartition) {
+        // We need to seek to the smaller one of the starting offset and safe offset to ensure we do not lose
+        // any message starting from that offset.
+        Long closestDeliveredBeforeOffset = _consumerRecordsProcessor.closestDeliveredUpTo(partition, offset);
+        if (closestDeliveredBeforeOffset != null && closestDeliveredBeforeOffset == offset) {
+          // Case 2
+          offsetToSeek = Math.min(_consumerRecordsProcessor.startingOffset(partition, offset),
+                                  _consumerRecordsProcessor.safeOffset(partition, offset));
+        } else if (closestDeliveredBeforeOffset != null && closestDeliveredBeforeOffset < offset) {
+          // case 3
+          offsetToSeek = _consumerRecordsProcessor.safeOffset(partition, closestDeliveredBeforeOffset);
+        } else {
+          // Case 1
+          // If there is no recently delivered offset, we use the earliest tracked offset.
+          offsetToSeek = _consumerRecordsProcessor.earliestTrackedOffset(partition);
+          assert offsetToSeek != null;
+        }
       }
+      _kafkaConsumer.seek(partition, offsetToSeek);
+      _consumerRecordsProcessor.clear(partition);
+      // We set the low watermark of this partition to the offset to seek so the messages with smaller offset
+      // won't be delivered to user.
+      _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(partition, offset);
     }
-    _kafkaConsumer.seek(partition, offsetToSeek);
-    _consumerRecordsProcessor.clear(partition);
-    // We set the consumer high watermark of this partition to the offset to seek so the messages with smaller offset
-    // won't be delivered to user.
-    _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(partition, offset);
   }
 
   @Override
@@ -331,8 +370,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
       _kafkaConsumer.seek(tp, offsetAndMetadata.offset());
       _consumerRecordsProcessor.clear(tp);
-      long lw = LiKafkaClientsUtils.offsetFromWrappedMetadata(offsetAndMetadata.metadata());
-      _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, lw);
+      Long hw = LiKafkaClientsUtils.offsetFromWrappedMetadata(offsetAndMetadata.metadata());
+      if (hw == null) {
+        hw = offsetAndMetadata.offset();
+      }
+      _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, hw);
     }
   }
 
@@ -350,18 +392,24 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     OffsetAndMetadata offsetAndMetadata = _kafkaConsumer.committed(partition);
     if (offsetAndMetadata != null) {
       String rawMetadata = offsetAndMetadata.metadata();
-      long userOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(rawMetadata);
-      String userMetadata = LiKafkaClientsUtils.metadataFromWrappedMetadata(rawMetadata);
+      Long userOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(rawMetadata);
+      String userMetadata;
+      if (userOffset == null) {
+        userOffset = offsetAndMetadata.offset();
+        userMetadata = offsetAndMetadata.metadata();
+      } else {
+        userMetadata = LiKafkaClientsUtils.metadataFromWrappedMetadata(rawMetadata);
+      }
       offsetAndMetadata = new OffsetAndMetadata(userOffset, userMetadata);
     }
     return offsetAndMetadata;
   }
 
   @Override
-  public long committedSafeOffset(TopicPartition tp) {
+  public Long committedSafeOffset(TopicPartition tp) {
     OffsetAndMetadata rawOffsetAndMetadata = _kafkaConsumer.committed(tp);
-    if (rawOffsetAndMetadata == null) {
-      return -1L;
+    if (rawOffsetAndMetadata == null || rawOffsetAndMetadata.metadata().isEmpty()) {
+      return null;
     }
     return rawOffsetAndMetadata.offset();
   }
@@ -397,19 +445,19 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
-  public long safeOffset(TopicPartition tp, long messageOffset) {
+  public Long safeOffset(TopicPartition tp, long messageOffset) {
     return _consumerRecordsProcessor.safeOffset(tp, messageOffset);
   }
 
   @Override
-  public long safeOffset(TopicPartition tp) {
+  public Long safeOffset(TopicPartition tp) {
     return _consumerRecordsProcessor.safeOffset(tp);
   }
 
   @Override
   public Map<TopicPartition, Long> safeOffsets() {
     Map<TopicPartition, Long> safeOffsets = new HashMap<>();
-    for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : _consumerRecordsProcessor.safeOffsets().entrySet()) {
+    for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : _consumerRecordsProcessor.safeOffsetsToCommit().entrySet()) {
       safeOffsets.put(entry.getKey(), entry.getValue().offset());
     }
     return safeOffsets;
@@ -435,15 +483,17 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
    * @param offsets The user provided TopicPartition to OffsetsAndMetadata mapping.
    * @return The translated large message aware TopicPartition to OffsetAndMetadata mapping.
    */
-  private Map<TopicPartition, OffsetAndMetadata> getOffsetsToCommit(Map<TopicPartition, OffsetAndMetadata> offsets) {
-    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = _consumerRecordsProcessor.safeOffsets(offsets);
+  private Map<TopicPartition, OffsetAndMetadata> getOffsetsToCommit(Map<TopicPartition, OffsetAndMetadata> offsets,
+                                                                    boolean ignoreHighWaterMark) {
+    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit =
+        _consumerRecordsProcessor.safeOffsetsToCommit(offsets, ignoreHighWaterMark);
     // If user did not consume any message before the first commit, in this case user will pass in the last
     // committed message offsets. We simply use the last committed safe offset.
     for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : offsets.entrySet()) {
       OffsetAndMetadata committed = _kafkaConsumer.committed(entry.getKey());
       if (committed != null) {
         Long committedUserOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(committed.metadata());
-        if (entry.getValue().offset() == committedUserOffset) {
+        if (committedUserOffset != null && entry.getValue().offset() == committedUserOffset) {
           long safeOffset = committed.offset();
           String userMetadata = entry.getValue().metadata();
           String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(userMetadata, committedUserOffset);
@@ -451,20 +501,61 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       }
     }
+
     return offsetsToCommit;
   }
 
   /**
    * A helper function that converts the last delivered offset map to the offset to commit.
+   * This function is tricky and handles the following scenarios:
+   * 1. Some messages has been delivered (returned to the user) from a partition.
+   * 2. No message was delivered, but some messages were consumed (read from broker).
+   * 3. No message was delivered, and no message was consumed.
+   * 4. User called seek().
    *
-   * @param lastDelivered the last delivered offset map
+   * Generally speaking, this method is only responsible for taking care of the offset to commit, but not caring
+   * about the high watermark. The high watermark will be taken care of by
+   * {@link ConsumerRecordsProcessor#safeOffsetsToCommit(Map, boolean)}, it will ensure the high watermark never rewind unless
+   * user explicitly did so by calling seek() or provided a specific offset.
+   *
    * @return the offsetAndMetadata map ready to commit.
    */
-  private Map<TopicPartition, OffsetAndMetadata> toOffsetAndMetadataMap(Map<TopicPartition, Long> lastDelivered) {
+  private Map<TopicPartition, OffsetAndMetadata> currentOffsetAndMetadataMap() {
     Map<TopicPartition, OffsetAndMetadata> offsetAndMetadataMap = new HashMap<>();
-    for (Map.Entry<TopicPartition, Long> entry : lastDelivered.entrySet()) {
-      offsetAndMetadataMap.put(entry.getKey(), new OffsetAndMetadata(entry.getValue() + 1, ""));
+    Map<TopicPartition, Long> delivered = _consumerRecordsProcessor.delivered();
+    for (TopicPartition tp : _kafkaConsumer.assignment()) {
+      if (delivered.containsKey(tp)) {
+        // Case 1
+        offsetAndMetadataMap.put(tp, new OffsetAndMetadata(delivered.get(tp) + 1, ""));
+      } else {
+        // No message has been delivered from the partition.
+        Long earliestTrackedOffset = _consumerRecordsProcessor.earliestTrackedOffset(tp);
+        Long hw = _consumerRecordsProcessor.consumerHighWaterMarkForPartition(tp);
+        if (earliestTrackedOffset != null) {
+          // We may need to update the high watermark in case there are two rebalances happened back to back, in that
+          // case we may lose high watermark if we don't fetch it from the server.
+          if (hw == null) {
+            OffsetAndMetadata committed = committed(tp);
+            if (committed != null) {
+              _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, committed.offset());
+            }
+          }
+          // Case 2, some message was consumed. Use the earliest tracked offset to avoid losing messages.
+          offsetAndMetadataMap.put(tp, new OffsetAndMetadata(_kafkaConsumer.position(tp), ""));
+        } else {
+          // No message was consumed.
+          if (hw == null) {
+            // Case 3, no message is consumed, no message is delivered. Do nothing to avoid overriding the committed
+            // high watermark on the server. We can also get the committed high watermark from the server, but it
+            // is unnecessary work.
+          } else {
+            // Case 4, user called seek(), we use the current position to commit.
+            offsetAndMetadataMap.put(tp, new OffsetAndMetadata(_kafkaConsumer.position(tp), ""));
+          }
+        }
+      }
     }
+    LOG.trace("Current offset and metadata map: {}", offsetAndMetadataMap);
     return offsetAndMetadataMap;
   }
 }
