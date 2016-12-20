@@ -84,17 +84,7 @@ public class DeliveredMessageOffsetTracker {
   }
 
   private PartitionOffsetTracker getAndMaybeCreateOffsetTracker(TopicPartition tp, long offset) {
-    PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
-    if (offsetTracker == null) {
-      synchronized (this) {
-        offsetTracker = _offsetTrackerMap.get(tp);
-        if (offsetTracker == null) {
-          offsetTracker = new PartitionOffsetTracker(offset);
-          _offsetTrackerMap.put(tp, offsetTracker);
-        }
-      }
-    }
-    return offsetTracker;
+    return _offsetTrackerMap.computeIfAbsent(tp, topicPartition -> new PartitionOffsetTracker(offset));
   }
 
   public Long safeOffset(TopicPartition tp) {
