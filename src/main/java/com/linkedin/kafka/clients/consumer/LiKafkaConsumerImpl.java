@@ -236,14 +236,17 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       try {
          rawRecords = _kafkaConsumer.poll(expireMs - now);
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
-        if (_offsetResetStrategy == OffsetResetStrategy.EARLIEST) {
-          _kafkaConsumer.seekToBeginning(oe.partitions());
-          oe.partitions().forEach(_consumerRecordsProcessor::clear);
-        } else if (_offsetResetStrategy == OffsetResetStrategy.LATEST) {
-          _kafkaConsumer.seekToEnd(oe.partitions());
-          oe.partitions().forEach(_consumerRecordsProcessor::clear);
-        } else {
-          throw oe;
+        switch (_offsetResetStrategy) {
+          case EARLIEST:
+            _kafkaConsumer.seekToBeginning(oe.partitions());
+            oe.partitions().forEach(_consumerRecordsProcessor::clear);
+            break;
+          case LATEST:
+            _kafkaConsumer.seekToEnd(oe.partitions());
+            oe.partitions().forEach(_consumerRecordsProcessor::clear);
+            break;
+          default:
+            throw oe;
         }
       }
       // Check if we have enough high watermark for a partition. The high watermark is cleared during rebalance.

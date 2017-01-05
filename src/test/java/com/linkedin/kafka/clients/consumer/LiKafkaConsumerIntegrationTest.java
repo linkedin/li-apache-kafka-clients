@@ -605,9 +605,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty("auto.offset.reset", strategy.name());
     // All the consumers should have the same group id.
     props.setProperty("group.id", "testOffsetOutOfRange");
-    LiKafkaConsumer<String, String> consumer = createConsumer(props);
     TopicPartition tp = new TopicPartition(TOPIC1, 0);
-    try {
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
       consumer.assign(Collections.singleton(tp));
       ConsumerRecords<String, String> consumerRecords = ConsumerRecords.empty();
       consumer.seek(tp, 0);
@@ -637,8 +636,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       if (strategy != OffsetResetStrategy.NONE) {
         fail("Should not have thrown OffsetOutOfRangeException.");
       }
-    } finally {
-      consumer.close();
     }
   }
 
@@ -653,8 +650,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       // All the consumers should have the same group id.
       props.setProperty("group.id", "testSearchOffsetByTimestamp");
       props.setProperty("enable.auto.commit", "false");
-      LiKafkaConsumer<String, String> consumer = createConsumer(props);
-    try {
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
       Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
       // Consume the messages with largest 10 timestamps.
       for (int i = 0; i < NUM_PARTITIONS; i++) {
@@ -685,8 +681,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       for (Integer count : messageCount.values()) {
         assertEquals(count.intValue(), expectedCount, "Each partition should have " + expectedCount + " messages");
       }
-    } finally {
-      consumer.close();
     }
   }
 
