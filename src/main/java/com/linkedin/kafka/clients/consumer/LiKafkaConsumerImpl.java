@@ -18,6 +18,7 @@ import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
+import java.util.Locale;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -26,6 +27,8 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
+import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.clients.consumer.internals.NoOpConsumerRebalanceListener;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
@@ -74,6 +77,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final LiKafkaOffsetCommitCallback _offsetCommitCallback;
   private final boolean _autoCommitEnabled;
   private final long _autoCommitInterval;
+  private final OffsetResetStrategy _offsetResetStrategy;
   private long _lastAutoCommitMs;
 
   public LiKafkaConsumerImpl(Properties props) {
@@ -109,10 +113,12 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     _autoCommitEnabled = configs.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG);
     _autoCommitInterval = configs.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG);
+    _offsetResetStrategy =
+        OffsetResetStrategy.valueOf(configs.getString(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG).toUpperCase(Locale.ROOT));
     _lastAutoCommitMs = System.currentTimeMillis();
     // We need to set the auto commit to false in KafkaConsumer because it is not large message aware.
     ByteArrayDeserializer byteArrayDeserializer = new ByteArrayDeserializer();
-    _kafkaConsumer = new KafkaConsumer<>(configs.configWithAutoCommitDisabled(),
+    _kafkaConsumer = new KafkaConsumer<>(configs.configForVanillaConsumer(),
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
 
@@ -225,7 +231,20 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         commitAsync();
         _lastAutoCommitMs = now;
       }
-      ConsumerRecords<byte[], byte[]> rawRecords = _kafkaConsumer.poll(expireMs - now);
+      ConsumerRecords<byte[], byte[]> rawRecords = ConsumerRecords.empty();
+      try {
+         rawRecords = _kafkaConsumer.poll(expireMs - now);
+      } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
+        if (_offsetResetStrategy == OffsetResetStrategy.EARLIEST) {
+          _kafkaConsumer.seekToBeginning(oe.partitions());
+          oe.partitions().forEach(_consumerRecordsProcessor::clear);
+        } else if (_offsetResetStrategy == OffsetResetStrategy.LATEST) {
+          _kafkaConsumer.seekToEnd(oe.partitions());
+          oe.partitions().forEach(_consumerRecordsProcessor::clear);
+        } else {
+          throw oe;
+        }
+      }
       // Check if we have enough high watermark for a partition. The high watermark is cleared during rebalance.
       // We make this check so that after rebalance we do not deliver duplicate messages to the user.
       if (!rawRecords.isEmpty() && _consumerRecordsProcessor.numConsumerHighWaterMarks() < assignment().size()) {

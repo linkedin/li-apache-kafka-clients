@@ -231,7 +231,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
           new ErrorLoggingCallback<>(messageId, key, value, topic, timestamp, sizeInBytes, _auditor, callback);
       if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
         List<ProducerRecord<byte[], byte[]>> segmentRecords =
-            _messageSplitter.split(topic, partition, messageId, serializedKey, serializedValue);
+            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue);
         Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
         for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
           future = _producer.send(segmentRecord, largeMessageCallback);
