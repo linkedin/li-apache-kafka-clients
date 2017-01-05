@@ -1,38 +1,38 @@
-LiKafka-Clients
+li-apache-kafka-clients
 ===================
 
 ### Introduction ###
-LiKafka-Clients is a wrapper Kafka clients library built on top of vanilla Apache Kafka clients.
+li-apache-kafka-clients is a wrapper Kafka clients library built on top of vanilla Apache Kafka clients.
 
-Apache Kafka has now become a very popular messaging system and is well known for its low latency, high throughput and durable messaging. At LinkedIn, we have built an [ecosystem around Kafka](https://engineering.linkedin.com/blog/2016/04/kafka-ecosystem-at-linkedin) to power our infrastructure. In our ecosystem, LiKafka-Clients library is a fundamental component for many functions such as auditing, data format standardization, large message handling, and so on.
+Apache Kafka has now become a very popular messaging system and is well known for its low latency, high throughput and durable messaging. At LinkedIn, we have built an [ecosystem around Kafka](https://engineering.linkedin.com/blog/2016/04/kafka-ecosystem-at-linkedin) to power our infrastructure. In our ecosystem, li-apache-kafka-clients library is a fundamental component for many functions such as auditing, data format standardization, large message handling, and so on.
 
-LiKafka-Clients is designed to be fully compatible with Apache Kafka vanilla clients. Both LiKafkaProducer and LiKafkaConsumer implement the vanilla Kafka Producer and Consumer interface.
+li-apache-kafka-clients is designed to be fully compatible with Apache Kafka vanilla clients. Both LiKafkaProducer and LiKafkaConsumer implement the vanilla Kafka Producer and Consumer interface.
 
-LiKafka-Clients is also highly customizable so the users can plug in their own wire protocol for large message segments and auditor implementation.
+li-apache-kafka-clients is also highly customizable so the users can plug in their own wire protocol for large message segments and auditor implementation.
 
 ### Features ###
-LiKafka-Clients has the following features in addition to the vanilla Apache Kafka Java clients.
+li-apache-kafka-clients has the following features in addition to the vanilla Apache Kafka Java clients.
 
 #### Large message support ####
-Like many other messaging systems, Kafka has a maximum message size limit for a few reasons (e.g. memory management. Due to the message size limit, in some cases, user have to bear with small amount of message loss or involve external storage to store the large objects. LiKafka-Clients addresses this problem with [a solution](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) that does not require an external storage dependency. For users who are storing offsets checkpoints in Kafka, LiKafka-Clients handles large messages almost transparently.
+Like many other messaging systems, Kafka has a maximum message size limit for a few reasons (e.g. memory management. Due to the message size limit, in some cases, user have to bear with small amount of message loss or involve external storage to store the large objects. li-apache-kafka-clients addresses this problem with [a solution](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) that does not require an external storage dependency. For users who are storing offsets checkpoints in Kafka, li-apache-kafka-clients handles large messages almost transparently.
 
 #### Auditing ####
-As a messaging system, the data assurance is critical. At LinkedIn, we have been using a counting based out-of-band auditing solution to monitor the data integrity in our various data pipelines. This auditing solution is described in [these meetup talk slides](http://www.slideshare.net/JonBringhurst/kafka-audit-kafka-meetup-january-27th-2015). LiKafka-Clients has integrated a pluggable auditing feature. We have also provided an `AbstractAuditor` and a `CountingAuditStats` class to help user implement the counting based auditing solution similar to what we are using at LinkedIn. Users can group the messages in to various categories based on `AuditKey` and get the statistics for each `AuditKey`. For more details please refer to the Java doc of `AbstractAuditor` and `CountingAuditStats`. We have provided a `LoggingAuditor` class as an example of using `AbstractAuditor` to implement the counting based auditing.
+As a messaging system, the data assurance is critical. At LinkedIn, we have been using a counting based out-of-band auditing solution to monitor the data integrity in our various data pipelines. This auditing solution is described in [these meetup talk slides](http://www.slideshare.net/JonBringhurst/kafka-audit-kafka-meetup-january-27th-2015). li-apache-kafka-clients has integrated a pluggable auditing feature. We have also provided an `AbstractAuditor` and a `CountingAuditStats` class to help user implement the counting based auditing solution similar to what we are using at LinkedIn. Users can group the messages in to various categories based on `AuditKey` and get the statistics for each `AuditKey`. For more details please refer to the Java doc of `AbstractAuditor` and `CountingAuditStats`. We have provided a `LoggingAuditor` class as an example of using `AbstractAuditor` to implement the counting based auditing.
 
 Users may also have a custom auditing solution by implementing the defined `Auditor` interface.  
 
-### When to use LiKafka-Clients ###
-LiKafka-Clients is a wrapper library on top of vanilla Kafka Java clients. If one does not need the additional functions provided by LiKafka-Clients, the vanilla Kafka Java clients should be preferred.
+### When to use li-apache-kafka-clients ###
+li-apache-kafka-clients is a wrapper library on top of vanilla Kafka Java clients. If one does not need the additional functions provided by li-apache-kafka-clients, the vanilla Kafka Java clients should be preferred.
 
 ### Build a jar and run all the unit tests ###
 `./gradlew build`
 
-### Handle large messages with LiKafka-Clients ###
-Large messages are the messages whose size are greater than the maximum acceptable message size on the broker. LiKafka-Clients handles large messages by splitting each large message into segments in LiKafkaProducer and reassembling the segments back into the original large message in LiKafkaConsumer. 
+### Handle large messages with li-apache-kafka-clients ###
+Large messages are the messages whose size are greater than the maximum acceptable message size on the broker. li-apache-kafka-clients handles large messages by splitting each large message into segments in LiKafkaProducer and reassembling the segments back into the original large message in LiKafkaConsumer. 
 
-LiKafka-Clients is designed to handle **sporadic** large messages. If the users expect to have a high percentage of large messages (e.g. >50%), the users may want to consider **reference-based-messaging** which is also described in the slides below.
+li-apache-kafka-clients is designed to handle **sporadic** large messages. If the users expect to have a high percentage of large messages (e.g. >50%), the users may want to consider **reference-based-messaging** which is also described in the slides below.
 
-The following sections are the user guide for applications to handle large messages with LiKafka-Clients. For more design details, users may refer to the slides about [Handle Large Messages in Apache Kafka](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297).
+The following sections are the user guide for applications to handle large messages with li-apache-kafka-clients. For more design details, users may refer to the slides about [Handle Large Messages in Apache Kafka](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297).
 
 #### Configurations for LiKafkaProducerImpl ####
 `LiKafkaProducerImpl` takes the following large message related configurations:
@@ -117,4 +117,4 @@ Seeking to a given offset when large messages exist is challenging and tricky. *
 Due to the complexity of the `seek()` operation with large messages, users are encouraged to avoid seeking to an arbitrary offset if possible.
 
 #### Log compacted topics ####
-In general, LiKafka-Clients does not support large message handling for log compacted topics. In some specific cases, it might work by playing with the message keys, users may refer to [Handle Large Messages in Apache Kafka](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) if interested.
+In general, li-apache-kafka-clients does not support large message handling for log compacted topics. In some specific cases, it might work by playing with the message keys, users may refer to [Handle Large Messages in Apache Kafka](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) if interested.

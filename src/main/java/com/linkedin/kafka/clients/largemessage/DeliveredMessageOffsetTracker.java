@@ -1,11 +1,5 @@
-/**
- * Copyright 2016 LinkedIn Corp. Licensed under the Apache License, Version 2.0 (the "License"); you may not use this
- * file except in compliance with the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
- * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+/*
+ * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
 package com.linkedin.kafka.clients.largemessage;
@@ -101,8 +95,10 @@ public class DeliveredMessageOffsetTracker {
     } else if (!offsetTracker.isTrackedMessageOffset(messageOffset)) {
       // Message offset has been evicted.
       throw new OffsetNotTrackedException("Offset " + messageOffset + " for partition " + tp
-                                              + " is either invalid or has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
-                                              + ", " + offsetTracker.delivered() + "], SafeOffset = " + offsetTracker.currentSafeOffset());
+                                              + " is either invalid or has been evicted. Tracked Offset Range: ["
+                                              + offsetTracker.earliestTrackedDeliveredOffset()
+                                              + ", " + offsetTracker.delivered() + "], SafeOffset = "
+                                              + offsetTracker.currentSafeOffset());
     }
     return offsetTracker.get(messageOffset).safeOffset;
   }
@@ -123,8 +119,10 @@ public class DeliveredMessageOffsetTracker {
     } else if (!offsetTracker.isTrackedMessageOffset(messageOffset)) {
       // Message offset has been evicted.
       throw new OffsetNotTrackedException("Offset " + messageOffset + " for partition " + tp
-                                              + " is either invalid or has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
-                                              + ", " + offsetTracker.delivered() + "], SafeOffset = " + offsetTracker.currentSafeOffset());
+                                              + " is either invalid or has been evicted. Tracked Offset Range: ["
+                                              + offsetTracker.earliestTrackedDeliveredOffset()
+                                              + ", " + offsetTracker.delivered() + "], SafeOffset = "
+                                              + offsetTracker.currentSafeOffset());
     }
     return offsetTracker.get(messageOffset).messageStartingOffset;
   }
@@ -136,7 +134,8 @@ public class DeliveredMessageOffsetTracker {
     } else if (!offsetTracker.isOffsetInTrackedRange(upToMessageOffset)) {
       // Message offset has been evicted.
       throw new OffsetNotTrackedException("Most recently delivered message for partition " + tp + " before offset "
-                                              + upToMessageOffset + " has been evicted. Tracked Offset Range: [" + offsetTracker.earliestTrackedDeliveredOffset()
+                                              + upToMessageOffset + " has been evicted. Tracked Offset Range: ["
+                                              + offsetTracker.earliestTrackedDeliveredOffset()
                                               + ", " + offsetTracker.delivered() + "]");
     }
 
