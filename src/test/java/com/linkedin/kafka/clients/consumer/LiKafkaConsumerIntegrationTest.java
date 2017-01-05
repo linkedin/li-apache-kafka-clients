@@ -592,53 +592,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
 
-  @Test
-  public void testOffsetOutOfRange() {
-    for (OffsetResetStrategy strategy : OffsetResetStrategy.values()) {
-      testOffsetOutOfRangeForStrategy(strategy);
-    }
-  }
-
-  private void testOffsetOutOfRangeForStrategy(OffsetResetStrategy strategy) {
-    Properties props = new Properties();
-    // Make sure we start to consume from the beginning.
-    props.setProperty("auto.offset.reset", strategy.name());
-    // All the consumers should have the same group id.
-    props.setProperty("group.id", "testOffsetOutOfRange");
-    TopicPartition tp = new TopicPartition(TOPIC1, 0);
-    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      consumer.assign(Collections.singleton(tp));
-      ConsumerRecords<String, String> consumerRecords = ConsumerRecords.empty();
-      consumer.seek(tp, 0);
-      while (consumerRecords.isEmpty()) {
-        consumerRecords = consumer.poll(1000);
-      }
-      consumer.seek(tp, 100000L);
-      assertEquals(consumer.position(tp), 100000L);
-      if (strategy == OffsetResetStrategy.EARLIEST) {
-        long expectedOffset = consumerRecords.iterator().next().offset();
-        consumerRecords = ConsumerRecords.empty();
-        while (consumerRecords.isEmpty()) {
-          consumerRecords = consumer.poll(1000);
-        }
-        assertEquals(consumerRecords.iterator().next().offset(), expectedOffset,
-                     "The offset should have been reset to the earliest offset");
-      } else if (strategy == OffsetResetStrategy.LATEST) {
-        consumer.poll(1000);
-        consumer.seekToEnd(Collections.singleton(tp));
-        long expectedOffset = consumer.position(tp);
-        assertEquals(consumer.position(tp), expectedOffset, "The offset should have been reset to the latest offset");
-      } else {
-        consumer.poll(1000);
-        fail("OffsetOutOfRangeException should have been thrown.");
-      }
-    } catch (OffsetOutOfRangeException ooore) {
-      if (strategy != OffsetResetStrategy.NONE) {
-        fail("Should not have thrown OffsetOutOfRangeException.");
-      }
-    }
-  }
-
   /**
    * Test search offset by timestamp
    */

@@ -24,9 +24,6 @@ This product includes/uses TestNG (http://testng.org/)
 Copyright (c) 2004 Cedric Beust
 License: Apache 2.0
 
-This product includs/uses JUnit (http://JUnit.org)
-License: Eclipse Public License
-
 This product includes/uses BouncyCastle (http://www.bouncycastle.org/)
 Copyright (c) 2000 - 2016 The Legion of the Bouncy Castle Inc.
 License: MIT
