@@ -25,6 +25,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
+import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -354,7 +356,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
     }
   }
-  
+
   @Test
   public void testCommittedOnOffsetsCommittedByRawConsumer() {
     String topic = "testCommittedOnOffsetsCommittedByRawConsumer";
@@ -363,8 +365,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     Properties props = new Properties();
     // All the consumers should have the same group id.
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommittedOnOffsetsCommittedByRawConsumer");
-    
-    try (LiKafkaConsumer<String, String> consumer = createConsumer(props); 
+
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props);
         Consumer<byte[], byte[]> rawConsumer = new KafkaConsumer<>(getConsumerProperties(props))) {
       consumer.assign(Collections.singleton(tp));
       rawConsumer.assign(Collections.singleton(tp));
@@ -585,6 +587,56 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       }
       assertEquals(messagesUnseen.size(), 0, "Stop and resumed " + numCommitAndResume + "times, consumed " +
           numMessagesConsumed + " messages. ");
+    } finally {
+      consumer.close();
+    }
+  }
+
+  @Test
+  public void testOffsetOutOfRange() {
+    for (OffsetResetStrategy strategy : OffsetResetStrategy.values()) {
+      testOffsetOutOfRangeForStrategy(strategy);
+    }
+  }
+
+  private void testOffsetOutOfRangeForStrategy(OffsetResetStrategy strategy) {
+    Properties props = new Properties();
+    // Make sure we start to consume from the beginning.
+    props.setProperty("auto.offset.reset", strategy.name());
+    // All the consumers should have the same group id.
+    props.setProperty("group.id", "testOffsetOutOfRange");
+    LiKafkaConsumer<String, String> consumer = createConsumer(props);
+    TopicPartition tp = new TopicPartition(TOPIC1, 0);
+    try {
+      consumer.assign(Collections.singleton(tp));
+      ConsumerRecords<String, String> consumerRecords = ConsumerRecords.empty();
+      consumer.seek(tp, 0);
+      while (consumerRecords.isEmpty()) {
+        consumerRecords = consumer.poll(1000);
+      }
+      consumer.seek(tp, 100000L);
+      assertEquals(consumer.position(tp), 100000L);
+      if (strategy == OffsetResetStrategy.EARLIEST) {
+        long expectedOffset = consumerRecords.iterator().next().offset();
+        consumerRecords = ConsumerRecords.empty();
+        while (consumerRecords.isEmpty()) {
+          consumerRecords = consumer.poll(1000);
+        }
+        assertEquals(consumerRecords.iterator().next().offset(), expectedOffset,
+                     "The offset should have been reset to the earliest offset");
+      } else if (strategy == OffsetResetStrategy.LATEST) {
+        consumer.poll(1000);
+        consumer.seekToEnd(Collections.singleton(tp));
+        long expectedOffset = consumer.position(tp);
+        assertEquals(consumer.position(tp), expectedOffset, "The offset should have been reset to the latest offset");
+      } else {
+        consumer.poll(1000);
+        fail("OffsetOutOfRangeException should have been thrown.");
+      }
+    } catch (OffsetOutOfRangeException ooore) {
+      if (strategy != OffsetResetStrategy.NONE) {
+        fail("Should not have thrown OffsetOutOfRangeException.");
+      }
     } finally {
       consumer.close();
     }
