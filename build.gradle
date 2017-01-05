@@ -17,6 +17,10 @@ repositories {
     mavenCentral()
 }
 
+checkstyle {
+    toolVersion = '5.9'
+}
+
 dependencies {
     compile 'org.apache.kafka:kafka_2.10:0.10.0.0:test'
     compile 'org.apache.kafka:kafka_2.10:0.10.0.0'
