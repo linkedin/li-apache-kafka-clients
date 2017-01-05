@@ -647,42 +647,95 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    */
   @Test
   public void testSearchOffsetByTimestamp() {
-    Properties props = new Properties();
-    // Make sure we start to consume from the beginning.
-    props.setProperty("auto.offset.reset", "earliest");
-    // All the consumers should have the same group id.
-    props.setProperty("group.id", "testSearchOffsetByTimestamp");
-    props.setProperty("enable.auto.commit", "false");
-    LiKafkaConsumer<String, String> consumer = createConsumer(props);
-    Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
-    // Consume the messages with largest 10 timestamps.
-    for (int i = 0; i < NUM_PARTITIONS; i++) {
-      timestampsToSearch.put(new TopicPartition(TOPIC1, i), (long) MESSAGE_COUNT - 10);
-    }
-    consumer.assign(timestampsToSearch.keySet());
-    Map<TopicPartition, OffsetAndTimestamp> offsets = consumer.offsetsForTimes(timestampsToSearch);
-    for (Map.Entry<TopicPartition, OffsetAndTimestamp> entry : offsets.entrySet()) {
-      consumer.seek(entry.getKey(), entry.getValue().offset());
-    }
+      Properties props = new Properties();
+      // Make sure we start to consume from the beginning.
+      props.setProperty("auto.offset.reset", "earliest");
+      // All the consumers should have the same group id.
+      props.setProperty("group.id", "testSearchOffsetByTimestamp");
+      props.setProperty("enable.auto.commit", "false");
+      LiKafkaConsumer<String, String> consumer = createConsumer(props);
+    try {
+      Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
+      // Consume the messages with largest 10 timestamps.
+      for (int i = 0; i < NUM_PARTITIONS; i++) {
+        timestampsToSearch.put(new TopicPartition(TOPIC1, i), (long) MESSAGE_COUNT - 10);
+      }
+      consumer.assign(timestampsToSearch.keySet());
+      Map<TopicPartition, OffsetAndTimestamp> offsets = consumer.offsetsForTimes(timestampsToSearch);
+      for (Map.Entry<TopicPartition, OffsetAndTimestamp> entry : offsets.entrySet()) {
+        consumer.seek(entry.getKey(), entry.getValue().offset());
+      }
 
-    int i = 0;
-    Map<Long, Integer> messageCount = new HashMap<>();
-    long start = System.currentTimeMillis();
-    while (i < NUM_PRODUCER * THREADS_PER_PRODUCER * 10 && System.currentTimeMillis() < start + 20000) {
-      ConsumerRecords<String, String> consumerRecords = consumer.poll(100);
-      for (ConsumerRecord record : consumerRecords) {
-        if (record.timestamp() >= MESSAGE_COUNT - 10) {
-          int count = messageCount.getOrDefault(record.timestamp(), 0);
-          messageCount.put(record.timestamp(), count + 1);
-          i++;
+      int i = 0;
+      Map<Long, Integer> messageCount = new HashMap<>();
+      long start = System.currentTimeMillis();
+      while (i < NUM_PRODUCER * THREADS_PER_PRODUCER * 10 && System.currentTimeMillis() < start + 20000) {
+        ConsumerRecords<String, String> consumerRecords = consumer.poll(100);
+        for (ConsumerRecord record : consumerRecords) {
+          if (record.timestamp() >= MESSAGE_COUNT - 10) {
+            int count = messageCount.getOrDefault(record.timestamp(), 0);
+            messageCount.put(record.timestamp(), count + 1);
+            i++;
+          }
         }
       }
+      assertEquals(i, NUM_PRODUCER * THREADS_PER_PRODUCER * 10);
+      assertEquals(messageCount.size(), 10, "Should have consumed messages of all 10 timestamps");
+      int expectedCount = NUM_PRODUCER * THREADS_PER_PRODUCER;
+      for (Integer count : messageCount.values()) {
+        assertEquals(count.intValue(), expectedCount, "Each partition should have " + expectedCount + " messages");
+      }
+    } finally {
+      consumer.close();
     }
-    assertEquals(i, NUM_PRODUCER * THREADS_PER_PRODUCER * 10);
-    assertEquals(messageCount.size(), 10, "Should have consumed messages of all 10 timestamps");
-    int expectedCount = NUM_PRODUCER * THREADS_PER_PRODUCER;
-    for (Integer count : messageCount.values()) {
-      assertEquals(count.intValue(), expectedCount, "Each partition should have " + expectedCount +" messages");
+  }
+
+  @Test
+  public void testOffsetOutOfRange() {
+    for (OffsetResetStrategy strategy : OffsetResetStrategy.values()) {
+      testOffsetOutOfRangeForStrategy(strategy);
+    }
+  }
+
+  private void testOffsetOutOfRangeForStrategy(OffsetResetStrategy strategy) {
+    Properties props = new Properties();
+    // Make sure we start to consume from the beginning.
+    props.setProperty("auto.offset.reset", strategy.name());
+    // All the consumers should have the same group id.
+    props.setProperty("group.id", "testOffsetOutOfRange");
+    LiKafkaConsumer<String, String> consumer = createConsumer(props);
+    TopicPartition tp = new TopicPartition(TOPIC1, 0);
+    try {
+      consumer.assign(Collections.singleton(tp));
+      ConsumerRecords<String, String> consumerRecords = ConsumerRecords.empty();
+      consumer.seek(tp, 0);
+      while (consumerRecords.isEmpty()) {
+        consumerRecords = consumer.poll(1000);
+      }
+      consumer.seek(tp, 100000L);
+      assertEquals(consumer.position(tp), 100000L);
+      if (strategy == OffsetResetStrategy.EARLIEST) {
+        long expectedOffset = consumerRecords.iterator().next().offset();
+        consumerRecords = ConsumerRecords.empty();
+        while (consumerRecords.isEmpty()) {
+          consumerRecords = consumer.poll(1000);
+        }
+        assertEquals(consumerRecords.iterator().next().offset(), expectedOffset,
+                     "The offset should have been reset to the earliest offset");
+      } else if (strategy == OffsetResetStrategy.LATEST) {
+        consumer.poll(1000);
+        long expectedOffset = consumer.endOffsets(Collections.singleton(tp)).get(tp);
+        assertEquals(consumer.position(tp), expectedOffset, "The offset should have been reset to the latest offset");
+      } else {
+        consumer.poll(1000);
+        fail("OffsetOutOfRangeException should have been thrown.");
+      }
+    } catch (OffsetOutOfRangeException ooore) {
+      if (strategy != OffsetResetStrategy.NONE) {
+        fail("Should not have thrown OffsetOutOfRangeException.");
+      }
+    } finally {
+      consumer.close();
     }
   }
 
