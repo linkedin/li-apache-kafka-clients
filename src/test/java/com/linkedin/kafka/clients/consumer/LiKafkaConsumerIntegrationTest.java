@@ -24,6 +24,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
@@ -571,9 +572,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           // We try to stop and recreate a consumer every 1000 messages and at most stop and resume 4 times.
           if (lastCommitAndResume + (NUM_PRODUCER * THREADS_PER_PRODUCER * MESSAGE_COUNT) / 4 < numMessagesConsumed &&
               numCommitAndResume < 4 && offsetMap.size() == 2 * NUM_PARTITIONS) {
-            System.out.println(String.format("Committing offsets for %s, %d",
-                                             new TopicPartition(record.topic(), record.partition()),
-                                             record.offset() + 1));
             consumer.commitSync(offsetMap);
             consumer.close();
             offsetMap.clear();
@@ -589,6 +587,51 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           numMessagesConsumed + " messages. ");
     } finally {
       consumer.close();
+    }
+  }
+
+  /**
+   * Test search offset by timestamp
+   */
+  @Test
+  public void testSearchOffsetByTimestamp() {
+      Properties props = new Properties();
+      // Make sure we start to consume from the beginning.
+      props.setProperty("auto.offset.reset", "earliest");
+      // All the consumers should have the same group id.
+      props.setProperty("group.id", "testSearchOffsetByTimestamp");
+      props.setProperty("enable.auto.commit", "false");
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
+      // Consume the messages with largest 10 timestamps.
+      for (int i = 0; i < NUM_PARTITIONS; i++) {
+        timestampsToSearch.put(new TopicPartition(TOPIC1, i), (long) MESSAGE_COUNT - 10);
+      }
+      consumer.assign(timestampsToSearch.keySet());
+      Map<TopicPartition, OffsetAndTimestamp> offsets = consumer.offsetsForTimes(timestampsToSearch);
+      for (Map.Entry<TopicPartition, OffsetAndTimestamp> entry : offsets.entrySet()) {
+        consumer.seek(entry.getKey(), entry.getValue().offset());
+      }
+
+      int i = 0;
+      Map<Long, Integer> messageCount = new HashMap<>();
+      long start = System.currentTimeMillis();
+      while (i < NUM_PRODUCER * THREADS_PER_PRODUCER * 10 && System.currentTimeMillis() < start + 20000) {
+        ConsumerRecords<String, String> consumerRecords = consumer.poll(100);
+        for (ConsumerRecord record : consumerRecords) {
+          if (record.timestamp() >= MESSAGE_COUNT - 10) {
+            int count = messageCount.getOrDefault(record.timestamp(), 0);
+            messageCount.put(record.timestamp(), count + 1);
+            i++;
+          }
+        }
+      }
+      assertEquals(i, NUM_PRODUCER * THREADS_PER_PRODUCER * 10);
+      assertEquals(messageCount.size(), 10, "Should have consumed messages of all 10 timestamps");
+      int expectedCount = NUM_PRODUCER * THREADS_PER_PRODUCER;
+      for (Integer count : messageCount.values()) {
+        assertEquals(count.intValue(), expectedCount, "Each partition should have " + expectedCount + " messages");
+      }
     }
   }
 
@@ -626,8 +669,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
                      "The offset should have been reset to the earliest offset");
       } else if (strategy == OffsetResetStrategy.LATEST) {
         consumer.poll(1000);
-        consumer.seekToEnd(Collections.singleton(tp));
-        long expectedOffset = consumer.position(tp);
+        long expectedOffset = consumer.endOffsets(Collections.singleton(tp)).get(tp);
         assertEquals(consumer.position(tp), expectedOffset, "The offset should have been reset to the latest offset");
       } else {
         consumer.poll(1000);
@@ -705,7 +747,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         final String messageId = UUID.randomUUID().toString().replace("-", "");
         final String message = messageId + TestUtils.getRandomString(messageSize);
 
-        _producer.send(new ProducerRecord<>(_topic, message),
+        _producer.send(new ProducerRecord<String, String>(_topic, null, (long) i, null, message),
                        new Callback() {
                          @Override
                          public void onCompletion(RecordMetadata recordMetadata, Exception e) {

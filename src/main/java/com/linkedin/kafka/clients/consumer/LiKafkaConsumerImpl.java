@@ -26,6 +26,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
@@ -235,14 +236,17 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       try {
          rawRecords = _kafkaConsumer.poll(expireMs - now);
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
-        if (_offsetResetStrategy == OffsetResetStrategy.EARLIEST) {
-          _kafkaConsumer.seekToBeginning(oe.partitions());
-          oe.partitions().forEach(_consumerRecordsProcessor::clear);
-        } else if (_offsetResetStrategy == OffsetResetStrategy.LATEST) {
-          _kafkaConsumer.seekToEnd(oe.partitions());
-          oe.partitions().forEach(_consumerRecordsProcessor::clear);
-        } else {
-          throw oe;
+        switch (_offsetResetStrategy) {
+          case EARLIEST:
+            _kafkaConsumer.seekToBeginning(oe.partitions());
+            oe.partitions().forEach(_consumerRecordsProcessor::clear);
+            break;
+          case LATEST:
+            _kafkaConsumer.seekToEnd(oe.partitions());
+            oe.partitions().forEach(_consumerRecordsProcessor::clear);
+            break;
+          default:
+            throw oe;
         }
       }
       // Check if we have enough high watermark for a partition. The high watermark is cleared during rebalance.
@@ -308,19 +312,19 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       _kafkaConsumer.commitAsync(offsetsToCommit, _offsetCommitCallback);
     }
   }
-  
+
   @Override
   public void seek(TopicPartition partition, long offset) {
     // The offset seeks is a complicated case, there are four situations to be handled differently.
     // 1. Before the earliest consumed message. An OffsetNotTrackedException will be thrown in this case.
     // 2. At or after the earliest consumed message but before the first delivered message. We will seek to the earliest
     //    tracked offset in this case to avoid losing messages.
-    // 3. After the first delivered message but before the last delivered message, we seek to the safe offset of the 
+    // 3. After the first delivered message but before the last delivered message, we seek to the safe offset of the
     //    closest delivered message before the sought to offset.
     // 4. After the lastDelivered message. We seek to the user provided offset.
-    // 
+    //
     // In addition, there are two special cases we can handle more intelligently.
-    // 5. User seeks to the last committed offsets. We will reload the committed information instead of naively seeking 
+    // 5. User seeks to the last committed offsets. We will reload the committed information instead of naively seeking
     //    in this case.
     // 6. User seeks to the current position. Do nothing, i.e. not clean up the internal information.
     Long lastDeliveredFromPartition = _consumerRecordsProcessor.delivered(partition);
@@ -461,6 +465,21 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   @Override
   public void resume(Collection<TopicPartition> partitions) {
     _kafkaConsumer.resume(partitions);
+  }
+
+  @Override
+  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
+    return _kafkaConsumer.offsetsForTimes(timestampsToSearch);
+  }
+
+  @Override
+  public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
+    return _kafkaConsumer.beginningOffsets(partitions);
+  }
+
+  @Override
+  public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
+    return _kafkaConsumer.endOffsets(partitions);
   }
 
   @Override
