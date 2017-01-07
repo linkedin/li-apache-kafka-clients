@@ -620,6 +620,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   private void testOffsetOutOfRangeForStrategy(OffsetResetStrategy strategy) {
+    produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     // Make sure we start to consume from the beginning.
     props.setProperty("auto.offset.reset", strategy.name());
