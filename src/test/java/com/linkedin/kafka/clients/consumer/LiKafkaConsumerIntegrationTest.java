@@ -70,7 +70,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   private final int THREADS_PER_PRODUCER = 2;
   private final int NUM_PARTITIONS = 4;
   private final int MAX_SEGMENT_SIZE = 200;
-  private final int SYNTHETIC_PARTITION = 1;
+  private final int SYNTHETIC_PARTITION_0 = 0;
+  private final int SYNTHETIC_PARTITION_1 = 1;
   private ConcurrentMap<String, String> _messages;
 
   @Override
@@ -108,7 +109,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION);
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
       consumer.assign(Collections.singleton(tp));
 
       // Now seek to message offset 0
@@ -184,11 +185,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
     try {
-      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION);
-      TopicPartition tp1 = new TopicPartition(topic, SYNTHETIC_PARTITION + 1);
-      consumer.assign(Arrays.asList(tp, tp1));
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      TopicPartition tp2 = new TopicPartition(topic, SYNTHETIC_PARTITION_1);
+      consumer.assign(Arrays.asList(tp, tp2));
 
-      long start = System.currentTimeMillis();
       while (consumer.poll(10).isEmpty()) {
         //M2
       }
@@ -273,7 +273,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
 
     try {
-      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION);
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
       consumer.assign(Collections.singleton(tp));
       assertEquals(consumer.poll(5000).count(), 1, "Should have consumed 1 message"); // M2
       consumer.commitSync();
@@ -309,7 +309,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION);
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
       consumer.assign(Collections.singleton(tp));
       consumer.poll(5000); // M2
       final AtomicBoolean offsetCommitted = new AtomicBoolean(false);
@@ -578,6 +578,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty("group.id", "testSearchOffsetByTimestamp");
     props.setProperty("enable.auto.commit", "false");
     produceRecordsWithKafkaProducer();
+
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
       Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
       // Consume the messages with largest 10 timestamps.
@@ -787,7 +788,11 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   /** Generate the following synthetic messages in order and produce to the same partition.
    * <pre>
+<<<<<<< 5a7ab2a5b8573db02c5fa5f4354fe6dc9273fb6f
    * partition SYNTHETIC_PARTITION
+=======
+   * partition SYNTHETIC_PARTITION_0
+>>>>>>> Add calls to produce at the start of some unit tests.
    * 0: M0_SEG0 (START)
    * 1: M1_SEG0 (START)
    * 2: M2_SEG0 (START) (END)
@@ -795,10 +800,19 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * 4: M1_SEG1(END)
    * 5: M0_SEG1(END)
    * 6: M3_SEG1(END)
+<<<<<<< 5a7ab2a5b8573db02c5fa5f4354fe6dc9273fb6f
    * 7: M4_SEG0 (START) (END)
    * partition SYNTHETIC_PARTITION + 1
    * 0: M0_SEG0 (START)
    * 1: M1_SEG1 (START)
+=======
+   * 7: M4_SEG0(END)
+   * 8: M5_SEG0
+   * 9: M5_SEG1(END)
+   * partition SYNTHETIC_PARTITION_1
+   * 0: M0_SEG0 (START) (END)
+   * 1: M1_SEG0 (START) (END)
+>>>>>>> Add calls to produce at the start of some unit tests.
    * </pre>
    */
   private void produceSyntheticMessages(String topic) {
@@ -812,32 +826,33 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     // M0, 2 segments
     UUID messageId0 = UUID.randomUUID();
     String message0 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m0Segs = splitter.split(topic, SYNTHETIC_PARTITION, messageId0, message0.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m0Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId0, message0.getBytes());
     // M1, 2 segments
     UUID messageId1 = UUID.randomUUID();
     String message1 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m1Segs = splitter.split(topic, SYNTHETIC_PARTITION, messageId1, message1.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m1Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId1, message1.getBytes());
     // M2, 1 segment
     UUID messageId2 = UUID.randomUUID();
     String message2 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
-    List<ProducerRecord<byte[], byte[]>> m2Segs = splitter.split(topic, SYNTHETIC_PARTITION, messageId2, message2.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m2Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId2, message2.getBytes());
     // M3, 2 segment
     UUID messageId3 = UUID.randomUUID();
     String message3 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m3Segs = splitter.split(topic, SYNTHETIC_PARTITION, messageId3, message3.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m3Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId3, message3.getBytes());
     // M4, 1 segment
     UUID messageId4 = UUID.randomUUID();
     String message4 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
 
-    List<ProducerRecord<byte[], byte[]>> m4Segs = splitter.split(topic, SYNTHETIC_PARTITION, messageId4, message4.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m4Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId4, message4.getBytes());
     // M5, 2 segments
     UUID messageId5 = UUID.randomUUID();
     String message5 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m5Segs = splitter.split(topic, SYNTHETIC_PARTITION, messageId5, message5.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m5Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId5, message5.getBytes());
 
-    // Add two more segment to partition 1 for corner case test.
-    List<ProducerRecord<byte[], byte[]>> m0SegsPart1 = splitter.split(topic, SYNTHETIC_PARTITION + 1, messageId0, message0.getBytes());
-    List<ProducerRecord<byte[], byte[]>> m1SegsPart1 = splitter.split(topic, SYNTHETIC_PARTITION + 1, messageId1, message1.getBytes());
+
+    // Add two more segment to partition SYNTHETIC_PARTITION_1 for corner case test.
+    List<ProducerRecord<byte[], byte[]>> m0SegsPartition2 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId0, message0.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m1SegsPartition2 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId1, message1.getBytes());
 
     try {
       producer.send(m0Segs.get(0)).get();
