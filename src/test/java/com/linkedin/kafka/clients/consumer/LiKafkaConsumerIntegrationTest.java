@@ -174,7 +174,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   @Test
   public void testCommit() {
     String topic = "testCommit";
-    produceRecordsWithKafkaProducer();
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -186,8 +185,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
     try {
       TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
-      TopicPartition tp2 = new TopicPartition(topic, SYNTHETIC_PARTITION_1);
-      consumer.assign(Arrays.asList(tp, tp2));
+      TopicPartition tp1 = new TopicPartition(topic, SYNTHETIC_PARTITION_1);
+      consumer.assign(Arrays.asList(tp, tp1));
 
       while (consumer.poll(10).isEmpty()) {
         //M2
@@ -851,8 +850,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
 
     // Add two more segment to partition SYNTHETIC_PARTITION_1 for corner case test.
-    List<ProducerRecord<byte[], byte[]>> m0SegsPartition2 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId0, message0.getBytes());
-    List<ProducerRecord<byte[], byte[]>> m1SegsPartition2 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId1, message1.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m0SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId0, message0.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m1SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId1, message1.getBytes());
 
     try {
       producer.send(m0Segs.get(0)).get();
@@ -866,8 +865,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       producer.send(m5Segs.get(0)).get();
       producer.send(m5Segs.get(1)).get();
 
-      producer.send(m0SegsPart1.get(0)).get();
-      producer.send(m1SegsPart1.get(0)).get();
+      producer.send(m0SegsPartition1.get(0)).get();
+      producer.send(m1SegsPartition1.get(0)).get();
 
     } catch (Exception e) {
       fail("Produce synthetic data failed.", e);
