@@ -626,7 +626,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty("auto.offset.reset", strategy.name());
     // All the consumers should have the same group id.
     props.setProperty("group.id", "testOffsetOutOfRange");
-    produceRecordsWithKafkaProducer();
+
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
     TopicPartition tp = new TopicPartition(TOPIC1, 0);
     try {
@@ -787,11 +787,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   /** Generate the following synthetic messages in order and produce to the same partition.
    * <pre>
-<<<<<<< 5a7ab2a5b8573db02c5fa5f4354fe6dc9273fb6f
-   * partition SYNTHETIC_PARTITION
-=======
    * partition SYNTHETIC_PARTITION_0
->>>>>>> Add calls to produce at the start of some unit tests.
    * 0: M0_SEG0 (START)
    * 1: M1_SEG0 (START)
    * 2: M2_SEG0 (START) (END)
@@ -799,19 +795,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * 4: M1_SEG1(END)
    * 5: M0_SEG1(END)
    * 6: M3_SEG1(END)
-<<<<<<< 5a7ab2a5b8573db02c5fa5f4354fe6dc9273fb6f
    * 7: M4_SEG0 (START) (END)
-   * partition SYNTHETIC_PARTITION + 1
-   * 0: M0_SEG0 (START)
-   * 1: M1_SEG1 (START)
-=======
-   * 7: M4_SEG0(END)
-   * 8: M5_SEG0
-   * 9: M5_SEG1(END)
    * partition SYNTHETIC_PARTITION_1
-   * 0: M0_SEG0 (START) (END)
-   * 1: M1_SEG0 (START) (END)
->>>>>>> Add calls to produce at the start of some unit tests.
+   * 0: M0_SEG0 (START)
+   * 1: M1_SEG0 (START)
    * </pre>
    */
   private void produceSyntheticMessages(String topic) {
