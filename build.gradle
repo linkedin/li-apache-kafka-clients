@@ -8,6 +8,9 @@ apply plugin: 'idea'
 apply plugin: 'checkstyle'
 
 repositories {
+    maven {
+        url "http://repository.apache.org/snapshots"
+    }
     mavenCentral()
 }
 
@@ -16,9 +19,9 @@ checkstyle {
 }
 
 dependencies {
-    compile 'org.apache.kafka:kafka_2.10:0.10.1.1:test'
-    compile 'org.apache.kafka:kafka_2.10:0.10.1.1'
-    compile 'org.apache.kafka:kafka-clients:0.10.1.1'
+    compile 'org.apache.kafka:kafka_2.10:0.10.2.0-SNAPSHOT:test'
+    compile 'org.apache.kafka:kafka_2.10:0.10.2.0-SNAPSHOT'
+    compile 'org.apache.kafka:kafka-clients:0.10.2.0-SNAPSHOT'
     compile 'org.scala-lang:scala-library:2.10.4'
     compile 'org.apache.zookeeper:zookeeper:3.4.6'
     compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
