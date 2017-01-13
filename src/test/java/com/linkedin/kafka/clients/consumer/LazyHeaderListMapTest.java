@@ -9,7 +9,6 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import org.junit.Assert;
 import org.testng.annotations.Test;
 
 import static org.testng.Assert.assertEquals;
@@ -30,9 +29,9 @@ public class LazyHeaderListMapTest {
     HeaderParser.writeHeader(serializedHeaders, expected);
     serializedHeaders.rewind();
     LazyHeaderListMap deserializedMap = new LazyHeaderListMap(serializedHeaders);
-    Assert.assertEquals(deserializedMap.size(), 2);
-    Assert.assertArrayEquals(deserializedMap.get(0), VALUE_0);
-    Assert.assertArrayEquals(deserializedMap.get(1), VALUE_1);
+    assertEquals(deserializedMap.size(), 2);
+    assertEquals(deserializedMap.get(0), VALUE_0);
+    assertEquals(deserializedMap.get(1), VALUE_1);
 
     Iterator<Integer> keyIterator = deserializedMap.keySet().iterator();
     assertEquals(keyIterator.next().intValue(), 0);

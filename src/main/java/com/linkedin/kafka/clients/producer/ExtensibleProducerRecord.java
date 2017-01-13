@@ -46,9 +46,7 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    * @return returns null if this record does not have headers of the header is not present
    */
   public byte[] header(int headerKey) {
-    if (!HeaderKeySpace.isKeyValid(headerKey)) {
-      throw new IllegalArgumentException("Invalid header key, " + headerKey + ".");
-    }
+    HeaderKeySpace.validateHeaderKey(headerKey);
 
     if (headers == null) {
       return null;
@@ -64,9 +62,8 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    * @param headerValue
    */
   public void header(int headerKey, byte[] headerValue) {
-    if (!HeaderKeySpace.isKeyValid(headerKey)) {
-      throw new IllegalArgumentException("Invalid header key.");
-    }
+    HeaderKeySpace.validateHeaderKey(headerKey);
+
     if (headerValue == null) {
       throw new IllegalArgumentException("Header value must not be null.");
     }

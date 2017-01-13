@@ -29,4 +29,10 @@ public class HeaderKeySpace {
   public static boolean isKeyInPrivateRange(int headerKey) {
     return headerKey >= LIKAFKA_PRIVATE_START && headerKey < PUBLIC_ASSIGNED_START;
   }
+
+  public static void validateHeaderKey(int headerKey) {
+    if (!isKeyValid(headerKey)) {
+      throw new IllegalArgumentException("Invalid header key " + headerKey + ".");
+    }
+  }
 }

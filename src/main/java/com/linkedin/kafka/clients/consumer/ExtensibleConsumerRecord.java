@@ -18,19 +18,19 @@ import org.apache.kafka.common.record.TimestampType;
  */
 public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
   private volatile Map<Integer, byte[]> headers;
-  private volatile int headersSize;
+  private volatile int headersReceivedSizeBytes;
 
   public ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
       long checksum, int serializedKeySize, int serializedValueSize, K key, V value) {
     super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
-    headersSize = 0;
+    headersReceivedSizeBytes = 0;
   }
 
   ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
-      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, byte[]> headers, int headersSize) {
+      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, byte[]> headers, int headersReceivedSizeBytes) {
     super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
     this.headers = headers;
-    this.headersSize = headersSize;
+    this.headersReceivedSizeBytes = headersReceivedSizeBytes;
   }
 
   /**
@@ -39,10 +39,6 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
    */
   public byte[] header(int headerKey) {
     if (headers == null) {
-      return null;
-    }
-
-    if (!headers.containsKey(headerKey)) {
       return null;
     }
 
@@ -56,16 +52,14 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
    * @param value non-null
    */
   public void header(int headerKey, byte[] value) {
-    if (!HeaderKeySpace.isKeyValid(headerKey)) {
-      throw new IllegalArgumentException("Header key " + headerKey + " is not valid.");
-    }
+    HeaderKeySpace.validateHeaderKey(headerKey);
 
     if (headers == null) {
       headers = new LazyHeaderListMap();
     }
 
     headers.put(headerKey, value);
-    //Don't update headerSize since this new header was not transmitted across the wire
+    //Don't update headersReceivedSizeBytesSize since this new header was not transmitted across the wire
   }
 
 
@@ -98,24 +92,24 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
   public void copyHeadersFrom(ExtensibleConsumerRecord<?, ?> other) {
     //TODO: COW optimization?
     if (other.headers != null) {
-      this.headersSize = other.headersSize;
+      this.headersReceivedSizeBytes = other.headersReceivedSizeBytes;
       this.headers = new LazyHeaderListMap(other.headers);
     }
   }
 
-  public void headersSize(int newHeadersSize) {
+  public void setHeadersReceivedSizeBytes(int newHeadersSize) {
     if (newHeadersSize < 0) {
       throw new IllegalArgumentException("newHeadersSize must be a non-negative integer.");
     }
-    this.headersSize = newHeadersSize;
+    this.headersReceivedSizeBytes = newHeadersSize;
   }
 
   /**
    * This is the size of the headers that were received from the broker.  Headers added or removed after that point are
    * not counted in this value.
    */
-  public int headersSize() {
-    return headersSize;
+  public int headersReceivedSizeBytes() {
+    return headersReceivedSizeBytes;
   }
 
   @Override
