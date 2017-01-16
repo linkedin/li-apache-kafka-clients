@@ -3,7 +3,6 @@
  * See License in the project root for license information.
  */
 package com.linkedin.kafka.clients.utils;
-
 import java.nio.ByteBuffer;
 import java.util.Map;
 import javax.xml.bind.DatatypeConverter;
@@ -23,7 +22,6 @@ public class HeaderParser {
     // within the first 7 bytes
     = (0x4c6d4eef4b7a44L | 0b11000000_11000000_11000000_11000000_11000000_11000000_11000000_11000000L) &
         0b11011111_11011111_11011111_11011111_11011111_11011111_11011111_11011111L;
-
 
   private static final byte VERSION_1 = 1;
 
@@ -139,14 +137,13 @@ public class HeaderParser {
     }
     for (Map.Entry<Integer, byte[]> header : headers.entrySet()) {
       HeaderKeySpace.validateHeaderKey(header.getKey());
-
       dest.putInt(header.getKey());
       dest.putInt(header.getValue().length);
       dest.put(header.getValue());
     }
   }
 
-  /**ß
+  /**
    * The serialized size of all the headers.
    * @return VERSION_SIZE if headers is null else the number of bytes needed to represent the header key and value, but
    * without the magic number.

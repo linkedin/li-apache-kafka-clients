@@ -4,14 +4,22 @@
 
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
+
+import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
+
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
+import com.linkedin.kafka.clients.producer.LiKafkaProducerImpl;
+import com.linkedin.kafka.clients.utils.HeaderParser;
+import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.TestUtils;
+import com.linkedin.kafka.clients.utils.UUIDFactory;
+import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import kafka.server.KafkaConfig;
@@ -34,6 +42,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -61,6 +71,8 @@ import static org.testng.Assert.fail;
  * Integration test for LiKafkaConsumer
  */
 public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
+
+  private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerIntegrationTest.class);
 
   private final int MESSAGE_COUNT = 1000;
   private Random _random;
@@ -97,6 +109,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     super.tearDown();
   }
 
+  /**
+   * This test tests the seek behavior using the synthetic data.
+   */
   @Test
   public void testSeek() {
     String topic = "testSeek";
@@ -246,17 +261,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   /**
-   * This test tests the seekToCommitted() behavior with the following synthetic data:
-   * 0: M0_SEG0
-   * 1: M1_SEG0
-   * 2: M2_SEG0(END)
-   * 3: M3_SEG0
-   * 4: M1_SEG1(END)
-   * 5: M0_SEG1(END)
-   * 6: M3_SEG1(END)
-   * 7: M4_SEG0(END)
-   * 8: M5_SEG0
-   * 9: M5_SEG1(END)
+   * This test tests the seekToCommitted() behavior with synthetic data.
    */
   @Test
   public void testSeekToCommitted() {
@@ -515,7 +520,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty("group.id", "testCommitAndResume");
     // Reduce the fetch size for each partition to make sure we will poll() multiple times.
     props.setProperty("max.partition.fetch.bytes", "6400");
-
     props.setProperty("enable.auto.commit", "false");
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
 
@@ -802,63 +806,84 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * </pre>
    */
   private void produceSyntheticMessages(String topic) {
-    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE, new DefaultSegmentSerializer());
+    UUIDFactory uuidFactory = new UUIDFactoryImpl();
+    int partition = SYNTHETIC_PARTITION;
+    SimplePartitioner simplePartitioner = new SimplePartitioner() {
+      @Override
+      public int partition(String topic) {
+        throw new IllegalStateException("Partitioner should not have been called.");
+      }
+    };
+
+    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE, uuidFactory, simplePartitioner);
 
     Properties props = new Properties();
     props.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
     Producer<byte[], byte[]> producer = new KafkaProducer<>(props, new ByteArraySerializer(), new ByteArraySerializer());
     // Prepare messages.
-    int messageSize = MAX_SEGMENT_SIZE + MAX_SEGMENT_SIZE / 2;
+    int twoSegmentSize = MAX_SEGMENT_SIZE + MAX_SEGMENT_SIZE / 2;
+    int oneSegmentSize = MAX_SEGMENT_SIZE / 2;
     // M0, 2 segments
-    UUID messageId0 = UUID.randomUUID();
-    String message0 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m0Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId0, message0.getBytes());
-    // M1, 2 segments
-    UUID messageId1 = UUID.randomUUID();
-    String message1 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m1Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId1, message1.getBytes());
-    // M2, 1 segment
-    UUID messageId2 = UUID.randomUUID();
-    String message2 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
-    List<ProducerRecord<byte[], byte[]>> m2Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId2, message2.getBytes());
-    // M3, 2 segment
-    UUID messageId3 = UUID.randomUUID();
-    String message3 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m3Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId3, message3.getBytes());
-    // M4, 1 segment
-    UUID messageId4 = UUID.randomUUID();
-    String message4 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
+    Iterator<ProducerRecord<byte[], byte[]>> m0Segs =
+        createSerializedProducerRecord(0, twoSegmentSize, splitter, topic, partition).iterator();
 
-    List<ProducerRecord<byte[], byte[]>> m4Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId4, message4.getBytes());
+    // M1, 2 segments
+    Iterator<ProducerRecord<byte[], byte[]>> m1Segs =
+        createSerializedProducerRecord(1, twoSegmentSize, splitter, topic, partition).iterator();
+    // M2, 1 segment
+    Iterator<ProducerRecord<byte[], byte[]>> m2Segs =
+        createSerializedProducerRecord(2, oneSegmentSize, splitter, topic, partition).iterator();
+    // M3, 2 segment
+    Iterator<ProducerRecord<byte[], byte[]>> m3Segs =
+        createSerializedProducerRecord(3, twoSegmentSize, splitter, topic, partition).iterator();
+    // M4, 1 segment
+    Iterator<ProducerRecord<byte[], byte[]>> m4Segs =
+        createSerializedProducerRecord(4, oneSegmentSize, splitter, topic, partition).iterator();
+
     // M5, 2 segments
     UUID messageId5 = UUID.randomUUID();
     String message5 = TestUtils.getRandomString(messageSize);
-    List<ProducerRecord<byte[], byte[]>> m5Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId5, message5.getBytes());
-
+    Iterator<ProducerRecord<byte[], byte[]>> m5Segs = createSerializedProducerRecord(topic, SYNTHETIC_PARTITION_0, messageId5, message5.getBytes());
 
     // Add two more segment to partition SYNTHETIC_PARTITION_1 for corner case test.
-    List<ProducerRecord<byte[], byte[]>> m0SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId0, message0.getBytes());
-    List<ProducerRecord<byte[], byte[]>> m1SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId1, message1.getBytes());
+    Iterator<ProducerRecord<byte[], byte[]>> m0SegsPartition1 = createSerializedProducerRecord(topic, SYNTHETIC_PARTITION_1, messageId0, message0.getBytes());
+    Iterator<ProducerRecord<byte[], byte[]>> m1SegsPartition1 = createSerializedProducerRecord(topic, SYNTHETIC_PARTITION_1, messageId1, message1.getBytes());
+
 
     try {
-      producer.send(m0Segs.get(0)).get();
-      producer.send(m1Segs.get(0)).get();
-      producer.send(m2Segs.get(0)).get();
-      producer.send(m3Segs.get(0)).get();
-      producer.send(m1Segs.get(1)).get();
-      producer.send(m0Segs.get(1)).get();
-      producer.send(m3Segs.get(1)).get();
-      producer.send(m4Segs.get(0)).get();
-      producer.send(m5Segs.get(0)).get();
-      producer.send(m5Segs.get(1)).get();
-
-      producer.send(m0SegsPartition1.get(0)).get();
-      producer.send(m1SegsPartition1.get(0)).get();
-
+      //This produces the sequence of records: 0, 1, 2, 3, 1, 0, 3, 4
+      producer.send(m0Segs.next()).get();
+      producer.send(m1Segs.next()).get();
+      producer.send(m2Segs.next()).get();
+      producer.send(m3Segs.next()).get();
+      producer.send(m1Segs.next()).get();
+      producer.send(m0Segs.next()).get();
+      producer.send(m3Segs.next()).get();
+      producer.send(m4Segs.next()).get();
+      producer.send(m5Segs.next()).get();
+      producer.send(m5Segs.next()).get();
+      producer.send(
     } catch (Exception e) {
       fail("Produce synthetic data failed.", e);
     }
     producer.close();
+    LOG.info("Producing synthetic data on topic \"" + topic + " is complete.");
+  }
+
+  private Collection<ProducerRecord<byte[], byte[]>> createSerializedProducerRecord(int messageId,
+      int messageSize, MessageSplitter splitter, String topic, int partition) {
+
+    String message0 = TestUtils.getRandomString(messageSize);
+    ExtensibleProducerRecord<byte[], byte[]> originalRecord0 =
+        new ExtensibleProducerRecord<>(topic, partition, null /* timestamp */, new byte[] { (byte)  messageId},  message0.getBytes());
+
+    Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords = splitter.split(originalRecord0);
+    List<ProducerRecord<byte[], byte[]>> producerRecords = new ArrayList<>();
+    HeaderParser headerParser = new HeaderParser();
+    for (ExtensibleProducerRecord<byte[], byte[]> xRecord : xRecords) {
+      producerRecords.add(LiKafkaProducerImpl.serializeWithHeaders(xRecord, headerParser));
+    }
+    return producerRecords;
   }
 
 

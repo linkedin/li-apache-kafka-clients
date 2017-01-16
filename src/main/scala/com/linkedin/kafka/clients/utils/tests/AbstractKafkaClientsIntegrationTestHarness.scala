@@ -7,7 +7,6 @@ package com.linkedin.kafka.clients.utils.tests
 import java.util.Properties
 
 import com.linkedin.kafka.clients.consumer.{LiKafkaConsumerConfig, LiKafkaConsumer, LiKafkaConsumerImpl}
-import com.linkedin.kafka.clients.largemessage.{DefaultSegmentSerializer, DefaultSegmentDeserializer}
 import com.linkedin.kafka.clients.producer.{LiKafkaProducerConfig, LiKafkaProducer, LiKafkaProducerImpl}
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -29,10 +28,9 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
     maybeSetProperties(producerProps, LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG, "200")
     maybeSetProperties(producerProps, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
     maybeSetProperties(producerProps, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
-    maybeSetProperties(producerProps, LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, classOf[DefaultSegmentSerializer].getName)
 
     val stringSerializer = new StringSerializer
-    new LiKafkaProducerImpl[String, String](producerProps, stringSerializer, stringSerializer, null, null)
+    new LiKafkaProducerImpl[String, String](producerProps, stringSerializer, stringSerializer, null)
   }
 
   /**
@@ -59,7 +57,6 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
     maybeSetProperties(consumerProps, LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG, "10000")
     maybeSetProperties(consumerProps, ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
     maybeSetProperties(consumerProps, ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
-    maybeSetProperties(consumerProps, LiKafkaConsumerConfig.SEGMENT_DESERIALIZER_CLASS_CONFIG, classOf[DefaultSegmentDeserializer].getName)
     consumerProps
   }
 

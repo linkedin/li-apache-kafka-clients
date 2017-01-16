@@ -19,13 +19,13 @@ import java.util.Set;
  */
 class LiKafkaConsumerRebalanceListener<K, V> implements ConsumerRebalanceListener {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerRebalanceListener.class);
-  private final ConsumerRecordsProcessor<K, V> _consumerRecordsProcessor;
+  private final ConsumerRecordsProcessor _consumerRecordsProcessor;
   private final LiKafkaConsumer _consumer;
   private final Set<TopicPartition> _partitionsRemoved;
   private final boolean _autoCommitEnabled;
   private ConsumerRebalanceListener _userListener;
 
-  LiKafkaConsumerRebalanceListener(ConsumerRecordsProcessor<K, V> consumerRecordsProcessor,
+  LiKafkaConsumerRebalanceListener(ConsumerRecordsProcessor consumerRecordsProcessor,
                                    LiKafkaConsumer consumer,
                                    boolean autoCommitEnabled) {
     _consumerRecordsProcessor = consumerRecordsProcessor;

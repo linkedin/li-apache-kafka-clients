@@ -7,9 +7,14 @@ package com.linkedin.kafka.clients.producer;
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
-import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
+import com.linkedin.kafka.clients.utils.HeaderParser;
+import com.linkedin.kafka.clients.utils.SimplePartitioner;
+import com.linkedin.kafka.clients.utils.UUIDFactory;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Random;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -28,10 +33,11 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import java.nio.ByteBuffer;
 
 /**
  * This producer is the implementation of {@link LiKafkaProducer}.
@@ -43,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <li>Auditing</li>
  * </ul>
  * In LiKafkaProducerImpl, a large message (a message which is larger than segment size) will be split into
- * multiple {@link LargeMessageSegment} and sent to Kafka brokers as individual messages. On the consumer side,
+ * multiple {@link com.linkedin.kafka.clients.largemessage.LargeMessageSegment} and sent to Kafka brokers as individual messages. On the consumer side,
  * LiKafkaConsumer will collect all the segments of the same original large message, reassemble the large message and
  * deliver it to the users.
  * (@see <a href=http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297>design details</a>)
@@ -67,6 +73,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * props.put("max.message.segment.bytes", 1000 * 1024);
  * props.put("segment.serializer", DefaultSegmentSerializer.class.getName());
  * props.put("auditor.class", LoggingAuditor.class.getName());
+ * props.put("uuid.factory.class", UUIDFactoryImpl.class.getName());
  *
  * LiKafkaProducer<String, String> liKafkaProducer = new LiKafkaProducerImpl<>(props);
  * for(int i = 0; i < 100; i++)
@@ -74,11 +81,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * producer.close();
  * </code></pre>
- * The segment serializer will be used to serialize the {@link LargeMessageSegment}. The users may have different
- * serialization/deserialization protocol for the segments of large messages. If no segment serializer is
- * specified by the user, the {@link com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer} will be used.
  * <p>
- * User can also specify an {@link Auditor} implementation class for LiKafkaProducerImpl. For each ProducerRecord
+ * User can specify an {@link Auditor} implementation class for LiKafkaProducerImpl. For each ProducerRecord
  * LiKafkaProducer sends, it will audit the ProducerRecord using three predefined {@link AuditType}
  * (ATTEMPT, SUCCESS, FAILURE). User may define more audit types for the auditor if needed.
  * <p>
@@ -118,39 +122,38 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   // A counter of the threads in the middle of sending messages. This is needed to ensure when we close the producer
   // everything is audited.
   private final AtomicInteger _numThreadsInSend;
+  private final UUIDFactory _uuidFactory;
   private volatile boolean _closed;
+  private final HeaderParser _headerParser;
 
   public LiKafkaProducerImpl(Properties props) {
-    this(new LiKafkaProducerConfig(props), null, null, null, null);
+    this(new LiKafkaProducerConfig(props), null, null, null);
   }
 
   public LiKafkaProducerImpl(Properties props,
                              Serializer<K> keySerializer,
                              Serializer<V> valueSerializer,
-                             Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
                              Auditor<K, V> auditor) {
-    this(new LiKafkaProducerConfig(props), keySerializer, valueSerializer, largeMessageSegmentSerializer, auditor);
+    this(new LiKafkaProducerConfig(props), keySerializer, valueSerializer, auditor);
   }
 
   public LiKafkaProducerImpl(Map<String, ?> configs) {
-    this(new LiKafkaProducerConfig(configs), null, null, null, null);
+    this(new LiKafkaProducerConfig(configs), null,  null, null);
   }
 
   public LiKafkaProducerImpl(Map<String, ?> configs,
                              Serializer<K> keySerializer,
                              Serializer<V> valueSerializer,
-                             Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
                              Auditor<K, V> auditor) {
-    this(new LiKafkaProducerConfig(configs), keySerializer, valueSerializer, largeMessageSegmentSerializer, auditor);
+    this(new LiKafkaProducerConfig(configs), keySerializer, valueSerializer,  auditor);
   }
 
   @SuppressWarnings("unchecked")
   private LiKafkaProducerImpl(LiKafkaProducerConfig configs,
                              Serializer<K> keySerializer,
                              Serializer<V> valueSerializer,
-                             Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
                              Auditor<K, V> auditor) {
-    // Instantiate the open source producer, which always sents raw bytes.
+    // Instantiate the open source producer, which always sends raw bytes.
     _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
 
     // Instantiate the key serializer if necessary.
@@ -165,18 +168,19 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     // prepare to handle large messages.
     _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
     _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
-    Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer :
-        configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
-    segmentSerializer.configure(configs.originals(), false);
-    _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer);
+    _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
 
-    // Instantiate auditor if necessary
-    _auditor = auditor != null ? auditor :
-        configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
+    _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, _uuidFactory, new SimplePartitionerImpl());
+
+      // Instantiate auditor if necessary
+      _auditor = auditor != null ? auditor
+        : configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
     _auditor.configure(configs.configsWithCurrentProducer(_producer));
     _auditor.start();
     _numThreadsInSend = new AtomicInteger(0);
     _closed = false;
+
+    _headerParser = new HeaderParser(configs.getString(LiKafkaProducerConfig.LI_KAFKA_MAGIC_CONFIG));
   }
 
   @Override
@@ -194,14 +198,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       String topic = producerRecord.topic();
       K key = producerRecord.key();
       V value = producerRecord.value();
+      //TODO: why are we creating a timestamp if the user has not specified one?
       Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
-      Integer partition = producerRecord.partition();
-      Future<RecordMetadata> future = null;
-      UUID messageId = getUuid(key, value);
       if (LOG.isTraceEnabled()) {
-        LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}",
-            messageId.toString().replaceAll("-", ""),
-            value.toString(),
+        LOG.trace("Sending record with (key, value) ({},{})  to kafka topic {}",
+            value == null ? "[none]" : value.toString(),
             (key != null) ? key.toString() : "[none]",
             topic);
       }
@@ -216,29 +217,63 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.FAILURE);
         throw new KafkaException(t);
       }
+
+      // regular producer record
+      // regular producer record that needs large message support.
+      // X producer record
+      // X producer record that needs large message support.
       int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
-          + (serializedValue == null ? 0 : serializedValue.length);
+        + (serializedValue == null ? 0 : serializedValue.length);
+
+
       // Audit the attempt.
-      _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+      //TODO: allow the auditor to manipulate headers?
+      //TODO: extensible record header size.
       // We wrap the user callback for error logging and auditing purpose.
       Callback errorLoggingCallback =
-          new ErrorLoggingCallback<>(messageId, key, value, topic, timestamp, sizeInBytes, _auditor, callback);
+          new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
+
+      ExtensibleProducerRecord<byte[], byte[]> xRecord =
+        new ExtensibleProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(), serializedKey, serializedValue);
+      if (producerRecord instanceof ExtensibleProducerRecord) {
+        xRecord.copyHeadersFrom((ExtensibleProducerRecord) producerRecord);
+      }
+
+      Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords;
       if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
-        List<ProducerRecord<byte[], byte[]>> segmentRecords =
-            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue);
-        Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
-        for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
-          future = _producer.send(segmentRecord, largeMessageCallback);
-        }
+        xRecords = _messageSplitter.split(xRecord);
+        errorLoggingCallback = new LargeMessageCallback(xRecords.size(), errorLoggingCallback);
       } else {
-        // In order to make sure consumer can consume both large message segment and the ordinary message,
-        // we wrap the normal message as a single segment large message. When consumer sees it, it will
-        // be returned by message assembler immediately. We set a pretty large maxSegmentSize to make sure
-        // the message will end up in one segment.
-        List<ProducerRecord<byte[], byte[]>> wrappedRecord =
-            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, Integer.MAX_VALUE / 2);
-        assert (wrappedRecord.size() == 1);
-        future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
+        xRecords = Collections.singleton(xRecord);
+      }
+
+      int headerSize = xRecords.size() * _headerParser.magicSize() /* magic size*/;
+      for (ExtensibleProducerRecord xProducerRecord : xRecords) {
+        int headerForXRecord = HeaderParser.serializedHeaderSize(xProducerRecord.headers());
+        if (headerForXRecord > HeaderParser.MAX_SERIALIZED_HEADER_SIZE) {
+          throw new IllegalStateException("The serialized size of all headers, " + headerForXRecord +
+            ", exceeds the maximum size allowed,  " + HeaderParser.MAX_SERIALIZED_HEADER_SIZE);
+        }
+        headerSize += headerForXRecord;
+      }
+
+      sizeInBytes += headerSize;
+
+      Future<RecordMetadata> future = null;
+      // Are we sending a regular record without headers that is not large
+      if (!(producerRecord instanceof ExtensibleProducerRecord) && xRecords.size() == 1) {
+        sizeInBytes -= _headerParser.magicSize();
+        _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+        ProducerRecord<byte[], byte[]> headerlessByteRecord =
+          new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(), serializedKey, serializedValue);
+        future = _producer.send(headerlessByteRecord, errorLoggingCallback);
+      } else {
+        _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+
+        for (ExtensibleProducerRecord<byte[], byte[]> segmentRecord : xRecords) {
+          ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord, _headerParser);
+          future = _producer.send(segmentProducerRecord, errorLoggingCallback);
+        }
       }
       return future;
     } catch (Throwable t) {
@@ -249,6 +284,32 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       _numThreadsInSend.decrementAndGet();
     }
   }
+
+  /**
+   * This is public for testing.
+   */
+  public static ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord, HeaderParser headerParser) {
+    int headersSize = HeaderParser.serializedHeaderSize(xRecord.headers());
+    int serializedValueSize = xRecord.value() == null ? 0 : xRecord.value().length +
+          headerParser.magicSize() + // magic size
+          4 + // headers size size
+          headersSize +
+          4; // user value length)
+
+    ByteBuffer valueWithHeaders = ByteBuffer.allocate(serializedValueSize);
+    headerParser.writeMagicTo(valueWithHeaders);
+    valueWithHeaders.putInt(headersSize);
+    HeaderParser.writeHeader(valueWithHeaders, xRecord.headers());
+    valueWithHeaders.putInt(xRecord.value().length);
+    valueWithHeaders.put(xRecord.value());
+
+    if (valueWithHeaders.hasRemaining()) {
+      throw new IllegalStateException("Detected slack when writing headers to byte buffer.");
+    }
+
+    return new ProducerRecord<>(xRecord.topic(), xRecord.partition(), xRecord.key(), valueWithHeaders.array());
+  }
+
 
   /**
    * This method will flush all the message buffered in producer. It is a blocking call.
@@ -266,10 +327,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   @Override
   public Map<MetricName, ? extends Metric> metrics() {
     return _producer.metrics();
-  }
-
-  protected UUID getUuid(K key, V value) {
-    return UUID.randomUUID();
   }
 
   @Override
@@ -297,7 +354,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   }
 
   private static class ErrorLoggingCallback<K, V> implements Callback {
-    private final UUID _messageId;
     private final K _key;
     private final V _value;
     private final String _topic;
@@ -306,15 +362,13 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     private final Auditor<K, V> _auditor;
     private final Callback _userCallback;
 
-    public ErrorLoggingCallback(UUID messageId,
-                                K key,
+    public ErrorLoggingCallback(K key,
                                 V value,
                                 String topic,
                                 Long timestamp,
                                 Integer serializedSize,
                                 Auditor<K, V> auditor,
                                 Callback userCallback) {
-      _messageId = messageId;
       _value = value;
       _key = key;
       _topic = topic;
@@ -339,6 +393,16 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       if (_userCallback != null) {
         _userCallback.onCompletion(recordMetadata, e);
       }
+    }
+  }
+
+  private final class SimplePartitionerImpl implements SimplePartitioner {
+    private final Random rand = new Random();
+
+    @Override
+    public int partition(String topic) {
+      List<PartitionInfo> partitionInfo = partitionsFor(topic);
+      return rand.nextInt(partitionInfo.size());
     }
   }
 

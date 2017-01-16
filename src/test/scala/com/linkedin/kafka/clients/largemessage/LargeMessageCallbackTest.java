@@ -18,7 +18,7 @@ import static org.testng.AssertJUnit.assertTrue;
 /**
  * The unit test for large message callback.
  */
-public class LageMessageCallbackTest {
+public class LargeMessageCallbackTest {
   private final int numSegments = 10;
 
   @Test

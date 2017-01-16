@@ -192,7 +192,8 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * @param timeout The time, in milliseconds, spent waiting in poll if data is not available in the buffer.
    *                If 0, returns immediately with any records that are available currently in the buffer, else returns empty.
    *                Must not be negative.
-   * @return map of topic to records since the last fetch for the subscribed list of topics and partitions
+   * @return map of topic to records since the last fetch for the subscribed list of topics and partitions.
+   * The records returned of type ExtensiableConsumerRecord.
    * @throws org.apache.kafka.clients.consumer.InvalidOffsetException if the offset for a partition or set of
    *                                                                  partitions is undefined or out of range and no offset
    *                                                                  reset policy has been configured
@@ -206,6 +207,7 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    */
   @InterfaceOrigin.ApacheKafka
   ConsumerRecords<K, V> poll(long timeout);
+
 
   /**
    * Commit offsets returned on the last {@link #poll(long) poll()} for all the subscribed list of topics and partitions.

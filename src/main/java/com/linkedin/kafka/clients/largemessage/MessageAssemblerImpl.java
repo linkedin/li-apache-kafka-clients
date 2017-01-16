@@ -4,8 +4,10 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
+import java.nio.ByteBuffer;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,29 +20,28 @@ import java.util.Map;
 public class MessageAssemblerImpl implements MessageAssembler {
   private static final Logger LOG = LoggerFactory.getLogger(MessageAssemblerImpl.class);
   private final LargeMessageBufferPool _messagePool;
-  private final Deserializer<LargeMessageSegment> _segmentDeserializer;
 
   public MessageAssemblerImpl(long bufferCapacity,
                               long expirationOffsetGap,
-                              boolean exceptionOnMessageDropped,
-                              Deserializer<LargeMessageSegment> segmentDeserializer) {
+                              boolean exceptionOnMessageDropped) {
     _messagePool = new LargeMessageBufferPool(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped);
-    _segmentDeserializer = segmentDeserializer;
   }
 
   @Override
-  public AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes) {
-    LargeMessageSegment segment = _segmentDeserializer.deserialize(tp.topic(), segmentBytes);
-    if (segment == null) {
-      return new AssembleResult(segmentBytes, offset, offset);
-    } else {
+  public AssembleResult assemble(TopicPartition tp, long offset, ExtensibleConsumerRecord<byte[], byte[]> segmentRecord) {
+    if (segmentRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER) == null) {
+      return null;
+    }
+
+    LargeMessageSegment segment =
+      new LargeMessageSegment(segmentRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER), ByteBuffer.wrap(segmentRecord.value()));
       // Return immediately if it is a single segment message.
-      if (segment.numberOfSegments == 1) {
-        return new AssembleResult(segment.payloadArray(), offset, offset);
-      } else {
-        LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment);
-        return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset);
-      }
+    if (segment.numberOfSegments() == 1) {
+      return new AssembleResult(segment.segmentArray(), offset, offset, Collections.emptySet(), segment.originalKeyWasNull(), segmentRecord.headersSize());
+    } else {
+      LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment, segmentRecord.headersSize());
+      return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset, result.segmentOffsets(),
+          segment.originalKeyWasNull(), result.totalHeadersSize());
     }
   }
 

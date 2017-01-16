@@ -17,45 +17,50 @@ import java.util.UUID;
  */
 public class LargeMessage {
   private final Map<Integer, ByteBuffer> _segments;
-  private final int _messageSize;
+  private final Set<Long> _segmentOffsets;
+  private final int _originalValueSize;
+
   private final int _numberOfSegments;
   private final TopicPartition _tp;
   private final UUID _messageId;
   private final long _startingOffset;
   private long _bufferedBytes;
+  private int _totalHeadersSize;
 
-  LargeMessage(TopicPartition tp, UUID messageId, long startingOffset, int messageSize, int numberOfSegments) {
-    _messageSize = messageSize;
+  LargeMessage(TopicPartition tp, UUID messageId, long startingOffset, int originalValueSize, int numberOfSegments) {
+    _originalValueSize = originalValueSize;
     _numberOfSegments = numberOfSegments;
     _segments = new HashMap<>();
     _bufferedBytes = 0;
     _tp = tp;
     _messageId = messageId;
     _startingOffset = startingOffset;
+    _totalHeadersSize = 0;
   }
 
   public synchronized long bufferedSizeInBytes() {
     return _bufferedBytes;
   }
 
-  public synchronized SegmentAddResult addSegment(LargeMessageSegment segment, long offset) {
-    int seq = segment.sequenceNumber;
-    int segmentSize = segment.payload.remaining();
+  public synchronized SegmentAddResult addSegment(LargeMessageSegment segment, long offset, int headersSize) {
+    int seq = segment.sequenceNumber();
+    int segmentSize = segment.segmentByteBuffer().remaining();
     validateSegment(segment);
     // Ignore duplicated segment.
     if (!_segments.containsKey(seq)) {
-      _segments.put(seq, segment.payload);
+      _segments.put(seq, segment.segmentByteBuffer());
       _bufferedBytes += segmentSize;
+      _totalHeadersSize += headersSize;
       if (_segments.size() == _numberOfSegments) {
         // If we have got all the segments, assemble the original serialized message.
-        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset);
+        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset, _segmentOffsets, _totalHeadersSize);
       }
     } else {
       // duplicate segment
-      return new SegmentAddResult(null, 0, _startingOffset);
+      return new SegmentAddResult(null, 0, _startingOffset, _segmentOffsets, _totalHeadersSize);
     }
     // The segment is buffered, but it did not complete a large message.
-    return new SegmentAddResult(null, segmentSize, _startingOffset);
+    return new SegmentAddResult(null, segmentSize, _startingOffset, _segmentOffsets, _totalHeadersSize);
   }
 
   public TopicPartition topicPartition() {
@@ -72,35 +77,35 @@ public class LargeMessage {
 
   public String toString() {
     return String.format("[TopicPartition:%s, UUID:%s, NumberOfSegments:%d, MessageSize:%d, BufferedBytes:%d]",
-        _tp, _messageId, _numberOfSegments, _messageSize, _bufferedBytes);
+        _tp, _messageId, _numberOfSegments, _originalValueSize, _bufferedBytes);
   }
 
   private void validateSegment(LargeMessageSegment segment) {
-    int segmentSize = segment.payload.remaining();
-    int seq = segment.sequenceNumber;
+    int segmentSize = segment.segmentByteBuffer().remaining();
+    int seq = segment.sequenceNumber();
 
     if (segmentSize <= 0) {
       throw new InvalidSegmentException("Invalid segment: " + segment + ". Segment size should be greater than 0.");
     }
 
-    if (_messageSize != segment.messageSizeInBytes
-        || _numberOfSegments != segment.numberOfSegments) {
-      throw new InvalidSegmentException("Detected UUID conflict. Segment: " + segment);
+    if (_originalValueSize != segment.originalValueSize()
+        || _numberOfSegments != segment.numberOfSegments()) {
+      throw new InvalidSegmentException("Segment number of offsets does not equal the known number of offsets for segment: " + segment);
     }
 
-    if (!_segments.containsKey(seq) && _bufferedBytes + segmentSize > _messageSize) {
+    if (!_segments.containsKey(seq) && _bufferedBytes + segmentSize > _originalValueSize) {
       throw new InvalidSegmentException("Invalid segment: " + segment + ". Segments have more bytes than the " +
-          "message has. Message size =" + _messageSize + ", segments total bytes = " +
+          "message has. Message size =" + _originalValueSize + ", segments total bytes = " +
           (_bufferedBytes + segmentSize));
     }
   }
 
   private byte[] assembleMessage() {
-    if (_bufferedBytes != _messageSize) {
+    if (_bufferedBytes != _originalValueSize) {
       throw new InvalidSegmentException("Buffered bytes in the message should equal to message size."
-          + " Buffered bytes = " + _bufferedBytes + "message size = " + _messageSize);
+          + " Buffered bytes = " + _bufferedBytes + "message size = " + _originalValueSize);
     }
-    byte[] serializedMessage = new byte[_messageSize];
+    byte[] serializedMessage = new byte[_originalValueSize];
     int segmentStart = 0;
     for (int i = 0; i < _numberOfSegments; i++) {
       ByteBuffer payload = _segments.get(i);
@@ -108,7 +113,9 @@ public class LargeMessage {
       payload.get(serializedMessage, segmentStart, payloadSize);
       segmentStart += payloadSize;
     }
-    assert (segmentStart == _messageSize);
+    if (segmentStart !=  _originalValueSize) {
+      throw new IllegalStateException("segmentStart " + segmentStart + " != originalValueSize " + _originalValueSize);
+    }
     return serializedMessage;
   }
 
@@ -119,11 +126,15 @@ public class LargeMessage {
     private final byte[] _serializedMessage;
     private final long _startingOffset;
     private final int _bytesAdded;
+    private final Set<Long> _segmentOffsets;
+    private final int _totalHeadersSize;
 
-    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset) {
+    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset, Set<Long> segmentOffsets, int totalHeadersSize) {
       _serializedMessage = serializedMessage;
       _bytesAdded = bytesAdded;
       _startingOffset = startingOffset;
+      _segmentOffsets = segmentOffsets;
+      _totalHeadersSize = totalHeadersSize;
     }
 
     /**
@@ -147,6 +158,16 @@ public class LargeMessage {
      */
     long startingOffset() {
       return _startingOffset;
+    }
+    /**
+     * @return the segment offsets of this large message.
+     */
+    Set<Long> segmentOffsets() {
+      return _segmentOffsets;
+    }
+
+    int totalHeadersSize() {
+      return _totalHeadersSize;
     }
   }
 

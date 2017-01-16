@@ -59,7 +59,6 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
 
   private ByteBuffer headerSource;
 
-
   public LazyHeaderListMap() {
     this((ByteBuffer) null);
   }
