@@ -4,7 +4,6 @@
  */
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;

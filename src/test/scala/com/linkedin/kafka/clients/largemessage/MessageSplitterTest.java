@@ -59,7 +59,7 @@ public class MessageSplitterTest {
     for (ExtensibleProducerRecord<byte[], byte[]> splitRecord : records) {
       ExtensibleConsumerRecord<byte[], byte[]> splitConsumerRecord = TestUtils.producerRecordToConsumerRecord(splitRecord,
           expectedSequenceNumber, expectedSequenceNumber, null, 0, 0);
-      totalHeadersSize += splitRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER).length + 4 + 4;
+      totalHeadersSize += splitRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER).length + 4 + 4 + 1;
       assembledMessage = assembler.assemble(tp, expectedSequenceNumber, splitConsumerRecord);
       if (expectedSequenceNumber != 4) {
         assertNull(assembledMessage.messageBytes());

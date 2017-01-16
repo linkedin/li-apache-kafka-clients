@@ -70,7 +70,7 @@ public class TestUtils {
       consumerRecord.header(headerKey, producerRecord.header(headerKey));
     }
     try {
-      Field headerSizeField = ExtensibleConsumerRecord.class.getDeclaredField("headersSize");
+      Field headerSizeField = ExtensibleConsumerRecord.class.getDeclaredField("headersReceivedSizeBytes");
       headerSizeField.setAccessible(true);
       headerSizeField.setInt(consumerRecord, producerRecord.headersSize());
     } catch (Exception e) {

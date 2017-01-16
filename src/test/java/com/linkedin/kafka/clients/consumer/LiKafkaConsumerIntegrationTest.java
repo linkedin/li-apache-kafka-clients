@@ -800,6 +800,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * 5: M0_SEG1(END)
    * 6: M3_SEG1(END)
    * 7: M4_SEG0 (START) (END)
+   * 8: M4_SEG0 (START)
+   * 9: M5_SEG1 (END)
    * partition SYNTHETIC_PARTITION_1
    * 0: M0_SEG0 (START)
    * 1: M1_SEG0 (START)
@@ -807,7 +809,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    */
   private void produceSyntheticMessages(String topic) {
     UUIDFactory uuidFactory = new UUIDFactoryImpl();
-    int partition = SYNTHETIC_PARTITION;
+    int partition = SYNTHETIC_PARTITION_0;
     SimplePartitioner simplePartitioner = new SimplePartitioner() {
       @Override
       public int partition(String topic) {
@@ -841,14 +843,12 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         createSerializedProducerRecord(4, oneSegmentSize, splitter, topic, partition).iterator();
 
     // M5, 2 segments
-    UUID messageId5 = UUID.randomUUID();
-    String message5 = TestUtils.getRandomString(messageSize);
-    Iterator<ProducerRecord<byte[], byte[]>> m5Segs = createSerializedProducerRecord(topic, SYNTHETIC_PARTITION_0, messageId5, message5.getBytes());
+    Iterator<ProducerRecord<byte[], byte[]>> m5Segs =
+      createSerializedProducerRecord(5, twoSegmentSize, splitter, topic, SYNTHETIC_PARTITION_0).iterator();
 
     // Add two more segment to partition SYNTHETIC_PARTITION_1 for corner case test.
-    Iterator<ProducerRecord<byte[], byte[]>> m0SegsPartition1 = createSerializedProducerRecord(topic, SYNTHETIC_PARTITION_1, messageId0, message0.getBytes());
-    Iterator<ProducerRecord<byte[], byte[]>> m1SegsPartition1 = createSerializedProducerRecord(topic, SYNTHETIC_PARTITION_1, messageId1, message1.getBytes());
-
+    Iterator<ProducerRecord<byte[], byte[]>> m0SegsPartition1 =
+      createSerializedProducerRecord(0, twoSegmentSize, splitter, topic, SYNTHETIC_PARTITION_1).iterator();
 
     try {
       //This produces the sequence of records: 0, 1, 2, 3, 1, 0, 3, 4
@@ -862,7 +862,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       producer.send(m4Segs.next()).get();
       producer.send(m5Segs.next()).get();
       producer.send(m5Segs.next()).get();
-      producer.send(
+      producer.send(m0SegsPartition1.next()).get();
+      producer.send(m0SegsPartition1.next()).get();
     } catch (Exception e) {
       fail("Produce synthetic data failed.", e);
     }

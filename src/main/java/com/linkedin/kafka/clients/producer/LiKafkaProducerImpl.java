@@ -381,9 +381,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        LOG.error(String.format("Unable to send event %s with key %s and message id %s to kafka topic %s",
-            _value.toString(), (_key != null) ? _key : "[none]",
-            (_messageId != null) ? _messageId.toString().replaceAll("-", "") : "[none]", _topic), e);
+        LOG.error(String.format("Unable to send event %s with key %s to kafka topic %s",
+            _value.toString(), (_key != null) ? _key : "[none]", _topic), e);
         // Audit the failure.
         _auditor.record(_topic, _key, _value, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
       } else {

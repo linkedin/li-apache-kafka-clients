@@ -17,7 +17,6 @@ import java.util.UUID;
  */
 public class LargeMessage {
   private final Map<Integer, ByteBuffer> _segments;
-  private final Set<Long> _segmentOffsets;
   private final int _originalValueSize;
 
   private final int _numberOfSegments;
@@ -53,14 +52,14 @@ public class LargeMessage {
       _totalHeadersSize += headersSize;
       if (_segments.size() == _numberOfSegments) {
         // If we have got all the segments, assemble the original serialized message.
-        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset, _segmentOffsets, _totalHeadersSize);
+        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset, _totalHeadersSize);
       }
     } else {
       // duplicate segment
-      return new SegmentAddResult(null, 0, _startingOffset, _segmentOffsets, _totalHeadersSize);
+      return new SegmentAddResult(null, 0, _startingOffset, _totalHeadersSize);
     }
     // The segment is buffered, but it did not complete a large message.
-    return new SegmentAddResult(null, segmentSize, _startingOffset, _segmentOffsets, _totalHeadersSize);
+    return new SegmentAddResult(null, segmentSize, _startingOffset, _totalHeadersSize);
   }
 
   public TopicPartition topicPartition() {
@@ -126,14 +125,12 @@ public class LargeMessage {
     private final byte[] _serializedMessage;
     private final long _startingOffset;
     private final int _bytesAdded;
-    private final Set<Long> _segmentOffsets;
     private final int _totalHeadersSize;
 
-    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset, Set<Long> segmentOffsets, int totalHeadersSize) {
+    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset, int totalHeadersSize) {
       _serializedMessage = serializedMessage;
       _bytesAdded = bytesAdded;
       _startingOffset = startingOffset;
-      _segmentOffsets = segmentOffsets;
       _totalHeadersSize = totalHeadersSize;
     }
 
@@ -158,12 +155,6 @@ public class LargeMessage {
      */
     long startingOffset() {
       return _startingOffset;
-    }
-    /**
-     * @return the segment offsets of this large message.
-     */
-    Set<Long> segmentOffsets() {
-      return _segmentOffsets;
     }
 
     int totalHeadersSize() {

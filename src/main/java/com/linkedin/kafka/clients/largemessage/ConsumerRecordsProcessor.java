@@ -33,7 +33,6 @@ public class ConsumerRecordsProcessor {
                                   DeliveredMessageOffsetTracker deliveredMessageOffsetTracker) {
     _messageAssembler = messageAssembler;
     _deliveredMessageOffsetTracker = deliveredMessageOffsetTracker;
-    _auditor = auditor;
     _partitionConsumerHighWatermark = new HashMap<>();
   }
 
@@ -285,7 +284,7 @@ public class ConsumerRecordsProcessor {
 
   public void close() {
     _messageAssembler.close();
-  } 
+  }
 
   //TODO: it would be better to do this with Java streams?
   private ExtensibleConsumerRecord<byte[], byte[]> filterAndAssembleRecords(ExtensibleConsumerRecord<byte[], byte[]> srcRecord) {
@@ -297,7 +296,7 @@ public class ConsumerRecordsProcessor {
     long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
     if (assembledResult == null) {
       //Not a large message segment
-      _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), Collections.emptySet());
+      _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), true);
       return srcRecord;
     }
 
@@ -306,8 +305,9 @@ public class ConsumerRecordsProcessor {
       return null;
     }
 
+    //TODO: check meaning of delivered.
     _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, assembledResult.messageStartingOffset(),
-        assembledResult.segmentOffsets());
+        true);
 
     int serializedKeySize = assembledResult.isOriginalKeyIsNull() ? 0 : srcRecord.key().length;
     byte[] key = assembledResult.isOriginalKeyIsNull() ? null : srcRecord.key();
@@ -321,7 +321,7 @@ public class ConsumerRecordsProcessor {
         key, assembledResult.messageBytes());
     //TODO: checksums recomputed?
     largeMessageRecord.copyHeadersFrom(srcRecord);
-    largeMessageRecord.headersSize(assembledResult.totalHeadersSize());
+    largeMessageRecord.setHeadersReceivedSizeBytes(assembledResult.totalHeadersSize());
 
     return largeMessageRecord;
   }

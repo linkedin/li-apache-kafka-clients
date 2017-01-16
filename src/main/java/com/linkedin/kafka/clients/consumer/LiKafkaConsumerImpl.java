@@ -119,7 +119,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     int messageAssemblerExpirationOffsetGap = configs.getInt(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_EXPIRATION_OFFSET_GAP_CONFIG);
     boolean exceptionOnMessageDropped = configs.getBoolean(LiKafkaConsumerConfig.EXCEPTION_ON_MESSAGE_DROPPED_CONFIG);
     MessageAssembler assembler = new MessageAssemblerImpl(messageAssemblerCapacity, messageAssemblerExpirationOffsetGap,
-                                                          exceptionOnMessageDropped, segmentDeserializer);
+                                                          exceptionOnMessageDropped);
 
     // Instantiate delivered message offset tracker if needed.
     int maxTrackedMessagesPerPartition = configs.getInt(LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG);
@@ -260,7 +260,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     for (ExtensibleConsumerRecord<byte[], byte[]> xRecord : xRecords) {
       ExtensibleConsumerRecord<K, V> userRecord = deserialize(xRecord);
       if (_auditor != null) {
-        long totalBytes = userRecord.headersSize() + userRecord.serializedKeySize() + userRecord.serializedValueSize();
+        long totalBytes = userRecord.headersReceivedSizeBytes() + userRecord.serializedKeySize() + userRecord.serializedValueSize();
         _auditor.record(userRecord.topic(), userRecord.key(), userRecord.value(), userRecord.timestamp(), 1L, totalBytes,
             AuditType.SUCCESS);
       }
@@ -288,7 +288,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
             record.checksum(),
             record.serializedKeySize(), record.serializedValueSize(),
             key, value,
-            record.headers(), record.headersSize());
+            record.headers(), record.headersReceivedSizeBytes());
     return deserializedRecord;
   }
 
