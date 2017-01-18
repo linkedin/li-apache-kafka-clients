@@ -418,7 +418,7 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * returns the safe offset committed by the consumer for the specified partition.
    *
    * @param partition The partition to query the committed offset.
-   * @return The actual offset committed to Kafka for this partition, or -1 is returned if there is no committed
+   * @return The actual offset committed to Kafka for this partition, or null is returned if there is no committed
    * safe offset.
    */
   @InterfaceOrigin.LiKafkaClients
