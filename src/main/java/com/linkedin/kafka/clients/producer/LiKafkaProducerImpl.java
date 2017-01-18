@@ -307,7 +307,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       throw new IllegalStateException("Detected slack when writing headers to byte buffer.");
     }
 
-    return new ProducerRecord<>(xRecord.topic(), xRecord.partition(), xRecord.key(), valueWithHeaders.array());
+    return new ProducerRecord<>(xRecord.topic(), xRecord.partition(), xRecord.timestamp(), xRecord.key(), valueWithHeaders.array());
   }
 
 
