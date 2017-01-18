@@ -17,9 +17,11 @@ import javax.xml.bind.DatatypeConverter;
  */
 public class HeaderParser {
 
+  /**
+   *   All this bit manipulation makes this number look like an invalid UTF8 encoded string if someone starts to read it
+   * within the first 7 bytes
+   */
   public static final long DEFAULT_HEADER_MAGIC
-    // All this bit manipulation makes this number look like an invalid UTF8 encoded string if someone starts to read it
-    // within the first 7 bytes
     = (0x4c6d4eef4b7a44L | 0b11000000_11000000_11000000_11000000_11000000_11000000_11000000_11000000L) &
         0b11011111_11011111_11011111_11011111_11011111_11011111_11011111_11011111L;
 

@@ -14,7 +14,6 @@ import com.linkedin.kafka.clients.utils.HeaderParser;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.ByteBuffer;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;

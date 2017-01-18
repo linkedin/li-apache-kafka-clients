@@ -7,7 +7,6 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collection;
-import java.util.Collections;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
@@ -286,14 +285,23 @@ public class ConsumerRecordsProcessor {
     _messageAssembler.close();
   }
 
-  //TODO: it would be better to do this with Java streams?
+  /**
+   * When we encounter an incomplete large message this filters (i.e. it returns null) otherwise this tracks records and
+   * returns completed large messages and non-large messages.
+   * @param srcRecord this is the record that was polled from the underlying Kafka consumer.
+   * @return this may return null
+   */
   private ExtensibleConsumerRecord<byte[], byte[]> filterAndAssembleRecords(ExtensibleConsumerRecord<byte[], byte[]> srcRecord) {
     TopicPartition topicPartition = new TopicPartition(srcRecord.topic(), srcRecord.partition());
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(topicPartition, srcRecord.offset(), srcRecord);
+
+    long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
     if (shouldSkip(topicPartition, srcRecord.offset())) {
+      //The message had already been delivered to the consumer when it committed and it does not want to see it again.
+      _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), false);
       return null;
     }
-    long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
+
     if (assembledResult == null) {
       //Not a large message segment
       _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), true);
@@ -302,10 +310,11 @@ public class ConsumerRecordsProcessor {
 
     if (assembledResult.messageBytes() == null) {
       //Not a complete, large message
+      _deliveredMessageOffsetTracker.addNonMessageOffset(topicPartition, srcRecord.offset());
       return null;
     }
 
-    //TODO: check meaning of delivered.
+    // Completed, large message value
     _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, assembledResult.messageStartingOffset(),
         true);
 

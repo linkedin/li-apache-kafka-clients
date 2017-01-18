@@ -197,21 +197,19 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
+    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
     try {
       TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
       TopicPartition tp1 = new TopicPartition(topic, SYNTHETIC_PARTITION_1);
-      consumer.assign(Arrays.asList(tp, tp1));
+      consumer.assign(Arrays.asList(tp));
 
       while (consumer.poll(10).isEmpty()) {
         //M2
       }
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
-      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
-      assertEquals(consumer.position(tp1), 2L, "The position of partition 1 should be 2.");
-      assertEquals(consumer.committedSafeOffset(tp1).longValue(), 0L, "The committed safe offset for partition 1 should be 0.");
-      assertEquals(consumer.committed(tp1).offset(), 2L, "The committed offset for partition 1 should be 2.");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed safe offset should be 0");
 
       while (consumer.poll(10).isEmpty()) {
         // M1
@@ -247,6 +245,16 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       // test commit offset 0
       consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(0)));
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(0, ""), "The committed user offset should be 0");
+
+      consumer.assign(Collections.singleton(tp1));
+
+      while (consumer.poll(10).isEmpty()) {
+        // M0, partition 1
+      }
+      consumer.commitSync();
+      assertEquals(consumer.position(tp1), 2L, "The position of partition 1 should be 2.");
+      assertEquals(consumer.committedSafeOffset(tp1).longValue(), 2L, "The committed safe offset for partition 1 should be 0.");
+      assertEquals(consumer.committed(tp1).offset(), 2L, "The committed offset for partition 1 should be 2.");
 
       consumer.close();
       consumer = createConsumer(props);
@@ -800,11 +808,11 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * 5: M0_SEG1(END)
    * 6: M3_SEG1(END)
    * 7: M4_SEG0 (START) (END)
-   * 8: M4_SEG0 (START)
+   * 8: M5_SEG0 (START) (END)
    * 9: M5_SEG1 (END)
    * partition SYNTHETIC_PARTITION_1
    * 0: M0_SEG0 (START)
-   * 1: M1_SEG0 (START)
+   * 1: M0_SEG1 (END)
    * </pre>
    */
   private void produceSyntheticMessages(String topic) {
@@ -851,7 +859,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       createSerializedProducerRecord(0, twoSegmentSize, splitter, topic, SYNTHETIC_PARTITION_1).iterator();
 
     try {
-      //This produces the sequence of records: 0, 1, 2, 3, 1, 0, 3, 4
       producer.send(m0Segs.next()).get();
       producer.send(m1Segs.next()).get();
       producer.send(m2Segs.next()).get();
