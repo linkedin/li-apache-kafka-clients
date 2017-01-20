@@ -334,6 +334,7 @@ public class ConsumerRecordsProcessor<K, V> {
   private byte[] parseAndMaybeTrackRecord(TopicPartition tp, long messageOffset, byte[] bytes) {
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
     if (assembledResult.messageBytes() != null) {
+      LOG.trace("Got message {} from partition {}", messageOffset, tp);
       boolean shouldSkip = shouldSkip(tp, messageOffset);
       // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
       long safeOffset = Math.min(messageOffset + 1, _messageAssembler.safeOffset(tp));
@@ -344,6 +345,8 @@ public class ConsumerRecordsProcessor<K, V> {
                                            !shouldSkip);
       // We skip the messages whose offset is smaller than the high watermark.
       if (shouldSkip) {
+        LOG.trace("Skipping message {} from partition {} because its offset is smaller than the high watermark",
+                  messageOffset, tp);
         return null;
       } else {
         return assembledResult.messageBytes();
