@@ -283,8 +283,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     LiKafkaConsumer<String, String> consumer = createConsumer(props);
     try {
       TopicPartition tp = new TopicPartition(topic, 0);
-      TopicPartition tp1 = new TopicPartition(topic, 1);
-      consumer.assign(Arrays.asList(tp, tp1));
+      consumer.assign(Collections.singleton(tp));
 
       ConsumerRecords<String, String> records = ConsumerRecords.empty();
       while (records.isEmpty()) {
