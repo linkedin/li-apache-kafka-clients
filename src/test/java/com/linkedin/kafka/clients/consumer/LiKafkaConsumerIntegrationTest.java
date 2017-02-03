@@ -11,7 +11,8 @@ import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducerImpl;
-import com.linkedin.kafka.clients.utils.HeaderParser;
+import com.linkedin.kafka.clients.utils.DefaultHeaderSerializerDeserializer;
+import com.linkedin.kafka.clients.utils.HeaderSerializerDeserializer;
 import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
@@ -887,7 +888,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords = splitter.split(originalRecord0);
     List<ProducerRecord<byte[], byte[]>> producerRecords = new ArrayList<>();
-    HeaderParser headerParser = new HeaderParser();
+    HeaderSerializerDeserializer headerParser = new DefaultHeaderSerializerDeserializer();
     for (ExtensibleProducerRecord<byte[], byte[]> xRecord : xRecords) {
       producerRecords.add(LiKafkaProducerImpl.serializeWithHeaders(xRecord, headerParser));
     }

@@ -12,6 +12,7 @@ import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import org.apache.kafka.common.record.TimestampType;
@@ -70,9 +71,13 @@ public class TestUtils {
       consumerRecord.header(headerKey, producerRecord.header(headerKey));
     }
     try {
-      Field headerSizeField = ExtensibleConsumerRecord.class.getDeclaredField("headersReceivedSizeBytes");
+      DefaultHeaderSerializerDeserializer headerParser = new DefaultHeaderSerializerDeserializer();
+      Field headerSizeField = ExtensibleConsumerRecord.class.getDeclaredField("_headersReceivedSizeBytes");
+      Field producerHeadersField = ExtensibleProducerRecord.class.getDeclaredField("_headers");
       headerSizeField.setAccessible(true);
-      headerSizeField.setInt(consumerRecord, producerRecord.headersSize());
+      producerHeadersField.setAccessible(true);
+      int producerHeadersSize = headerParser.serializedHeaderSize((Map<Integer, byte[]>)producerHeadersField.get(producerRecord));
+      headerSizeField.setInt(consumerRecord, producerHeadersSize);
     } catch (Exception e) {
       throw new IllegalStateException(e);
     }

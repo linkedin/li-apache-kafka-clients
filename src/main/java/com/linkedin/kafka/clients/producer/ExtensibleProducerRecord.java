@@ -5,7 +5,6 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.utils.HeaderKeySpace;
-import com.linkedin.kafka.clients.utils.HeaderParser;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
@@ -16,8 +15,10 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 /**
  * <p>
  * This class adds the capability to get and set arbitrary header fields which are delivered to the consumer.  The
- * consumer must be using {@link com.linkedin.kafka.clients.consumer.LiKafkaConsumer}.  If the consumer is not using
+ * consumer must be using {@link com.linkedin.kafka.clients.consumer.LiKafkaConsumer}.  If headers are present and  the
+ * consumer is not using
  * {@link com.linkedin.kafka.clients.consumer.LiKafkaConsumer} then the consumer records will not be deserializable.
+ * True null values can not be sent in the presence of any headers.
  * </p>
  */
 public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
@@ -75,10 +76,6 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     headers.put(headerKey, headerValue);
   }
 
-  public int headersSize() {
-    return HeaderParser.serializedHeaderSize(headers());
-  }
-
   public void copyHeadersFrom(ExtensibleProducerRecord<K, V> other) {
     if (other.headers != null) {
       this.headers = new TreeMap<>(other.headers); //TODO: copy on write?
@@ -91,6 +88,14 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     }
 
     return headers.keySet().iterator();
+  }
+
+  /**
+   *
+   * @return if this record contains any header key value pairs
+   */
+  public boolean hasHeaders() {
+    return headers == null || headers.isEmpty();
   }
 
   /**
