@@ -27,8 +27,6 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
   /**
    * Creates a record with a specified timestamp to be sent to a specified topic and partition
    *
-   * TODO: enforce some max header size?
-   * TODO: how do the headers count against the message size?
    * @param topic The topic the record will be appended to
    * @param partition The partition to which the record should be sent.  This may be null.
    * @param timestamp The timestamp of the record.  This may be null.
