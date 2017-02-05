@@ -51,7 +51,6 @@ public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
       return Collections.singleton(previousRecord);
     }
 
-    // We allow message id to be null, but it is strongly recommended to pass in a message id.
     UUID segmentMessageId = _uuidFactory.create();
     // Get the total number of segments
     int numberOfSegments = (messageSizeInBytes + (_maxSegmentSize - 1)) / _maxSegmentSize;

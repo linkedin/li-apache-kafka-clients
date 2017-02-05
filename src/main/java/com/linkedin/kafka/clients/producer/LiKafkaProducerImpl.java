@@ -200,12 +200,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       String topic = producerRecord.topic();
       K key = producerRecord.key();
       V value = producerRecord.value();
-      //TODO: why are we creating a timestamp if the user has not specified one?
       Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
       if (LOG.isTraceEnabled()) {
-        LOG.trace("Sending record with (key, value) ({},{})  to kafka topic {}",
-            value == null ? "[none]" : value.toString(),
-            (key != null) ? key.toString() : "[none]",
+        LOG.trace("Sending record with [key={}, value={}] to kafka topic {}",
+            key == null ? "[none]" : key,
+            value == null ? "[none]" : value,
             topic);
       }
       byte[] serializedValue;

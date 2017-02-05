@@ -30,7 +30,8 @@ public class LazyHeaderListMapTest {
     ByteBuffer serializedHeaders = ByteBuffer.allocate(sizeBytes);
     headerParser.writeHeader(serializedHeaders, expected, false);
     serializedHeaders.rewind();
-    LazyHeaderListMap deserializedMap = new LazyHeaderListMap(serializedHeaders);
+    HeaderSerializerDeserializer.ParseResult parseResult = headerParser.parseHeader(serializedHeaders);
+    LazyHeaderListMap deserializedMap = (LazyHeaderListMap) parseResult.headers();
     assertEquals(deserializedMap.size(), 2);
     assertEquals(deserializedMap.get(0), VALUE_0);
     assertEquals(deserializedMap.get(1), VALUE_1);

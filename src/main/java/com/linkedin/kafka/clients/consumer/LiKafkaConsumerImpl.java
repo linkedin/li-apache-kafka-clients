@@ -309,7 +309,6 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
           rawRecord.checksum(), rawRecord.serializedKeySize(), rawRecord.serializedValueSize(), rawRecord.key(), rawRecord.value(), null, 0);
     }
 
-    int headerSize = rawByteBuffer.position();
     int valueSize = rawByteBuffer.remaining();
     byte[] value = null;
     if (!headersParseResult.isUserValueNull()) {
@@ -319,7 +318,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(),
         rawRecord.timestampType(), rawRecord.checksum(), rawRecord.serializedKeySize(), valueSize, rawRecord.key(),
-         value, headersParseResult.headers(), headerSize);
+         value, headersParseResult.headers(), headersParseResult.headerSizeBytes());
   }
 
   @Override

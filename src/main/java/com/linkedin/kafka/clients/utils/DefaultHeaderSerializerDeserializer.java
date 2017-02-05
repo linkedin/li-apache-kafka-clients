@@ -56,11 +56,12 @@ public class DefaultHeaderSerializerDeserializer implements HeaderSerializerDese
     src.limit(origLimit);
     Map<Integer, byte[]> headers = new LazyHeaderListMap(headerBuffer);
     boolean userValueIsNull = (versionAndFlags & USER_VALUE_IS_NULL_FLAG) == 1;
-    return new ParseResult(headers, userValueIsNull);
+    return new ParseResult(headers, userValueIsNull, headerLength + _headerMagic.length + VERSION_SIZE + ALL_HEADER_SIZE_FIELD_SIZE);
   }
 
   /**
    * Callback from LazyHeaderListMap.
+   * @param src position should be the beginning of the 4TLV section, limit() should be the end of that section.
    */
   public static void parseHeader(ByteBuffer src, Map<Integer, byte[]> headerMap) {
     while (src.hasRemaining()) {
@@ -98,7 +99,7 @@ public class DefaultHeaderSerializerDeserializer implements HeaderSerializerDese
       size += header.getValue().length;
     }
 
-    dest.putInt(size, originalPosition + _headerMagic.length + 1 /* version and flags*/);
+    dest.putInt(originalPosition + _headerMagic.length + 1 /* version and flags*/, size);
   }
 
   /**

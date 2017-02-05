@@ -99,7 +99,7 @@ public interface MessageAssembler {
       return _messageEndingOffset;
     }
 
-    public boolean isOriginalKeyIsNull() {
+    public boolean isOriginalKeyNull() {
       return _originalKeyIsNull;
     }
 

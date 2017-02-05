@@ -24,21 +24,35 @@ public interface HeaderSerializerDeserializer extends Configurable {
   static class ParseResult {
     private final boolean _userValueIsNull;
     private Map<Integer, byte[]> _headers;
+    private final int _headerSizeBytes;
 
-    public ParseResult(Map<Integer, byte[]> headers, boolean userValueIsNull) {
+    public ParseResult(Map<Integer, byte[]> headers, boolean userValueIsNull, int headerSizeBytes) {
       if (headers == null) {
         throw new IllegalArgumentException("headers must not be null");
       }
       _userValueIsNull = userValueIsNull;
       _headers = headers;
+      this._headerSizeBytes = headerSizeBytes;
     }
 
     public Map<Integer, byte[]> headers() {
       return _headers;
     }
 
+    /**
+     *
+     * @return true if the original value passed in to the ProducerRecord was null.
+     */
     public boolean isUserValueNull() {
       return _userValueIsNull;
+    }
+
+    /**
+     * This should include any magic bytes, version fields as well as the headers themselves.
+     * @return non-negative
+     */
+    public int headerSizeBytes() {
+      return _headerSizeBytes;
     }
   }
   /**

@@ -95,7 +95,7 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    * @return if this record contains any header key value pairs
    */
   public boolean hasHeaders() {
-    return headers == null || headers.isEmpty();
+    return headers != null && !headers.isEmpty();
   }
 
   /**
