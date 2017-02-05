@@ -9,7 +9,8 @@ import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
-import com.linkedin.kafka.clients.utils.HeaderParser;
+import com.linkedin.kafka.clients.utils.DefaultHeaderSerializerDeserializer;
+import com.linkedin.kafka.clients.utils.HeaderSerializerDeserializer;
 import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import java.util.Collection;
@@ -124,7 +125,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final AtomicInteger _numThreadsInSend;
   private final UUIDFactory _uuidFactory;
   private volatile boolean _closed;
-  private final HeaderParser _headerParser;
+  private final HeaderSerializerDeserializer _headerParser;
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null);
@@ -180,7 +181,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _numThreadsInSend = new AtomicInteger(0);
     _closed = false;
 
-    _headerParser = new HeaderParser(configs.getString(LiKafkaProducerConfig.LI_KAFKA_MAGIC_CONFIG));
+    _headerParser =
+      configs.getConfiguredInstance(LiKafkaProducerConfig.HEADER_PARSER_CONFIG, HeaderSerializerDeserializer.class);
   }
 
   @Override
@@ -198,12 +200,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       String topic = producerRecord.topic();
       K key = producerRecord.key();
       V value = producerRecord.value();
-      //TODO: why are we creating a timestamp if the user has not specified one?
       Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
       if (LOG.isTraceEnabled()) {
-        LOG.trace("Sending record with (key, value) ({},{})  to kafka topic {}",
-            value == null ? "[none]" : value.toString(),
-            (key != null) ? key.toString() : "[none]",
+        LOG.trace("Sending record with [key={}, value={}] to kafka topic {}",
+            key == null ? "[none]" : key,
+            value == null ? "[none]" : value,
             topic);
       }
       byte[] serializedValue;
@@ -211,72 +212,73 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       try {
         serializedValue = _valueSerializer.serialize(topic, value);
         serializedKey = _keySerializer.serialize(topic, key);
-      } catch (Throwable t) {
+      } catch (Exception t) {
         // Audit the attempt and the failure.
         _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.ATTEMPT);
         _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.FAILURE);
         throw new KafkaException(t);
       }
 
-      // regular producer record
-      // regular producer record that needs large message support.
-      // X producer record
-      // X producer record that needs large message support.
-      int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
-        + (serializedValue == null ? 0 : serializedValue.length);
-
-
-      // Audit the attempt.
-      //TODO: allow the auditor to manipulate headers?
-      //TODO: extensible record header size.
-      // We wrap the user callback for error logging and auditing purpose.
-      Callback errorLoggingCallback =
-          new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
-
-      ExtensibleProducerRecord<byte[], byte[]> xRecord =
-        new ExtensibleProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(), serializedKey, serializedValue);
-      if (producerRecord instanceof ExtensibleProducerRecord) {
-        xRecord.copyHeadersFrom((ExtensibleProducerRecord) producerRecord);
-      }
-
-      Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords;
-      if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
-        xRecords = _messageSplitter.split(xRecord);
-        errorLoggingCallback = new LargeMessageCallback(xRecords.size(), errorLoggingCallback);
-      } else {
-        xRecords = Collections.singleton(xRecord);
-      }
-
-      int headerSize = xRecords.size() * _headerParser.magicSize() /* magic size*/;
-      for (ExtensibleProducerRecord xProducerRecord : xRecords) {
-        int headerForXRecord = HeaderParser.serializedHeaderSize(xProducerRecord.headers());
-        if (headerForXRecord > HeaderParser.MAX_SERIALIZED_HEADER_SIZE) {
-          throw new IllegalStateException("The serialized size of all headers, " + headerForXRecord +
-            ", exceeds the maximum size allowed,  " + HeaderParser.MAX_SERIALIZED_HEADER_SIZE);
-        }
-        headerSize += headerForXRecord;
-      }
-
-      sizeInBytes += headerSize;
-
       Future<RecordMetadata> future = null;
-      // Are we sending a regular record without headers that is not large
-      if (!(producerRecord instanceof ExtensibleProducerRecord) && xRecords.size() == 1) {
-        sizeInBytes -= _headerParser.magicSize();
+      int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length) + (serializedValue == null ? 0 : serializedValue.length);
+      boolean useLargeMessageProcessing = _largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize;
+      if ((!(producerRecord instanceof ExtensibleProducerRecord) && !useLargeMessageProcessing) ||
+        ( (producerRecord instanceof ExtensibleProducerRecord) && !((ExtensibleProducerRecord<K, V>) producerRecord).hasHeaders())) {
+        // pass through case, among other things this allows us to send null values so that log compacted topics can
+        // still be compacted
+
+        // We wrap the user callback for error logging and auditing purpose.
+        Callback errorLoggingCallback =
+          new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
         _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
         ProducerRecord<byte[], byte[]> headerlessByteRecord =
-          new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(), serializedKey, serializedValue);
+          new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(),
+            serializedKey, serializedValue);
         future = _producer.send(headerlessByteRecord, errorLoggingCallback);
+
       } else {
+
+        ExtensibleProducerRecord<byte[], byte[]> xRecord =
+          new ExtensibleProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(),
+            serializedKey, serializedValue);
+        if (producerRecord instanceof ExtensibleProducerRecord) {
+          xRecord.copyHeadersFrom((ExtensibleProducerRecord) producerRecord);
+        }
+
+        Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords;
+        if (useLargeMessageProcessing) {
+          xRecords = _messageSplitter.split(xRecord);
+        } else {
+          xRecords = Collections.singleton(xRecord);
+        }
+
+        int accumulatedHeaderSizeInBytes = 0;
+        for (ExtensibleProducerRecord xProducerRecord : xRecords) {
+          int headerSizeForSingleRecord = _headerParser.serializedHeaderSize(xProducerRecord.headers());
+          if (headerSizeForSingleRecord > DefaultHeaderSerializerDeserializer.MAX_SERIALIZED_HEADER_SIZE) {
+            throw new IllegalStateException("The serialized size of all headers in a single record, " + headerSizeForSingleRecord
+              + ", exceeds the maximum size allowed,  " + HeaderSerializerDeserializer.MAX_SERIALIZED_HEADER_SIZE);
+          }
+          accumulatedHeaderSizeInBytes += headerSizeForSingleRecord;
+        }
+
+        sizeInBytes += accumulatedHeaderSizeInBytes;
+
         _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
 
+        Callback errorLoggingCallback =
+          new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
+
+        if (useLargeMessageProcessing) {
+          errorLoggingCallback = new LargeMessageCallback(xRecords.size(), errorLoggingCallback);
+        }
         for (ExtensibleProducerRecord<byte[], byte[]> segmentRecord : xRecords) {
           ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord, _headerParser);
           future = _producer.send(segmentProducerRecord, errorLoggingCallback);
         }
       }
       return future;
-    } catch (Throwable t) {
+    } catch (Exception t) {
       _auditor.record(producerRecord.topic(), producerRecord.key(), producerRecord.value(), producerRecord.timestamp(),
           1L, 0L, AuditType.FAILURE);
       throw new KafkaException(t);
@@ -287,20 +289,20 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   /**
    * This is public for testing.
+   * This assumes that the value is not a large value that would be segmented by large message support.
    */
-  public static ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord, HeaderParser headerParser) {
-    int headersSize = HeaderParser.serializedHeaderSize(xRecord.headers());
-    int serializedValueSize = xRecord.value() == null ? 0 : xRecord.value().length +
-          headerParser.magicSize() + // magic size
-          4 + // headers size size
-          headersSize +
-          4; // user value length)
+  public static ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord,
+    HeaderSerializerDeserializer headerParser) {
+
+    if (!xRecord.hasHeaders()) {
+      return new ProducerRecord<byte[], byte[]>(xRecord.topic(), xRecord.partition(), xRecord.timestamp(), xRecord.key(), xRecord.value());
+    }
+
+    int headersSize = headerParser.serializedHeaderSize(xRecord.headers());
+    int serializedValueSize = (xRecord.value() == null ? 0 : xRecord.value().length) + headersSize;
 
     ByteBuffer valueWithHeaders = ByteBuffer.allocate(serializedValueSize);
-    headerParser.writeMagicTo(valueWithHeaders);
-    valueWithHeaders.putInt(headersSize);
-    HeaderParser.writeHeader(valueWithHeaders, xRecord.headers());
-    valueWithHeaders.putInt(xRecord.value().length);
+    headerParser.writeHeader(valueWithHeaders, xRecord.headers(), xRecord.value() == null);
     valueWithHeaders.put(xRecord.value());
 
     if (valueWithHeaders.hasRemaining()) {

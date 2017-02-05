@@ -4,7 +4,7 @@
  */
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.utils.HeaderParser;
+import com.linkedin.kafka.clients.utils.DefaultHeaderSerializerDeserializer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -93,7 +93,7 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
       return;
     }
     backingList = new ArrayList<>();
-    HeaderParser.parseHeader(headerSource, this);
+    DefaultHeaderSerializerDeserializer.parseHeader(headerSource, this);
     headerSource = null;
   }
 

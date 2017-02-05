@@ -297,7 +297,7 @@ public class ConsumerRecordsProcessor {
 
     long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
     if (shouldSkip(topicPartition, srcRecord.offset())) {
-      //The message had already been delivered to the consumer when it committed and it does not want to see it again.
+      //The message had already been delivered to the consumer when it committed and it should not be seen again.
       _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), false);
       return null;
     }
@@ -318,11 +318,11 @@ public class ConsumerRecordsProcessor {
     _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, assembledResult.messageStartingOffset(),
         true);
 
-    int serializedKeySize = assembledResult.isOriginalKeyIsNull() ? 0 : srcRecord.key().length;
-    byte[] key = assembledResult.isOriginalKeyIsNull() ? null : srcRecord.key();
+    int serializedKeySize = assembledResult.isOriginalKeyNull() ? 0 : srcRecord.key().length;
+    byte[] key = assembledResult.isOriginalKeyNull() ? null : srcRecord.key();
     int serializedValueSize = assembledResult.messageBytes().length;
 
-    ExtensibleConsumerRecord largeMessageRecord =
+    ExtensibleConsumerRecord<byte[], byte[]> largeMessageRecord =
       new ExtensibleConsumerRecord<>(srcRecord.topic(), srcRecord.partition(), srcRecord.offset(),
         srcRecord.timestamp(), srcRecord.timestampType(),
         srcRecord.checksum(),

@@ -208,7 +208,6 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
   @InterfaceOrigin.ApacheKafka
   ConsumerRecords<K, V> poll(long timeout);
 
-
   /**
    * Commit offsets returned on the last {@link #poll(long) poll()} for all the subscribed list of topics and partitions.
    * <p>

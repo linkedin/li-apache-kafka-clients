@@ -1,5 +1,6 @@
 /*
- * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").
+See License in the project root for license information.
  */
 
 package com.linkedin.kafka.clients.producer;
@@ -24,9 +25,9 @@ import java.util.Collections;
 import java.util.Properties;
 import java.util.Random;
 
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertFalse;
-import static org.testng.AssertJUnit.assertTrue;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 
 public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
@@ -174,6 +175,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     Properties consumerProps = new Properties();
     consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     consumerProps.setProperty(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG, "4000000");
+    consumerProps.setProperty(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, "300000"); // prevent timeout during debugging
     LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps);
     consumer.subscribe(Collections.singleton(topic));
 

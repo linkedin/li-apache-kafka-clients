@@ -96,19 +96,19 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
     }
   }
 
-  public void setHeadersReceivedSizeBytes(int newHeadersSize) {
-    if (newHeadersSize < 0) {
-      throw new IllegalArgumentException("newHeadersSize must be a non-negative integer.");
-    }
-    this.headersReceivedSizeBytes = newHeadersSize;
-  }
-
   /**
    * This is the size of the headers that were received from the broker.  Headers added or removed after that point are
    * not counted in this value.
    */
   public int headersReceivedSizeBytes() {
     return headersReceivedSizeBytes;
+  }
+
+  public void setHeadersReceivedSizeBytes(int newSize) {
+    if (newSize < 0) {
+      throw new IllegalArgumentException("newSize must be non-negative");
+    }
+    this.headersReceivedSizeBytes = newSize;
   }
 
   @Override

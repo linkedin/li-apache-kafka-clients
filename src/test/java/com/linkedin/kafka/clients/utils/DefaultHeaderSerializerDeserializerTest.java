@@ -15,7 +15,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class HeaderParserTest {
+public class DefaultHeaderSerializerDeserializerTest {
   private static final char UNICODE_REPLACEMENT_CHARACTER = 65533;
 
   @Test
@@ -23,7 +23,7 @@ public class HeaderParserTest {
     byte[] headerMagicBytes;
     try (ByteArrayOutputStream bout = new ByteArrayOutputStream(8);
       DataOutputStream dout = new DataOutputStream(bout)) {
-      dout.writeLong(HeaderParser.DEFAULT_HEADER_MAGIC);
+      dout.writeLong(DefaultHeaderSerializerDeserializer.DEFAULT_HEADER_MAGIC);
       headerMagicBytes = bout.toByteArray();
     }
 

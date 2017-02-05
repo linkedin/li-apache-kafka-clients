@@ -4,7 +4,8 @@
  */
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.utils.HeaderParser;
+import com.linkedin.kafka.clients.utils.DefaultHeaderSerializerDeserializer;
+import com.linkedin.kafka.clients.utils.HeaderSerializerDeserializer;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -24,11 +25,13 @@ public class LazyHeaderListMapTest {
     Map<Integer, byte[]> expected = new HashMap<>();
     expected.put(0, VALUE_0);
     expected.put(1, VALUE_1);
-    int sizeBytes = HeaderParser.serializedHeaderSize(expected);
+    DefaultHeaderSerializerDeserializer headerParser = new DefaultHeaderSerializerDeserializer();
+    int sizeBytes = headerParser.serializedHeaderSize(expected);
     ByteBuffer serializedHeaders = ByteBuffer.allocate(sizeBytes);
-    HeaderParser.writeHeader(serializedHeaders, expected);
+    headerParser.writeHeader(serializedHeaders, expected, false);
     serializedHeaders.rewind();
-    LazyHeaderListMap deserializedMap = new LazyHeaderListMap(serializedHeaders);
+    HeaderSerializerDeserializer.ParseResult parseResult = headerParser.parseHeader(serializedHeaders);
+    LazyHeaderListMap deserializedMap = (LazyHeaderListMap) parseResult.headers();
     assertEquals(deserializedMap.size(), 2);
     assertEquals(deserializedMap.get(0), VALUE_0);
     assertEquals(deserializedMap.get(1), VALUE_1);

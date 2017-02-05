@@ -8,10 +8,13 @@ import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 
 import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import org.apache.kafka.common.record.TimestampType;
@@ -61,21 +64,29 @@ public class TestUtils {
   public static ExtensibleConsumerRecord<byte[], byte[]> producerRecordToConsumerRecord(ExtensibleProducerRecord<byte[], byte[]> producerRecord,
       long offset, long timestamp, TimestampType timestampType, int serializedKeySize, int serializedValueSize) {
 
-    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord =
-        new ExtensibleConsumerRecord<>(producerRecord.topic(), producerRecord.partition(), offset, timestamp,
-            timestampType, 0, serializedKeySize, serializedValueSize, producerRecord.key(), producerRecord.value());
-    Iterator<Integer> headerKeyIterator = producerRecord.headerKeys();
-    while (headerKeyIterator.hasNext()) {
-      Integer headerKey = headerKeyIterator.next();
-      consumerRecord.header(headerKey, producerRecord.header(headerKey));
-    }
+    DefaultHeaderSerializerDeserializer headerParser = new DefaultHeaderSerializerDeserializer();
     try {
-      Field headerSizeField = ExtensibleConsumerRecord.class.getDeclaredField("headersReceivedSizeBytes");
-      headerSizeField.setAccessible(true);
-      headerSizeField.setInt(consumerRecord, producerRecord.headersSize());
+      Constructor<ExtensibleConsumerRecord> constructor =
+          ExtensibleConsumerRecord.class.getDeclaredConstructor(String.class, Integer.TYPE, Long.TYPE, Long.TYPE,
+              TimestampType.class, Long.TYPE, Integer.TYPE, Integer.TYPE, Object.class, Object.class, Map.class, Integer.TYPE);
+      constructor.setAccessible(true);
+
+      Map<Integer, byte[]> consumerHeaders = new HashMap<>();
+      Iterator<Integer> headerKeyIt = producerRecord.headerKeys();
+      while (headerKeyIt.hasNext()) {
+        Integer headerKey = headerKeyIt.next();
+        consumerHeaders.put(headerKey, producerRecord.header(headerKey));
+      }
+      int consumerHeadersSize = headerParser.serializedHeaderSize(consumerHeaders);
+      ExtensibleConsumerRecord<byte[], byte[]> consumerRecord = (ExtensibleConsumerRecord<byte[], byte[]>)
+          constructor.newInstance(producerRecord.topic(), producerRecord.partition(), offset, timestamp,
+              timestampType, 0, serializedKeySize, serializedValueSize, producerRecord.key(), producerRecord.value(),
+              consumerHeaders,  consumerHeadersSize
+              );
+      return consumerRecord;
+
     } catch (Exception e) {
       throw new IllegalStateException(e);
     }
-    return consumerRecord;
   }
 }

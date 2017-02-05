@@ -17,7 +17,7 @@ import java.util.UUID;
 import static org.testng.Assert.assertEquals;
 
 /**
- * Test for DefaultSegmentSerializer and DefaultSegmentDeserializer.
+ * Test that a large message segment can be parsed.
  */
 public class SerializerDeserializerTest {
 
