@@ -72,7 +72,7 @@ public interface HeaderSerializerDeserializer extends Configurable {
    *             the caller can not assume any particular state of dest.
    * @param headers If this is non-null then serialized header bytes will be written to dest.  If this is null then
    *                an implementation may still write something like a magic number to dest.
-   * @param valueIsNull When true the user value of the message is actually null.  This is here so the header format
+   * @param nullValue When true the user value of the message is actually null.  This is here so the header format
    *                    may preserve the null when unpacking the user value.
    */
   void writeHeader(ByteBuffer dest, Map<Integer, byte[]> headers, boolean nullValue);

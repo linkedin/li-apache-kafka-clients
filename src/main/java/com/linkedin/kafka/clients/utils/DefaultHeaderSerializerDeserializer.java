@@ -28,7 +28,7 @@ public class DefaultHeaderSerializerDeserializer implements HeaderSerializerDese
 
   private static final byte VERSION_1 = 1;
 
-  private static final int VERSION_SIZE = 1;
+  private static final int VERSION_AND_FLAGS_SIZE = 1;
 
   private static final int ALL_HEADER_SIZE_FIELD_SIZE = 4;
 
@@ -55,8 +55,8 @@ public class DefaultHeaderSerializerDeserializer implements HeaderSerializerDese
     src.position(src.limit());
     src.limit(origLimit);
     Map<Integer, byte[]> headers = new LazyHeaderListMap(headerBuffer);
-    boolean userValueIsNull = (versionAndFlags & USER_VALUE_IS_NULL_FLAG) == 1;
-    return new ParseResult(headers, userValueIsNull, headerLength + _headerMagic.length + VERSION_SIZE + ALL_HEADER_SIZE_FIELD_SIZE);
+    boolean userValueIsNull = (versionAndFlags & USER_VALUE_IS_NULL_FLAG) != 0;
+    return new ParseResult(headers, userValueIsNull, headerLength + _headerMagic.length + VERSION_AND_FLAGS_SIZE + ALL_HEADER_SIZE_FIELD_SIZE);
   }
 
   /**
@@ -99,20 +99,21 @@ public class DefaultHeaderSerializerDeserializer implements HeaderSerializerDese
       size += header.getValue().length;
     }
 
-    dest.putInt(originalPosition + _headerMagic.length + 1 /* version and flags*/, size);
+    dest.putInt(originalPosition + _headerMagic.length + VERSION_AND_FLAGS_SIZE, size);
   }
 
   /**
    * The serialized size of all the headers.
-   * @return VERSION_SIZE if headers is null else the number of bytes needed to represent the header key and value, but
+   * @return VERSION_AND_FLAGS_SIZE if headers is null else the number of bytes needed to represent the header key and value, but
    * without the magic number.
    */
   @Override
   public int serializedHeaderSize(Map<Integer, byte[]> headers) {
     if (headers == null) {
-      return DefaultHeaderSerializerDeserializer.VERSION_SIZE;
+      return DefaultHeaderSerializerDeserializer.VERSION_AND_FLAGS_SIZE;
     }
-    int size = headers.size() * 8 + VERSION_SIZE + ALL_HEADER_SIZE_FIELD_SIZE + _headerMagic.length; // size of all the keys and the value length fields
+    // size of all the keys and the value length fields
+    int size = headers.size() * 8 + VERSION_AND_FLAGS_SIZE + ALL_HEADER_SIZE_FIELD_SIZE + _headerMagic.length;
     for (byte[] headerValue : headers.values()) {
       size += headerValue.length;
     }
@@ -156,7 +157,7 @@ public class DefaultHeaderSerializerDeserializer implements HeaderSerializerDese
    * @return true if the remaining bytes in the byte buffer are headers message
    */
   public boolean isHeaderMessage(ByteBuffer bbuf) {
-    if (bbuf.remaining() < _headerMagic.length + VERSION_SIZE + ALL_HEADER_SIZE_FIELD_SIZE) {
+    if (bbuf.remaining() < _headerMagic.length + VERSION_AND_FLAGS_SIZE + ALL_HEADER_SIZE_FIELD_SIZE) {
       return false;
     }
 

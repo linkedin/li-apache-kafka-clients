@@ -223,7 +223,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length) + (serializedValue == null ? 0 : serializedValue.length);
       boolean useLargeMessageProcessing = _largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize;
       if ((!(producerRecord instanceof ExtensibleProducerRecord) && !useLargeMessageProcessing) ||
-        ( (producerRecord instanceof ExtensibleProducerRecord) && !((ExtensibleProducerRecord<K, V>) producerRecord).hasHeaders())) {
+        ((producerRecord instanceof ExtensibleProducerRecord) && !((ExtensibleProducerRecord<K, V>) producerRecord).hasHeaders())) {
         // pass through case, among other things this allows us to send null values so that log compacted topics can
         // still be compacted
 
@@ -303,7 +303,9 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
     ByteBuffer valueWithHeaders = ByteBuffer.allocate(serializedValueSize);
     headerParser.writeHeader(valueWithHeaders, xRecord.headers(), xRecord.value() == null);
-    valueWithHeaders.put(xRecord.value());
+    if (xRecord.value() != null) {
+      valueWithHeaders.put(xRecord.value());
+    }
 
     if (valueWithHeaders.hasRemaining()) {
       throw new IllegalStateException("Detected slack when writing headers to byte buffer.");
