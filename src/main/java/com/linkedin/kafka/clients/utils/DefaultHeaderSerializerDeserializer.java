@@ -40,7 +40,7 @@ public class DefaultHeaderSerializerDeserializer implements HeaderSerializerDese
   @Override
   public ParseResult parseHeader(ByteBuffer src) {
     if (!isHeaderMessage(src)) {
-      return null;
+      return new ParseResult(null, src);
     }
     byte versionAndFlags = src.get();
     int foundVersion = versionAndFlags & 0x0F;
@@ -56,7 +56,7 @@ public class DefaultHeaderSerializerDeserializer implements HeaderSerializerDese
     src.limit(origLimit);
     Map<Integer, byte[]> headers = new LazyHeaderListMap(headerBuffer);
     boolean userValueIsNull = (versionAndFlags & USER_VALUE_IS_NULL_FLAG) != 0;
-    return new ParseResult(headers, userValueIsNull, headerLength + _headerMagic.length + VERSION_AND_FLAGS_SIZE + ALL_HEADER_SIZE_FIELD_SIZE);
+    return new ParseResult(headers, userValueIsNull ? null : src);
   }
 
   /**

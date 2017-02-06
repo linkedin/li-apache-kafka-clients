@@ -9,7 +9,6 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 
 import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;

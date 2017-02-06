@@ -302,23 +302,25 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   private ExtensibleConsumerRecord<byte[], byte[]> toXRecord(ConsumerRecord<byte[], byte[]> rawRecord) {
     ByteBuffer rawByteBuffer = ByteBuffer.wrap(rawRecord.value() == null ? new byte[0] : rawRecord.value());
+    int initialSize = rawByteBuffer.remaining();
     HeaderSerializerDeserializer.ParseResult headersParseResult = _headerParser.parseHeader(rawByteBuffer);
 
-    if (headersParseResult == null) {
+    if (headersParseResult.headers() == null) {
       return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(), rawRecord.timestampType(),
           rawRecord.checksum(), rawRecord.serializedKeySize(), rawRecord.serializedValueSize(), rawRecord.key(), rawRecord.value(), null, 0);
     }
 
-    int valueSize = rawByteBuffer.remaining();
+    int valueSize = headersParseResult.value() == null ? 0 : headersParseResult.value().remaining();
+    int headerSize = initialSize - valueSize;
     byte[] value = null;
-    if (!headersParseResult.isUserValueNull()) {
+    if (headersParseResult.value() != null) {
       value = new byte[valueSize];
-      rawByteBuffer.get(value);
+      headersParseResult.value().get(value);
     }
 
     return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(),
         rawRecord.timestampType(), rawRecord.checksum(), rawRecord.serializedKeySize(), valueSize, rawRecord.key(),
-         value, headersParseResult.headers(), headersParseResult.headerSizeBytes());
+         value, headersParseResult.headers(), headerSize);
   }
 
   @Override

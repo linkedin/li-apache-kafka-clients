@@ -22,37 +22,28 @@ public interface HeaderSerializerDeserializer extends Configurable {
   static final int MAX_SERIALIZED_HEADER_SIZE = 1_024 * 16;
 
   static class ParseResult {
-    private final boolean _userValueIsNull;
     private Map<Integer, byte[]> _headers;
-    private final int _headerSizeBytes;
+    private ByteBuffer _value;
 
-    public ParseResult(Map<Integer, byte[]> headers, boolean userValueIsNull, int headerSizeBytes) {
-      if (headers == null) {
-        throw new IllegalArgumentException("headers must not be null");
-      }
-      _userValueIsNull = userValueIsNull;
-      _headers = headers;
-      this._headerSizeBytes = headerSizeBytes;
+    public ParseResult(Map<Integer, byte[]> headers, ByteBuffer value) {
+      this._headers = headers;
+      this._value = value;
     }
 
+    /**
+     *
+     * @return This may return null if the message did not have headers.
+     */
     public Map<Integer, byte[]> headers() {
       return _headers;
     }
 
     /**
      *
-     * @return true if the original value passed in to the ProducerRecord was null.
+     * @return  This may return null in which case the original user value was also null
      */
-    public boolean isUserValueNull() {
-      return _userValueIsNull;
-    }
-
-    /**
-     * This should include any magic bytes, version fields as well as the headers themselves.
-     * @return non-negative
-     */
-    public int headerSizeBytes() {
-      return _headerSizeBytes;
+    public ByteBuffer value() {
+      return _value;
     }
   }
   /**
@@ -61,7 +52,8 @@ public interface HeaderSerializerDeserializer extends Configurable {
    *            position and limit should indicate the part of the message where the user value resides.  When src does
    *            not contain the expected format it's position and limit should be the original position and limit.  On
    *            exception position and limit are undefined.
-   * @return a map of key-value pairs which may be null if the message in src was not a valid message with headers.
+   * @return non-null.  If this is not a valid message with headers then the return value (rv) rv.headers() should be
+   * null.
    *
    */
   ParseResult parseHeader(ByteBuffer src);
