@@ -295,13 +295,13 @@ public class ConsumerRecordsProcessor {
     TopicPartition topicPartition = new TopicPartition(srcRecord.topic(), srcRecord.partition());
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(topicPartition, srcRecord.offset(), srcRecord);
 
-    LOG.trace("Got message {} from partition {}", messageOffset, tp);
+    LOG.trace("Got message {} from partition {}", srcRecord.offset(), topicPartition);
 
     long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
     if (shouldSkip(topicPartition, srcRecord.offset())) {
       //The message had already been delivered to the consumer when it committed and it should not be seen again.
       LOG.trace("Skipping message {} from partition {} because its offset is smaller than the high watermark",
-          messageOffset, tp);
+          srcRecord.offset(), topicPartition);
       _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), false);
       return null;
     }
