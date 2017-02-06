@@ -274,7 +274,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
         messageCount++;
       }
     }
-
+    assertEquals(messageCount, 3);
     consumer.close();
   }
 

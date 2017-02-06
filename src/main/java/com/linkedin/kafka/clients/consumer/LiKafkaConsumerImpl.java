@@ -5,7 +5,6 @@
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
-import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessor;
 import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
 import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;

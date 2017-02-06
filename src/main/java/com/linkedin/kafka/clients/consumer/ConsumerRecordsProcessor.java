@@ -2,9 +2,10 @@
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
-package com.linkedin.kafka.clients.largemessage;
+package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
+import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collection;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -331,10 +332,9 @@ public class ConsumerRecordsProcessor {
         srcRecord.timestamp(), srcRecord.timestampType(),
         srcRecord.checksum(),
         serializedKeySize, serializedValueSize,
-        key, assembledResult.messageBytes());
+        key, assembledResult.messageBytes(), null, assembledResult.totalHeadersSize());
     //TODO: checksums recomputed?
     largeMessageRecord.copyHeadersFrom(srcRecord);
-    largeMessageRecord.setHeadersReceivedSizeBytes(assembledResult.totalHeadersSize());
 
     return largeMessageRecord;
   }

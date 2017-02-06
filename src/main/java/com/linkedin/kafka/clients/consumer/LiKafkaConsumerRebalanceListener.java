@@ -4,7 +4,6 @@
 
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessor;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;

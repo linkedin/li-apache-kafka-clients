@@ -104,13 +104,6 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
     return headersReceivedSizeBytes;
   }
 
-  public void setHeadersReceivedSizeBytes(int newSize) {
-    if (newSize < 0) {
-      throw new IllegalArgumentException("newSize must be non-negative");
-    }
-    this.headersReceivedSizeBytes = newSize;
-  }
-
   @Override
   public String toString() {
     return "ExtensibleConsumerRecord{header-count=" + (headers == null ? 0 : headers.size()) + " super=" + super.toString() + '}';
