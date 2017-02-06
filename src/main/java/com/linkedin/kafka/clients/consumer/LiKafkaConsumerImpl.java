@@ -428,6 +428,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     _kafkaConsumer.seekToBeginning(partitions);
     for (TopicPartition tp : partitions) {
       _consumerRecordsProcessor.clear(tp);
+      // We set the high watermark to 0 if user is seeking to beginning.
+      _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, 0L);
     }
   }
 

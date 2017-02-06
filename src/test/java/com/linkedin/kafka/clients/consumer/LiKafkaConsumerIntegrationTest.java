@@ -269,6 +269,40 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
 
+  @Test
+  public void testSeekToBeginning() {
+    String topic = "testSeekToBeginning";
+    produceSyntheticMessages(topic);
+    Properties props = new Properties();
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testSeekToBeginning");
+    // Make sure we start to consume from the beginning.
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    // Only fetch one record at a time.
+    props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
+    LiKafkaConsumer<String, String> consumer = createConsumer(props);
+    try {
+      TopicPartition tp = new TopicPartition(topic, 0);
+      consumer.assign(Collections.singleton(tp));
+
+      ConsumerRecords<String, String> records = ConsumerRecords.empty();
+      while (records.isEmpty()) {
+        records = consumer.poll(100);
+      }
+      assertEquals(records.iterator().next().offset(), 2L);
+      // Commit the messages
+      consumer.commitSync();
+      // Seek to beginning, the follow up poll() should ignore the committed high watermark.
+      consumer.seekToBeginning(Collections.singleton(tp));
+      records = ConsumerRecords.empty();
+      while (records.isEmpty()) {
+        records = consumer.poll(100);
+      }
+      assertEquals(records.iterator().next().offset(), 2L, "Should see message offset 2 again.");
+    } finally {
+      consumer.close();
+    }
+  }
+
   /**
    * This test tests the seekToCommitted() behavior with synthetic data.
    */
