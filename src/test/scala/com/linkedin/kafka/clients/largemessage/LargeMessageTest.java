@@ -69,7 +69,8 @@ public class LargeMessageTest {
 
     LargeMessageSegment segment0 = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments, messageSizeInBytes, 10);
     LargeMessageSegment segment1 = TestUtils.createLargeMessageSegment(messageId, 1, numberOfSegments, messageSizeInBytes, 10);
-
+    message.addSegment(segment0, 0);
+    message.addSegment(segment1, 1);
   }
 
   @Test
