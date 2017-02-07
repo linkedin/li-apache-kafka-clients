@@ -3,6 +3,7 @@
  * See License in the project root for license information.
  */
 package com.linkedin.kafka.clients.utils;
+import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
 import com.linkedin.kafka.clients.consumer.LazyHeaderListMap;
 import java.nio.ByteBuffer;
 import java.util.Map;

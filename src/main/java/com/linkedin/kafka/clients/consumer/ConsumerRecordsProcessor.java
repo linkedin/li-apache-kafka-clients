@@ -332,7 +332,7 @@ public class ConsumerRecordsProcessor {
         srcRecord.timestamp(), srcRecord.timestampType(),
         srcRecord.checksum(),
         serializedKeySize, serializedValueSize,
-        key, assembledResult.messageBytes(), null, assembledResult.totalHeadersSize());
+        key, assembledResult.messageBytes());
     //TODO: checksums recomputed?
     largeMessageRecord.copyHeadersFrom(srcRecord);
 

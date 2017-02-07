@@ -37,11 +37,11 @@ public class MessageAssemblerImpl implements MessageAssembler {
       new LargeMessageSegment(segmentRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER), ByteBuffer.wrap(segmentRecord.value()));
       // Return immediately if it is a single segment message.
     if (segment.numberOfSegments() == 1) {
-      return new AssembleResult(segment.segmentArray(), offset, offset, segment.originalKeyWasNull(), segmentRecord.headersReceivedSizeBytes());
+      return new AssembleResult(segment.segmentArray(), offset, offset, segment.originalKeyWasNull());
     } else {
-      LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment, segmentRecord.headersReceivedSizeBytes());
+      LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment);
       return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset,
-          segment.originalKeyWasNull(), result.totalHeadersSize());
+          segment.originalKeyWasNull());
     }
   }
 

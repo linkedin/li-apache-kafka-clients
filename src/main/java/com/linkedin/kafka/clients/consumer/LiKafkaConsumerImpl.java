@@ -259,7 +259,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     for (ExtensibleConsumerRecord<byte[], byte[]> xRecord : xRecords) {
       ExtensibleConsumerRecord<K, V> userRecord = deserialize(xRecord);
       if (_auditor != null) {
-        long totalBytes = userRecord.headersReceivedSizeBytes() + userRecord.serializedKeySize() + userRecord.serializedValueSize();
+        long totalBytes = userRecord.serializedKeySize() + userRecord.serializedValueSize();
         _auditor.record(userRecord.topic(), userRecord.key(), userRecord.value(), userRecord.timestamp(), 1L, totalBytes,
             AuditType.SUCCESS);
       }
@@ -287,7 +287,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
             record.checksum(),
             record.serializedKeySize(), record.serializedValueSize(),
             key, value,
-            record.headers(), record.headersReceivedSizeBytes());
+            record.headers());
     return deserializedRecord;
   }
 
@@ -306,7 +306,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     if (headersParseResult.headers() == null) {
       return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(), rawRecord.timestampType(),
-          rawRecord.checksum(), rawRecord.serializedKeySize(), rawRecord.serializedValueSize(), rawRecord.key(), rawRecord.value(), null, 0);
+          rawRecord.checksum(), rawRecord.serializedKeySize(), rawRecord.serializedValueSize(), rawRecord.key(), rawRecord.value(), null);
     }
 
     int valueSize = headersParseResult.value() == null ? 0 : headersParseResult.value().remaining();
@@ -319,7 +319,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(),
         rawRecord.timestampType(), rawRecord.checksum(), rawRecord.serializedKeySize(), valueSize, rawRecord.key(),
-         value, headersParseResult.headers(), headerSize);
+         value, headersParseResult.headers());
   }
 
   @Override

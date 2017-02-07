@@ -260,13 +260,11 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
             assertNull(xConsumerRecord.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START));
             assertEquals(xConsumerRecord.key(), key);
             assertNull(xConsumerRecord.value());
-            assertEquals(xConsumerRecord.headersReceivedSizeBytes(), 0);
             break;
           case 2: // extensible producer record with headers
             assertEquals(xConsumerRecord.header(HeaderKeySpace.PUBLIC_UNASSIGNED_START), headerValue);
             assertEquals(xConsumerRecord.key(), key);
             assertNull(xConsumerRecord.value());
-            assertTrue(xConsumerRecord.headersReceivedSizeBytes() > 0);
             break;
           default:
             throw new IllegalStateException("Unexpected message.");

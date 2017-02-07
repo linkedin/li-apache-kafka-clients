@@ -17,19 +17,16 @@ import org.apache.kafka.common.record.TimestampType;
  */
 public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
   private volatile Map<Integer, byte[]> headers;
-  private volatile int headersReceivedSizeBytes;
 
   public ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
       long checksum, int serializedKeySize, int serializedValueSize, K key, V value) {
     super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
-    headersReceivedSizeBytes = 0;
   }
 
   ExtensibleConsumerRecord(String topic, int partition, long offset, long timestamp, TimestampType timestampType,
-      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, byte[]> headers, int headersReceivedSizeBytes) {
+      long checksum, int serializedKeySize, int serializedValueSize, K key, V value, Map<Integer, byte[]> headers) {
     super(topic, partition, offset, timestamp, timestampType, checksum, serializedKeySize, serializedValueSize, key, value);
     this.headers = headers;
-    this.headersReceivedSizeBytes = headersReceivedSizeBytes;
   }
 
   /**
@@ -91,17 +88,8 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
   public void copyHeadersFrom(ExtensibleConsumerRecord<?, ?> other) {
     //TODO: COW optimization?
     if (other.headers != null) {
-      this.headersReceivedSizeBytes = other.headersReceivedSizeBytes;
       this.headers = new LazyHeaderListMap(other.headers);
     }
-  }
-
-  /**
-   * This is the size of the headers that were received from the broker.  Headers added or removed after that point are
-   * not counted in this value.
-   */
-  public int headersReceivedSizeBytes() {
-    return headersReceivedSizeBytes;
   }
 
   @Override

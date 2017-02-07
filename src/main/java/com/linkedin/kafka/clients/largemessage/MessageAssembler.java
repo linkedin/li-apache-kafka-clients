@@ -72,15 +72,13 @@ public interface MessageAssembler {
     private final byte[] _messageBytes;
     private final long _messageStartingOffset;
     private final long _messageEndingOffset;
-    private final int _totalHeadersSize;
 
     AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset,
-      boolean originalKeyIsNull, int totalHeadersSize) {
+      boolean originalKeyIsNull) {
       _messageBytes = messageBytes;
       _messageStartingOffset = startingOffset;
       _messageEndingOffset = endingOffset;
       _originalKeyIsNull = originalKeyIsNull;
-      _totalHeadersSize = totalHeadersSize;
     }
 
     /**
@@ -103,8 +101,5 @@ public interface MessageAssembler {
       return _originalKeyIsNull;
     }
 
-    public int totalHeadersSize() {
-      return _totalHeadersSize;
-    }
   }
 }

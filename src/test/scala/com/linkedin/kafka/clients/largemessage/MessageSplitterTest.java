@@ -77,7 +77,6 @@ public class MessageSplitterTest {
     }
 
     assertTrue(totalHeadersSize != 0);
-    assertEquals(assembledMessage.totalHeadersSize(), totalHeadersSize);
     String deserializedOriginalValue = stringDeserializer.deserialize(null, assembledMessage.messageBytes());
     assertEquals(deserializedOriginalValue, message, "values should match.");
   }

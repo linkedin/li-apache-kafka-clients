@@ -55,7 +55,7 @@ public class LargeMessageBufferPool {
     return _incompleteMessageMap.size();
   }
 
-  synchronized LargeMessage.SegmentAddResult tryCompleteMessage(TopicPartition tp, long offset, LargeMessageSegment segment, int headersSize) {
+  synchronized LargeMessage.SegmentAddResult tryCompleteMessage(TopicPartition tp, long offset, LargeMessageSegment segment) {
     LargeMessage message = validateSegmentAndGetMessage(tp, segment, offset);
 
     int segmentSize = segment.segmentByteBuffer().remaining();
@@ -63,7 +63,7 @@ public class LargeMessageBufferPool {
 
     // Check if this segment completes the large message.
     UUID messageId = segment.messageId();
-    LargeMessage.SegmentAddResult segmentAddResult = message.addSegment(segment, offset, headersSize);
+    LargeMessage.SegmentAddResult segmentAddResult = message.addSegment(segment, offset);
     _bufferUsed += segmentAddResult.bytesAdded();
     LOG.trace("Added {} bytes to messageId={}", segmentAddResult.bytesAdded(), messageId);
     if (segmentAddResult.serializedMessage() != null) {

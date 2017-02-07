@@ -24,7 +24,6 @@ public class LargeMessage {
   private final UUID _messageId;
   private final long _startingOffset;
   private long _bufferedBytes;
-  private int _totalHeadersSize;
 
   LargeMessage(TopicPartition tp, UUID messageId, long startingOffset, int originalValueSize, int numberOfSegments) {
     _originalValueSize = originalValueSize;
@@ -34,14 +33,13 @@ public class LargeMessage {
     _tp = tp;
     _messageId = messageId;
     _startingOffset = startingOffset;
-    _totalHeadersSize = 0;
   }
 
   public synchronized long bufferedSizeInBytes() {
     return _bufferedBytes;
   }
 
-  public synchronized SegmentAddResult addSegment(LargeMessageSegment segment, long offset, int headersSize) {
+  public synchronized SegmentAddResult addSegment(LargeMessageSegment segment, long offset) {
     int seq = segment.sequenceNumber();
     int segmentSize = segment.segmentByteBuffer().remaining();
     validateSegment(segment);
@@ -49,17 +47,16 @@ public class LargeMessage {
     if (!_segments.containsKey(seq)) {
       _segments.put(seq, segment.segmentByteBuffer());
       _bufferedBytes += segmentSize;
-      _totalHeadersSize += headersSize;
       if (_segments.size() == _numberOfSegments) {
         // If we have got all the segments, assemble the original serialized message.
-        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset, _totalHeadersSize);
+        return new SegmentAddResult(assembleMessage(), segmentSize, _startingOffset);
       }
     } else {
       // duplicate segment
-      return new SegmentAddResult(null, 0, _startingOffset, _totalHeadersSize);
+      return new SegmentAddResult(null, 0, _startingOffset);
     }
     // The segment is buffered, but it did not complete a large message.
-    return new SegmentAddResult(null, segmentSize, _startingOffset, _totalHeadersSize);
+    return new SegmentAddResult(null, segmentSize, _startingOffset);
   }
 
   public TopicPartition topicPartition() {
@@ -125,13 +122,11 @@ public class LargeMessage {
     private final byte[] _serializedMessage;
     private final long _startingOffset;
     private final int _bytesAdded;
-    private final int _totalHeadersSize;
 
-    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset, int totalHeadersSize) {
+    SegmentAddResult(byte[] serializedMessage, int bytesAdded, long startingOffset) {
       _serializedMessage = serializedMessage;
       _bytesAdded = bytesAdded;
       _startingOffset = startingOffset;
-      _totalHeadersSize = totalHeadersSize;
     }
 
     /**
@@ -155,10 +150,6 @@ public class LargeMessage {
      */
     long startingOffset() {
       return _startingOffset;
-    }
-
-    int totalHeadersSize() {
-      return _totalHeadersSize;
     }
   }
 
