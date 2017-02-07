@@ -5,7 +5,7 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
-import com.linkedin.kafka.clients.consumer.HeaderKeySpace;
+import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import java.nio.ByteBuffer;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
