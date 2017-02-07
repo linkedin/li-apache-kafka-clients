@@ -18,12 +18,7 @@ public class HeaderKeySpace {
    * A segment of a large message.
    */
   public static final int LARGE_MESSAGE_SEGMENT_HEADER = 1;
-
-  /**
-   * A completed large message.
-   */
-  public static final int LARGE_MESSAGE_COMPLETE_HEADER = 2;
-
+  
   public static final int PUBLIC_ASSIGNED_START = 10_000;
 
   public static final int PUBLIC_UNASSIGNED_START = 10_000_000;
