@@ -189,20 +189,23 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
         ExtensibleConsumerRecord<String, String> xRecord = (ExtensibleConsumerRecord<String, String>) consumerRecord;
         switch (messageCount) {
           case 0: //small
-            assertFalse(xRecord.headerKeys().hasNext());
+            assertEquals(xRecord.headerKeys().size(), 0);
             assertEquals(xRecord.key(), null);
             assertEquals(xRecord.value(), smallValue);
             break;
           case 1: //large
+            assertEquals(xRecord.headerKeys().size(), 0);
             assertEquals(xRecord.key(), null);
             assertEquals(xRecord.value(), largeValue);
             break;
           case 2: //small with extra header
             assertEquals(xRecord.key(), null);
+            assertEquals(xRecord.headerKeys().size(), 1);
             assertEquals(xRecord.value(), smallValue);
             assertEquals(xRecord.header(headerKey), EXPECTED_HEADER_VALUE);
             break;
           case 3: //large with extra header
+            assertEquals(xRecord.headerKeys().size(), 1);
             assertEquals(xRecord.key(), null);
             assertEquals(xRecord.value(), largeValue);
             assertEquals(xRecord.header(headerKey), EXPECTED_HEADER_VALUE);

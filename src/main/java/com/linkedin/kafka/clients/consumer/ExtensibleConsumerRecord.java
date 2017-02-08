@@ -8,6 +8,7 @@ import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.record.TimestampType;
 
@@ -56,16 +57,15 @@ public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
     }
 
     headers.put(headerKey, value);
-    //Don't update headersReceivedSizeBytesSize since this new header was not transmitted across the wire
   }
 
 
-  public Iterator<Integer> headerKeys() {
+  public Set<Integer> headerKeys() {
     if (headers == null) {
-      return Collections.emptyIterator();
+      return Collections.emptySet();
     }
 
-    return headers.keySet().iterator();
+    return headers.keySet();
   }
 
   /**
