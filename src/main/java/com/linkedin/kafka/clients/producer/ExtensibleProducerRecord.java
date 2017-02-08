@@ -6,8 +6,8 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
@@ -54,8 +54,6 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
   }
 
   /**
-   * TODO: enforce some max header size?
-   * TODO: how do the headers count against the message size?
    * Adds or updates the headers associated with this record.
    * @param headerKey
    * @param headerValue
@@ -68,7 +66,6 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     }
 
     if (headers == null) {
-      //Can't use lazy header map because it can't compute hashCode() because it may contain duplicates.
       headers = new TreeMap<>();
     }
     headers.put(headerKey, headerValue);
@@ -80,12 +77,12 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     }
   }
 
-  public Iterator<Integer> headerKeys() {
+  public Set<Integer> headerKeys() {
     if (headers == null) {
-      return Collections.EMPTY_LIST.iterator();
+      return Collections.emptySet();
     }
 
-    return headers.keySet().iterator();
+    return headers.keySet();
   }
 
   /**

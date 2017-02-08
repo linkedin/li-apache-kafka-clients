@@ -10,7 +10,6 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.Random;
 import java.util.UUID;
 import org.apache.kafka.common.record.TimestampType;
@@ -64,9 +63,7 @@ public class TestUtils {
         new ExtensibleConsumerRecord<>(producerRecord.topic(), producerRecord.partition(), offset, timestamp,
             timestampType, 0, serializedKeySize, serializedValueSize, producerRecord.key(), producerRecord.value());
 
-    Iterator<Integer> headerKeyIt = producerRecord.headerKeys();
-    while (headerKeyIt.hasNext()) {
-      Integer headerKey = headerKeyIt.next();
+    for (Integer headerKey : producerRecord.headerKeys()) {
       consumerRecord.header(headerKey, producerRecord.header(headerKey));
     }
 
