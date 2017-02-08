@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,8 @@ import java.util.Set;
 /**
  *  This is a specialized map backed by a list instead of a more asymptotically efficient data structure as our
  *  benchmarks show that for small numbers of items this will be more efficient than using HashMap.
+ *
+ *  This map does not check for duplicates in the incoming ByteBuffer.
  *
  */
 public class LazyHeaderListMap implements Map<Integer, byte[]> {
@@ -92,15 +95,34 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
       backingList = new ArrayList<>(0);
       return;
     }
+
     backingList = new ArrayList<>();
     DefaultHeaderSerializerDeserializer.parseHeader(headerSource, this);
     headerSource = null;
+
+    assert checkDuplicates();
+  }
+
+  /**
+   * This checks for duplicates in the map.  If you are are calling this function they you have givenup on performance
+   * just use a HashMap.  Otherwise only call this for testing , debugging or in an assert.
+   * @return true if we are duplicate free.
+   */
+  private boolean checkDuplicates() {
+    Set<Integer> keysSeen = new HashSet<>(backingList.size() * 2);
+    for (Map.Entry<Integer, byte[]> entry  : backingList) {
+      if (keysSeen.contains(entry.getKey())) {
+        return false;
+      }
+      keysSeen.add(entry.getKey());
+    }
+    return true;
   }
 
   @Override
   public int size() {
     lazyInit();
-    //This does not check for duplicates
+
     return backingList.size();
   }
 
@@ -122,11 +144,7 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
   }
 
   /**
-   * This is unsupported because the same key can appear twice in the backing list which means we would need to
-   * know if the key which this was associated with was the last key added.
-   *
-   * @param value
-   * @return
+   *  This is not supported.
    */
   @Override
   public boolean containsValue(Object value) {
@@ -136,8 +154,8 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
   @Override
   public byte[] get(Object key) {
     lazyInit();
-    //searching backwards means we get the last value that was put for some key
-    for (int i = backingList.size() - 1; i >= 0; i--) {
+
+    for (int i = 0;  i < backingList.size(); i++) {
       if (backingList.get(i).getKey().equals(key)) {
         return backingList.get(i).getValue();
       }
@@ -146,10 +164,11 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
   }
 
   /**
+   *  This has O(n) run time as we check for duplicates when this is added.
    *
    * @param key non-null
    * @param value non-null
-   * @return  This always returns null
+   * @return  The previous value stored with the key or null if there was no such value.
    */
   @Override
   public byte[] put(Integer key, byte[] value) {
@@ -161,21 +180,41 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
     if (value == null) {
       throw new IllegalArgumentException("null values are not supported.");
     }
+
+    for (int i = 0; i < backingList.size(); i++) {
+      if (backingList.get(i).getKey().equals(key)) {
+        byte[] previousValue = backingList.get(key).getValue();
+        backingList.set(i, new Entry(key, value));
+        return previousValue;
+      }
+    }
     backingList.add(new Entry(key, value));
-    return null; //this breaks map spec
+    return null;
   }
 
+  /**
+   * This is an O(n) operation.
+   *
+   * @param key non-null
+   * @return null if the key did not exist.
+   */
   @Override
   public byte[] remove(Object key) {
     lazyInit();
-    byte[] mapping = null;
+
+    if (key == null) {
+      throw new IllegalStateException("key must not be null");
+    }
     for (int i = 0; i < backingList.size(); i++) {
       if (backingList.get(i).getKey().equals(key)) {
-        mapping = backingList.remove(i).getValue();
-        i--;
+        int lastIndex = backingList.size() - 1;
+        byte[] value = backingList.get(i).getValue();
+        backingList.set(i , backingList.get(lastIndex));
+        backingList.remove(lastIndex);
+        return value;
       }
     }
-    return mapping;
+    return null;
   }
 
   @Override
@@ -191,11 +230,6 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
     backingList = new ArrayList<>(0);
   }
 
-  /**
-   * The set returned by this method may not actually be a set in that it can contain duplicates.
-   *
-   * @return non-null
-   */
   @Override
   public Set<Integer> keySet() {
     lazyInit();
@@ -300,11 +334,6 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
     };
   }
 
-  /**
-   * Not implemented.
-   *
-   * @return
-   */
   @Override
   public Collection<byte[]> values() {
     lazyInit();
@@ -397,27 +426,16 @@ public class LazyHeaderListMap implements Map<Integer, byte[]> {
     };
   }
 
-  /**
-   * Not implemented.
-   *
-   */
   @Override
   public Set<Map.Entry<Integer, byte[]>> entrySet() {
     throw new UnsupportedOperationException();
   }
 
-  /**
-   * This is problematic to implement if some kind of duplicate elimination is not done on the backingList.
-   */
   @Override
   public boolean equals(Object o) {
     throw new UnsupportedOperationException();
   }
 
-  /**
-   *
-   * This is problematic to implement if some kind of duplicate elimination is not done on the backingList.
-   */
   @Override
   public int hashCode() {
     throw new UnsupportedOperationException();
