@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
 /**
  * This is a simple code example we use in the documentation.
  */
-public class DocumetationTest extends AbstractKafkaClientsIntegrationTestHarness {
+public class DocumentationTest extends AbstractKafkaClientsIntegrationTestHarness {
 
   @BeforeMethod
   @Override

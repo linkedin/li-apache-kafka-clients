@@ -42,8 +42,6 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -71,8 +69,6 @@ import static org.testng.Assert.fail;
  * Integration test for LiKafkaConsumer
  */
 public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
-
-  private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerIntegrationTest.class);
 
   private final int MESSAGE_COUNT = 1000;
   private Random _random;
@@ -903,7 +899,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       fail("Produce synthetic data failed.", e);
     }
     producer.close();
-    LOG.info("Producing synthetic data on topic \"" + topic + " is complete.");
   }
 
   private Collection<ProducerRecord<byte[], byte[]>> createSerializedProducerRecord(int messageId,

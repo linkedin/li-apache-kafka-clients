@@ -191,23 +191,27 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
             assertEquals(xRecord.headerKeys().size(), 0);
             assertEquals(xRecord.key(), null);
             assertEquals(xRecord.value(), smallValue);
+            assertEquals(xRecord.offset(), 0);
             break;
           case 1: //large
             assertEquals(xRecord.headerKeys().size(), 0);
             assertEquals(xRecord.key(), null);
             assertEquals(xRecord.value(), largeValue);
+            assertEquals(xRecord.offset(), 2);
             break;
           case 2: //small with extra header
             assertEquals(xRecord.key(), null);
             assertEquals(xRecord.headerKeys().size(), 1);
             assertEquals(xRecord.value(), smallValue);
             assertEquals(xRecord.header(headerKey), EXPECTED_HEADER_VALUE);
+            assertEquals(xRecord.offset(), 3);
             break;
           case 3: //large with extra header
             assertEquals(xRecord.headerKeys().size(), 1);
             assertEquals(xRecord.key(), null);
             assertEquals(xRecord.value(), largeValue);
             assertEquals(xRecord.header(headerKey), EXPECTED_HEADER_VALUE);
+            assertEquals(xRecord.offset(), 5);
             break;
           default:
             throw new IllegalStateException("Unhandled case " + messageCount);
