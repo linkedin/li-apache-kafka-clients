@@ -9,7 +9,6 @@ import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
 import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
-import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import java.util.Collection;
@@ -159,12 +158,7 @@ public class ConsumerRecordsProcessorTest {
   public void testEviction() {
     Serializer<String> stringSerializer = new StringSerializer();
     // Create two large messages.
-    MessageSplitter splitter = new MessageSplitterImpl(500, new UUIDFactoryImpl(), new SimplePartitioner() {
-      @Override
-      public int partition(String topic) {
-        throw new IllegalStateException("This should never be called.");
-      }
-    });
+    MessageSplitter splitter = new MessageSplitterImpl(500, new UUIDFactoryImpl());
 
     ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
     consumerRecordsProcessor.process(getConsumerRecords());
@@ -279,13 +273,8 @@ public class ConsumerRecordsProcessorTest {
   private List<ExtensibleConsumerRecord<byte[], byte[]>> getConsumerRecords() {
     Serializer<String> stringSerializer = new StringSerializer();
     // Create two large messages.
-    SimplePartitioner simplePartitioner = new SimplePartitioner() {
-      @Override
-      public int partition(String topic) {
-        throw new IllegalStateException("This should not have been called.");
-      }
-    };
-    MessageSplitter splitter = new MessageSplitterImpl(500, new UUIDFactoryImpl(), simplePartitioner);
+
+    MessageSplitter splitter = new MessageSplitterImpl(500, new UUIDFactoryImpl());
     int partition  = 0;
 
     byte[] largeMessage1Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));

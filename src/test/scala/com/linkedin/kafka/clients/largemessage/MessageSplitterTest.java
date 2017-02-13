@@ -43,7 +43,7 @@ public class MessageSplitterTest {
     String message = TestUtils.getRandomString(1000);
     Serializer<String> stringSerializer = new StringSerializer();
     Deserializer<String> stringDeserializer = new StringDeserializer();
-    MessageSplitter splitter = new MessageSplitterImpl(200, uuidFactory, null);
+    MessageSplitter splitter = new MessageSplitterImpl(200, uuidFactory);
 
     byte[] serializedMessage = stringSerializer.serialize("topic", message);
     ExtensibleProducerRecord<byte[], byte[]> producerRecord =

@@ -13,7 +13,6 @@ import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducerImpl;
 import com.linkedin.kafka.clients.utils.DefaultHeaderSerializerDeserializer;
 import com.linkedin.kafka.clients.utils.HeaderSerializerDeserializer;
-import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
@@ -853,14 +852,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   private void produceSyntheticMessages(String topic) {
     UUIDFactory uuidFactory = new UUIDFactoryImpl();
     int partition = SYNTHETIC_PARTITION_0;
-    SimplePartitioner simplePartitioner = new SimplePartitioner() {
-      @Override
-      public int partition(String topic) {
-        throw new IllegalStateException("Partitioner should not have been called.");
-      }
-    };
 
-    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE, uuidFactory, simplePartitioner);
+    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE, uuidFactory);
 
     Properties props = new Properties();
     props.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());

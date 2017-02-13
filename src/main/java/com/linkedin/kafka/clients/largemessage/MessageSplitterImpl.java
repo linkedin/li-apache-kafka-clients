@@ -7,7 +7,6 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import java.util.Collection;
 import java.util.Collections;
@@ -25,14 +24,8 @@ public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
   // This class does not do anything with the original record, so no key serializer is needed.
   private final int _maxSegmentSize;
   private final UUIDFactory _uuidFactory;
-  private final SimplePartitioner _partitioner;
 
-  /**
-   *
-   * @param simpleParitioner  This is used when the original record is missing both a key and a partition.  In that case we
-   *                     want all the segments of the original value to arrive at the same consumer.
-   */
-  public MessageSplitterImpl(int maxSegmentSize, UUIDFactory uuidFactory, SimplePartitioner simpleParitioner) {
+  public MessageSplitterImpl(int maxSegmentSize, UUIDFactory uuidFactory) {
     if (maxSegmentSize <= 0) {
       throw new IllegalArgumentException("maxSegmentSize must be a positive integer.");
     }
@@ -41,7 +34,6 @@ public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
     }
     this._maxSegmentSize = maxSegmentSize;
     this._uuidFactory = uuidFactory;
-    this._partitioner = simpleParitioner;
   }
 
   @Override
@@ -64,12 +56,6 @@ public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
       key = LiKafkaClientsUtils.uuidToBytes(segmentMessageId);
     }
 
-    //If we don't set a partition then the partitioner may send all the segments to different consumers
-    Integer partition = originalRecord.partition();
-    if (partition == null) {
-      partition = _partitioner.partition(originalRecord.topic());
-    }
-
     // Sequence number starts from 0.
     for (int seq = 0; seq < numberOfSegments; seq++) {
       int segmentStart = seq * _maxSegmentSize;
@@ -81,7 +67,7 @@ public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
           numberOfSegments, messageSizeInBytes, originalRecord.key() == null, payload);
 
       ExtensibleProducerRecord<byte[], byte[]> segmentProducerRecord =
-        new ExtensibleProducerRecord<>(originalRecord.topic(), partition, originalRecord.timestamp(), key, segment.segmentArray());
+        new ExtensibleProducerRecord<>(originalRecord.topic(), originalRecord.partition(), originalRecord.timestamp(), key, segment.segmentArray());
       segmentProducerRecord.copyHeadersFrom(originalRecord);
       segmentProducerRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, segment.segmentHeader());
       segments.add(segmentProducerRecord);

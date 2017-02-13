@@ -9,13 +9,10 @@ import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
-import com.linkedin.kafka.clients.utils.DefaultHeaderSerializerDeserializer;
 import com.linkedin.kafka.clients.utils.HeaderSerializerDeserializer;
-import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Random;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -171,7 +168,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
     _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
 
-    _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, _uuidFactory, new SimplePartitionerImpl());
+    _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, _uuidFactory);
 
       // Instantiate auditor if necessary
       _auditor = auditor != null ? auditor
@@ -391,16 +388,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       if (_userCallback != null) {
         _userCallback.onCompletion(recordMetadata, e);
       }
-    }
-  }
-
-  private final class SimplePartitionerImpl implements SimplePartitioner {
-    private final Random rand = new Random();
-
-    @Override
-    public int partition(String topic) {
-      List<PartitionInfo> partitionInfo = partitionsFor(topic);
-      return rand.nextInt(partitionInfo.size());
     }
   }
 
