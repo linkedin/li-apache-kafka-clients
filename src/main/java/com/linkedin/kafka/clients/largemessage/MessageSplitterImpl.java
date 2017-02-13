@@ -45,10 +45,10 @@ public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
   }
 
   @Override
-  public Collection<ExtensibleProducerRecord<byte[], byte[]>> split(ExtensibleProducerRecord<byte[], byte[]> previousRecord) {
-    int messageSizeInBytes = previousRecord.value() == null ? 0 : previousRecord.value().length;
+  public Collection<ExtensibleProducerRecord<byte[], byte[]>> split(ExtensibleProducerRecord<byte[], byte[]> originalRecord) {
+    int messageSizeInBytes = originalRecord.value() == null ? 0 : originalRecord.value().length;
     if (messageSizeInBytes < _maxSegmentSize) {
-      return Collections.singleton(previousRecord);
+      return Collections.singleton(originalRecord);
     }
 
     UUID segmentMessageId = _uuidFactory.create();
@@ -56,33 +56,33 @@ public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
     int numberOfSegments = (messageSizeInBytes + (_maxSegmentSize - 1)) / _maxSegmentSize;
     List<ExtensibleProducerRecord<byte[], byte[]>> segments = new ArrayList<>(numberOfSegments);
 
-    ByteBuffer bytebuffer = ByteBuffer.wrap(previousRecord.value());
+    ByteBuffer bytebuffer = ByteBuffer.wrap(originalRecord.value());
 
-    byte[] key = previousRecord.key();
+    byte[] key = originalRecord.key();
     //If we don't set a key then mirror maker can scatter the message segments to the wind.
     if (key == null) {
       key = LiKafkaClientsUtils.uuidToBytes(segmentMessageId);
     }
 
     //If we don't set a partition then the partitioner may send all the segments to different consumers
-    Integer partition = previousRecord.partition();
+    Integer partition = originalRecord.partition();
     if (partition == null) {
-      partition = _partitioner.partition(previousRecord.topic());
+      partition = _partitioner.partition(originalRecord.topic());
     }
 
     // Sequence number starts from 0.
     for (int seq = 0; seq < numberOfSegments; seq++) {
       int segmentStart = seq * _maxSegmentSize;
-      int segmentLength = Math.min(previousRecord.value().length - segmentStart, _maxSegmentSize);
+      int segmentLength = Math.min(originalRecord.value().length - segmentStart, _maxSegmentSize);
       bytebuffer.position(segmentStart);
       ByteBuffer payload = bytebuffer.slice();
       payload.limit(segmentLength);
       LargeMessageSegment segment = new LargeMessageSegment(segmentMessageId, seq,
-          numberOfSegments, messageSizeInBytes, previousRecord.key() == null, payload);
+          numberOfSegments, messageSizeInBytes, originalRecord.key() == null, payload);
 
       ExtensibleProducerRecord<byte[], byte[]> segmentProducerRecord =
-        new ExtensibleProducerRecord<>(previousRecord.topic(), partition, previousRecord.timestamp(), key, segment.segmentArray());
-      segmentProducerRecord.copyHeadersFrom(previousRecord);
+        new ExtensibleProducerRecord<>(originalRecord.topic(), partition, originalRecord.timestamp(), key, segment.segmentArray());
+      segmentProducerRecord.copyHeadersFrom(originalRecord);
       segmentProducerRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, segment.segmentHeader());
       segments.add(segmentProducerRecord);
     }

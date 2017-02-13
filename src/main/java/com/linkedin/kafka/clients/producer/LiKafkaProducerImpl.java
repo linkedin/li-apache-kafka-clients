@@ -219,63 +219,45 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         throw new KafkaException(t);
       }
 
-      Future<RecordMetadata> future = null;
       int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length) + (serializedValue == null ? 0 : serializedValue.length);
       boolean useLargeMessageProcessing = _largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize;
-      if ((!(producerRecord instanceof ExtensibleProducerRecord) && !useLargeMessageProcessing) ||
-        ((producerRecord instanceof ExtensibleProducerRecord) && !((ExtensibleProducerRecord<K, V>) producerRecord).hasHeaders())) {
-        // pass through case, among other things this allows us to send null values so that log compacted topics can
-        // still be compacted
+      if (!(producerRecord instanceof ExtensibleProducerRecord) && serializedValue == null) {
+        return sendNullValue(producerRecord, callback, topic, key, value, timestamp, serializedValue, serializedKey,
+          sizeInBytes);
+      }
 
-        // We wrap the user callback for error logging and auditing purpose.
-        Callback errorLoggingCallback =
-          new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
-        _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
-        ProducerRecord<byte[], byte[]> headerlessByteRecord =
-          new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(),
-            serializedKey, serializedValue);
-        future = _producer.send(headerlessByteRecord, errorLoggingCallback);
+      if (producerRecord instanceof ExtensibleProducerRecord && !((ExtensibleProducerRecord) producerRecord).hasHeaders() &&
+        serializedValue == null) {
+        return sendNullValue(producerRecord, callback, topic, key, value, timestamp, serializedValue, serializedKey,
+          sizeInBytes);
+      }
 
+      ExtensibleProducerRecord<byte[], byte[]> xRecord =
+        new ExtensibleProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(),
+          serializedKey, serializedValue);
+      if (producerRecord instanceof ExtensibleProducerRecord) {
+        xRecord.copyHeadersFrom((ExtensibleProducerRecord) producerRecord);
+      }
+
+      Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords;
+      if (useLargeMessageProcessing) {
+        xRecords = _messageSplitter.split(xRecord);
       } else {
+        xRecords = Collections.singleton(xRecord);
+      }
 
-        ExtensibleProducerRecord<byte[], byte[]> xRecord =
-          new ExtensibleProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(),
-            serializedKey, serializedValue);
-        if (producerRecord instanceof ExtensibleProducerRecord) {
-          xRecord.copyHeadersFrom((ExtensibleProducerRecord) producerRecord);
-        }
+      _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
 
-        Collection<ExtensibleProducerRecord<byte[], byte[]>> xRecords;
-        if (useLargeMessageProcessing) {
-          xRecords = _messageSplitter.split(xRecord);
-        } else {
-          xRecords = Collections.singleton(xRecord);
-        }
+      Callback errorLoggingCallback =
+        new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
 
-        int accumulatedHeaderSizeInBytes = 0;
-        for (ExtensibleProducerRecord xProducerRecord : xRecords) {
-          int headerSizeForSingleRecord = _headerParser.serializedHeaderSize(xProducerRecord.headers());
-          if (headerSizeForSingleRecord > DefaultHeaderSerializerDeserializer.MAX_SERIALIZED_HEADER_SIZE) {
-            throw new IllegalStateException("The serialized size of all headers in a single record, " + headerSizeForSingleRecord
-              + ", exceeds the maximum size allowed,  " + HeaderSerializerDeserializer.MAX_SERIALIZED_HEADER_SIZE);
-          }
-          accumulatedHeaderSizeInBytes += headerSizeForSingleRecord;
-        }
-
-        sizeInBytes += accumulatedHeaderSizeInBytes;
-
-        _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
-
-        Callback errorLoggingCallback =
-          new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
-
-        if (useLargeMessageProcessing) {
-          errorLoggingCallback = new LargeMessageCallback(xRecords.size(), errorLoggingCallback);
-        }
-        for (ExtensibleProducerRecord<byte[], byte[]> segmentRecord : xRecords) {
-          ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord, _headerParser);
-          future = _producer.send(segmentProducerRecord, errorLoggingCallback);
-        }
+      if (useLargeMessageProcessing) {
+        errorLoggingCallback = new LargeMessageCallback(xRecords.size(), errorLoggingCallback);
+      }
+      Future<RecordMetadata> future = null;
+      for (ExtensibleProducerRecord<byte[], byte[]> segmentRecord : xRecords) {
+        ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord, _headerParser);
+        future = _producer.send(segmentProducerRecord, errorLoggingCallback);
       }
       return future;
     } catch (Exception t) {
@@ -285,6 +267,19 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     } finally {
       _numThreadsInSend.decrementAndGet();
     }
+  }
+
+  private Future<RecordMetadata> sendNullValue(ProducerRecord<K, V> producerRecord, Callback callback, String topic,
+    K key, V value, Long timestamp, byte[] serializedValue, byte[] serializedKey, int sizeInBytes) {
+    Future<RecordMetadata> future;// We wrap the user callback for error logging and auditing purpose.
+    Callback errorLoggingCallback =
+      new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
+    _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+    ProducerRecord<byte[], byte[]> headerlessByteRecord =
+      new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(),
+        serializedKey, serializedValue);
+    future = _producer.send(headerlessByteRecord, errorLoggingCallback);
+    return future;
   }
 
   /**

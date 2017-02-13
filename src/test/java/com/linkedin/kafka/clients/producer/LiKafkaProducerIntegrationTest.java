@@ -145,7 +145,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
    * </pre>
    */
   @Test
-  public void produceDifferentRecordScenarios() {
+  public void produceDifferentRecordScenariosTest() {
     Properties props = new Properties();
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
     props.setProperty(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG, "true");
@@ -222,7 +222,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void nullValue() {
+  public void nullValueTest() {
     String key = "somekey";
     String topic = "nullValueTopic";
     byte[] headerValue = {0, -1, -2};

@@ -71,6 +71,7 @@ public class LargeMessage {
     return _startingOffset;
   }
 
+  @Override
   public String toString() {
     return String.format("[TopicPartition:%s, UUID:%s, NumberOfSegments:%d, MessageSize:%d, BufferedBytes:%d]",
         _tp, _messageId, _numberOfSegments, _originalValueSize, _bufferedBytes);
@@ -110,7 +111,9 @@ public class LargeMessage {
       segmentStart += payloadSize;
     }
     if (segmentStart !=  _originalValueSize) {
-      throw new IllegalStateException("segmentStart " + segmentStart + " != originalValueSize " + _originalValueSize);
+      throw new IllegalStateException("segmentStart " + segmentStart + " != originalValueSize " + _originalValueSize +
+      " UUID " + _messageId + " startingOffset " +_startingOffset + " topicPartition " + _tp + " numberOfSegments " +
+      + _numberOfSegments);
     }
     return serializedMessage;
   }

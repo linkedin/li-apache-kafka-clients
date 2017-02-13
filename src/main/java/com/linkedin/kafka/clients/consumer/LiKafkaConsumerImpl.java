@@ -249,8 +249,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       }
 
-      xRecords = toXRecords(rawRecords);
-      xRecords = _consumerRecordsProcessor.process(xRecords);
+      Collection<ExtensibleConsumerRecord<byte[], byte[]>> convertedRecord = toXRecords(rawRecords);
+      xRecords = _consumerRecordsProcessor.process(convertedRecord);
 
       now = System.currentTimeMillis();
     } while (xRecords.isEmpty() && now < startMs + timeout);
@@ -265,11 +265,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
 
       TopicPartition topicPartition = new TopicPartition(userRecord.topic(), userRecord.partition());
-      List<ConsumerRecord<K, V>> listForTopicPartition = consumerRecordsMap.get(topicPartition);
-      if (listForTopicPartition == null) {
-        listForTopicPartition = new ArrayList<>();
-        consumerRecordsMap.put(topicPartition, listForTopicPartition);
-      }
+      List<ConsumerRecord<K, V>> listForTopicPartition =
+        consumerRecordsMap.computeIfAbsent(topicPartition, (x) -> new ArrayList<>());
 
       listForTopicPartition.add(userRecord);
     }
