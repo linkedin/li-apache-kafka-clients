@@ -14,11 +14,18 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 
 /**
  * <p>
- * This class adds the capability to get and set arbitrary header fields which are delivered to the consumer.  The
- * consumer must be using {@link com.linkedin.kafka.clients.consumer.LiKafkaConsumer}.  If headers are present and  the
+ * This class adds the capability to have key-value pairs, headers, which are delivered to the consumer.  The
+ * consumer must be using {@link com.linkedin.kafka.clients.consumer.LiKafkaConsumer}.  If headers are present and the
  * consumer is not using
  * {@link com.linkedin.kafka.clients.consumer.LiKafkaConsumer} then the consumer records will not be deserializable.
  * True null values can not be sent in the presence of any headers.
+ * </p>
+ * <p>{@link com.linkedin.kafka.clients.utils.HeaderKeySpace} contains suggestions for how to partition the header key into
+ * intervals.  Header keys must be non-negative.  Headers live in a separate space from the underlying Kafka protocol.
+ * </p>
+ * <p> A header can be added to a producer record by calling {@link #header(int, byte[])}.  This implies that the
+ * user of the producer record should not modify the record after
+ * {@link com.linkedin.kafka.clients.producer.LiKafkaProducer#send} has been called.
  * </p>
  */
 public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
@@ -40,7 +47,7 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
   }
 
   /**
-   *
+   * Gets the value associated with the header key from this record.
    * @param headerKey
    * @return returns null if this record does not have headers of the header is not present
    */
@@ -54,9 +61,9 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
   }
 
   /**
-   * Adds or updates the headers associated with this record.
-   * @param headerKey
-   * @param headerValue
+   * Adds or updates the value associated with the header key.  This method is not thread safe.
+   * @param headerKey non-negative
+   * @param headerValue non-null
    */
   public void header(int headerKey, byte[] headerValue) {
     HeaderKeySpace.validateHeaderKey(headerKey);
@@ -71,12 +78,20 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     headers.put(headerKey, headerValue);
   }
 
+  /**
+   * Overrides all the headers on this object if the other object has headers.  This method is not thread safe.
+   * @param other non-null
+   */
   public void copyHeadersFrom(ExtensibleProducerRecord<K, V> other) {
     if (other.headers != null) {
       this.headers = new TreeMap<>(other.headers); //TODO: copy on write?
     }
   }
 
+  /**
+   * A set of the header keys currently associated with this record.  This method is not thread safe.
+   * @return non-null
+   */
   public Set<Integer> headerKeys() {
     if (headers == null) {
       return Collections.emptySet();
@@ -86,8 +101,8 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
   }
 
   /**
-   *
-   * @return if this record contains any header key value pairs
+   * A simple predicate that returns true if there are any header key-value mappings on this record.
+   * @return true if this record contains any header key value pairs else false
    */
   public boolean hasHeaders() {
     return headers != null && !headers.isEmpty();
