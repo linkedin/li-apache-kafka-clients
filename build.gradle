@@ -29,7 +29,6 @@ sourceSets {
 }
 
 dependencies {
-
     compile 'org.apache.kafka:kafka-clients:0.10.1.1'
 
     testCompile 'org.apache.kafka:kafka_2.10:0.10.1.1:test'
@@ -44,6 +43,21 @@ test {
         events "passed", "failed", "skipped"
     }
 }
+
+configurations {
+    testArtifacts.extendsFrom testRuntime
+}
+
+task testJar(type: Jar) {
+    classifier = 'tests'
+    from sourceSets.test.output
+}
+
+artifacts {
+    testArtifacts testJar
+}
+
+build.dependsOn 'testJar'
 
 task wrapper(type: Wrapper) {
     gradleVersion = '2.13' //version required
