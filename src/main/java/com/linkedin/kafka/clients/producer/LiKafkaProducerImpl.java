@@ -9,7 +9,7 @@ import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
-import com.linkedin.kafka.clients.utils.HeaderSerializerDeserializer;
+import com.linkedin.kafka.clients.utils.HeaderSerializer;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import java.util.Collection;
 import java.util.Collections;
@@ -69,7 +69,6 @@ import java.nio.ByteBuffer;
  * // The following properties are used by LiKafkaProducerImpl
  * props.put("large.message.enabled", "true");
  * props.put("max.message.segment.bytes", 1000 * 1024);
- * props.put("segment.serializer", DefaultSegmentSerializer.class.getName());
  * props.put("auditor.class", LoggingAuditor.class.getName());
  * props.put("uuid.factory.class", UUIDFactoryImpl.class.getName());
  *
@@ -122,7 +121,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final AtomicInteger _numThreadsInSend;
   private final UUIDFactory _uuidFactory;
   private volatile boolean _closed;
-  private final HeaderSerializerDeserializer _headerParser;
+  private final HeaderSerializer _headerSerializer;
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null);
@@ -178,8 +177,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _numThreadsInSend = new AtomicInteger(0);
     _closed = false;
 
-    _headerParser =
-      configs.getConfiguredInstance(LiKafkaProducerConfig.HEADER_PARSER_CONFIG, HeaderSerializerDeserializer.class);
+    _headerSerializer =
+      configs.getConfiguredInstance(LiKafkaProducerConfig.HEADER_SERIALIZER_CONFIG, HeaderSerializer.class);
   }
 
   @Override
@@ -253,7 +252,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       }
       Future<RecordMetadata> future = null;
       for (ExtensibleProducerRecord<byte[], byte[]> segmentRecord : xRecords) {
-        ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord, _headerParser);
+        ProducerRecord<byte[], byte[]> segmentProducerRecord = serializeWithHeaders(segmentRecord, _headerSerializer);
         future = _producer.send(segmentProducerRecord, errorLoggingCallback);
       }
       return future;
@@ -268,7 +267,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   private Future<RecordMetadata> sendNullValue(ProducerRecord<K, V> producerRecord, Callback callback, String topic,
     K key, V value, Long timestamp, byte[] serializedValue, byte[] serializedKey, int sizeInBytes) {
-    Future<RecordMetadata> future;// We wrap the user callback for error logging and auditing purpose.
+    Future<RecordMetadata> future; // We wrap the user callback for error logging and auditing purpose.
     Callback errorLoggingCallback =
       new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
     _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
@@ -284,7 +283,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
    * This assumes that the value is not a large value that would be segmented by large message support.
    */
   public static ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord,
-    HeaderSerializerDeserializer headerParser) {
+    HeaderSerializer headerParser) {
 
     if (!xRecord.hasHeaders()) {
       return new ProducerRecord<byte[], byte[]>(xRecord.topic(), xRecord.partition(), xRecord.timestamp(), xRecord.key(), xRecord.value());
@@ -294,7 +293,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     int serializedValueSize = (xRecord.value() == null ? 0 : xRecord.value().length) + headersSize;
 
     ByteBuffer valueWithHeaders = ByteBuffer.allocate(serializedValueSize);
-    headerParser.writeHeader(valueWithHeaders, xRecord.headers(), xRecord.value() == null);
+    headerParser.serializeHeader(valueWithHeaders, xRecord.headers(), xRecord.value() == null);
     if (xRecord.value() != null) {
       valueWithHeaders.put(xRecord.value());
     }

@@ -9,7 +9,7 @@ import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
 import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.auditing.Auditor;
-import com.linkedin.kafka.clients.utils.HeaderSerializerDeserializer;
+import com.linkedin.kafka.clients.utils.HeaderDeserializer;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Locale;
@@ -78,7 +78,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final Deserializer<K> _keyDeserializer;
   private final Deserializer<V> _valueDeserializer;
   private final Auditor<K, V> _auditor;
-  private final HeaderSerializerDeserializer _headerParser;
+  private final HeaderDeserializer _headerDeserializer;
 
   public LiKafkaConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null, null);
@@ -147,8 +147,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     // Instantiate offset commit callback.
     _offsetCommitCallback = new LiKafkaOffsetCommitCallback();
 
-    _headerParser = configs.getConfiguredInstance(LiKafkaConsumerConfig.HEADER_PARSER_CONFIG,
-      HeaderSerializerDeserializer.class);
+    _headerDeserializer = configs.getConfiguredInstance(LiKafkaConsumerConfig.HEADER_DESERIALIZER_CLASS,
+      HeaderDeserializer.class);
   }
 
   @Override
@@ -298,25 +298,23 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   private ExtensibleConsumerRecord<byte[], byte[]> toXRecord(ConsumerRecord<byte[], byte[]> rawRecord) {
     ByteBuffer rawByteBuffer = ByteBuffer.wrap(rawRecord.value() == null ? new byte[0] : rawRecord.value());
-    int initialSize = rawByteBuffer.remaining();
-    HeaderSerializerDeserializer.ParseResult headersParseResult = _headerParser.parseHeader(rawByteBuffer);
+    HeaderDeserializer.DeserializeResult headersDeserializeResult = _headerDeserializer.deserializeHeader(rawByteBuffer);
 
-    if (headersParseResult.headers() == null) {
+    if (headersDeserializeResult.headers() == null) {
       return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(), rawRecord.timestampType(),
           rawRecord.checksum(), rawRecord.serializedKeySize(), rawRecord.serializedValueSize(), rawRecord.key(), rawRecord.value(), null);
     }
 
-    int valueSize = headersParseResult.value() == null ? 0 : headersParseResult.value().remaining();
-    int headerSize = initialSize - valueSize;
+    int valueSize = headersDeserializeResult.value() == null ? 0 : headersDeserializeResult.value().remaining();
     byte[] value = null;
-    if (headersParseResult.value() != null) {
+    if (headersDeserializeResult.value() != null) {
       value = new byte[valueSize];
-      headersParseResult.value().get(value);
+      headersDeserializeResult.value().get(value);
     }
 
     return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(),
         rawRecord.timestampType(), rawRecord.checksum(), rawRecord.serializedKeySize(), valueSize, rawRecord.key(),
-         value, headersParseResult.headers());
+         value, headersDeserializeResult.headers());
   }
 
   @Override

@@ -5,8 +5,8 @@
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
-import com.linkedin.kafka.clients.utils.DefaultHeaderSerializerDeserializer;
-import com.linkedin.kafka.clients.utils.HeaderSerializerDeserializer;
+import com.linkedin.kafka.clients.utils.DefaultHeaderDeserializer;
+import com.linkedin.kafka.clients.utils.HeaderSerializer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
@@ -32,12 +32,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String KEY_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
   public static final String VALUE_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
   public static final String AUDITOR_CLASS_CONFIG = "auditor.class";
-  public static final String HEADER_PARSER_CONFIG = "header.parser.class";
+  public static final String HEADER_DESERIALIZER_CLASS = "header.deserializer.class";
   public static final String ENABLE_AUTO_COMMIT_CONFIG = ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
 
-  public static final String HEADER_PARSER_DOC = "The name of a class implementing " + HeaderSerializerDeserializer.class
+  public static final String HEADER_PARSER_DOC = "The name of a class implementing " + HeaderSerializer.class
     + " interface.  You shouldn't need to change this unless you want some more optimized encoding or need to accept"
     + "some kind of internal legacy message formats.";
 
@@ -139,9 +139,9 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 "none",
                 Importance.MEDIUM,
                 AUTO_OFFSET_RESET_DOC)
-        .define(HEADER_PARSER_CONFIG,
+        .define(HEADER_DESERIALIZER_CLASS,
                 Type.CLASS,
-                DefaultHeaderSerializerDeserializer.class,
+                DefaultHeaderDeserializer.class,
                 Importance.LOW,
                 HEADER_PARSER_DOC);
   }

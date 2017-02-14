@@ -19,7 +19,7 @@ import org.testng.annotations.Test;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
-public class DefaultHeaderSerializerDeserializerTest {
+public class DefaultHeaderSerializerTest {
   private static final char UNICODE_REPLACEMENT_CHARACTER = 65533;
 
   @Test
@@ -27,7 +27,7 @@ public class DefaultHeaderSerializerDeserializerTest {
     byte[] headerMagicBytes;
     try (ByteArrayOutputStream bout = new ByteArrayOutputStream(8);
       DataOutputStream dout = new DataOutputStream(bout)) {
-      dout.writeLong(DefaultHeaderSerializerDeserializer.DEFAULT_HEADER_MAGIC);
+      dout.writeLong(DefaultHeaderSerializer.DEFAULT_HEADER_MAGIC);
       headerMagicBytes = bout.toByteArray();
     }
 
@@ -52,19 +52,20 @@ public class DefaultHeaderSerializerDeserializerTest {
 
   @Test
   public void headerSerializationTest() {
-    DefaultHeaderSerializerDeserializer headerSerde = new DefaultHeaderSerializerDeserializer();
+    DefaultHeaderSerializer headerSerializer = new DefaultHeaderSerializer();
     ByteBuffer bbuf = ByteBuffer.allocate(1024*16);
     Map<Integer, byte[]> headers = new HashMap<>();
     String headerValue = "header-value";
     headers.put(42, headerValue.getBytes());
-    assertEquals(headerSerde.serializedHeaderSize(headers), 8 + 1 + 4 + 4 + 4 + 12);
-    headerSerde.writeHeader(bbuf, headers, false);
+    assertEquals(headerSerializer.serializedHeaderSize(headers), 8 + 1 + 4 + 4 + 4 + 12);
+    headerSerializer.serializeHeader(bbuf, headers, false);
     bbuf.flip();
-    assertEquals(bbuf.remaining(), headerSerde.serializedHeaderSize(headers));
+    assertEquals(bbuf.remaining(), headerSerializer.serializedHeaderSize(headers));
 
-    HeaderSerializerDeserializer.ParseResult parseResult = headerSerde.parseHeader(bbuf);
-    assertFalse(parseResult.value().hasRemaining());
-    assertEquals(parseResult.headers().size(), 1);
-    assertEquals(parseResult.headers().get(42), headerValue.getBytes());
+    HeaderDeserializer headerDeserializer = new DefaultHeaderDeserializer();
+    HeaderDeserializer.DeserializeResult deserializeResult = headerDeserializer.deserializeHeader(bbuf);
+    assertFalse(deserializeResult.value().hasRemaining());
+    assertEquals(deserializeResult.headers().size(), 1);
+    assertEquals(deserializeResult.headers().get(42), headerValue.getBytes());
   }
 }

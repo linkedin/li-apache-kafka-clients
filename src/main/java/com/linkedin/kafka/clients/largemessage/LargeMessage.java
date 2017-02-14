@@ -112,7 +112,7 @@ public class LargeMessage {
     }
     if (segmentStart !=  _originalValueSize) {
       throw new IllegalStateException("segmentStart " + segmentStart + " != originalValueSize " + _originalValueSize +
-      " UUID " + _messageId + " startingOffset " +_startingOffset + " topicPartition " + _tp + " numberOfSegments " +
+      " UUID " + _messageId + " startingOffset " + _startingOffset + " topicPartition " + _tp + " numberOfSegments " +
       + _numberOfSegments);
     }
     return serializedMessage;
