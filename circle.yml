@@ -1,0 +1,5 @@
+test:
+    post:
+        - mkdir -p $CIRCLE_TEST_REPORTS/junit/
+        - find . -type f -regex ".*/test-results/.*xml" -exec ln {} $CIRCLE_TEST_REPORTS/junit/ \;
+
