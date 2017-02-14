@@ -1,5 +1,6 @@
 li-apache-kafka-clients
 ===================
+[![CircleCI](https://circleci.com/gh/linkedin/li-apache-kafka-clients/tree/master.svg?style=svg)](https://circleci.com/gh/linkedin/li-apache-kafka-clients/tree/master)
 
 ### Introduction ###
 li-apache-kafka-clients is a wrapper Kafka clients library built on top of vanilla Apache Kafka clients.
