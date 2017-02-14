@@ -4,9 +4,9 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.serialization.Deserializer;
-import org.apache.kafka.common.serialization.Serializer;
 import org.testng.annotations.Test;
 
 import java.nio.ByteBuffer;
@@ -22,36 +22,19 @@ public class MessageAssemblerTest {
   @Test
   public void testSingleMessageSegment() {
     // Create serializer/deserializers.
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
-    Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
+    byte[] messageBytes = "message".getBytes();
 
-    byte[] messageWrappedBytes = wrapMessageBytes(segmentSerializer, "message".getBytes());
-
-    MessageAssembler messageAssembler = new MessageAssemblerImpl(100, 100, true, segmentDeserializer);
+    LargeMessageSegment largeMessageSegment = new LargeMessageSegment(UUID.randomUUID(), 0, 1, messageBytes.length, true, ByteBuffer.wrap(messageBytes));
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord =
+        new ExtensibleConsumerRecord<byte[], byte[]>("topic", 0, 0, 0, null, 0, 0, 0, "key".getBytes(), messageBytes);
+    consumerRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, largeMessageSegment.segmentHeader());
+    MessageAssembler messageAssembler = new MessageAssemblerImpl(100, 100, true);
     MessageAssembler.AssembleResult assembleResult =
-        messageAssembler.assemble(new TopicPartition("topic", 0), 0, messageWrappedBytes);
+        messageAssembler.assemble(new TopicPartition("topic", 0), 0, consumerRecord);
 
     assertNotNull(assembleResult.messageBytes());
     assertEquals(assembleResult.messageStartingOffset(), 0, "The message starting offset should be 0");
     assertEquals(assembleResult.messageEndingOffset(), 0, "The message ending offset should be 0");
   }
 
-  @Test
-  public void testNonLargeMessageSegmentBytes() {
-    // Create serializer/deserializers.
-    Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
-    MessageAssembler messageAssembler = new MessageAssemblerImpl(100, 100, true, segmentDeserializer);
-
-    byte[] bytes = new byte[100];
-    MessageAssembler.AssembleResult assembleResult =
-        messageAssembler.assemble(new TopicPartition("topic", 0), 0, bytes);
-    assertEquals(assembleResult.messageBytes(), bytes, "The bytes should be returned as is");
-    assertEquals(assembleResult.messageStartingOffset(), 0, "The message starting offset should be 0");
-    assertEquals(assembleResult.messageEndingOffset(), 0, "The message ending offset should be 0");
-  }
-
-  private byte[] wrapMessageBytes(Serializer<LargeMessageSegment> segmentSerializer, byte[] messageBytes) {
-    return segmentSerializer.serialize("topic",
-        new LargeMessageSegment(UUID.randomUUID(), 0, 1, messageBytes.length, ByteBuffer.wrap(messageBytes)));
-  }
 }

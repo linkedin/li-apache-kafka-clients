@@ -2,16 +2,15 @@
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
-package com.linkedin.kafka.clients.largemessage;
+package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.auditing.AuditType;
-import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
+import com.linkedin.kafka.clients.largemessage.MessageAssembler;
+import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
+import java.util.Collection;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,30 +22,19 @@ import java.util.Map;
 /**
  * This class processes consumer records returned by {@link org.apache.kafka.clients.consumer.KafkaConsumer#poll(long)}
  */
-public class ConsumerRecordsProcessor<K, V> {
+public class ConsumerRecordsProcessor {
 
   private static final Logger LOG = LoggerFactory.getLogger(ConsumerRecordsProcessor.class);
   private final MessageAssembler _messageAssembler;
-  private final Deserializer<K> _keyDeserializer;
-  private final Deserializer<V> _valueDeserializer;
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
   private final Map<TopicPartition, Long> _partitionConsumerHighWatermark;
-  private final Auditor<K, V> _auditor;
+
 
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
-                                  Deserializer<K> keyDeserializer,
-                                  Deserializer<V> valueDeserializer,
-                                  DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
-                                  Auditor<K, V> auditor) {
+                                  DeliveredMessageOffsetTracker deliveredMessageOffsetTracker) {
     _messageAssembler = messageAssembler;
-    _keyDeserializer = keyDeserializer;
-    _valueDeserializer = valueDeserializer;
     _deliveredMessageOffsetTracker = deliveredMessageOffsetTracker;
-    _auditor = auditor;
     _partitionConsumerHighWatermark = new HashMap<>();
-    if (_auditor == null) {
-      LOG.info("Auditing is disabled because no auditor is defined.");
-    }
   }
 
   /**
@@ -55,23 +43,18 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param consumerRecords The consumer records to be filtered.
    * @return filtered consumer records.
    */
-  public ConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> consumerRecords) {
-    Map<TopicPartition, List<ConsumerRecord<K, V>>> filteredRecords = new HashMap<>();
-    for (ConsumerRecord<byte[], byte[]> record : consumerRecords) {
-      TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-      ConsumerRecord<K, V> handledRecord = handleConsumerRecord(record);
-      // Only put record into map if it is not null
-      if (handledRecord != null) {
-        List<ConsumerRecord<K, V>> list = filteredRecords.get(tp);
-        if (list == null) {
-          list = new ArrayList<>();
-          filteredRecords.put(tp, list);
-        }
-        list.add(handledRecord);
+  public Collection<ExtensibleConsumerRecord<byte[], byte[]>> process(Collection<ExtensibleConsumerRecord<byte[], byte[]>> consumerRecords) {
+    List<ExtensibleConsumerRecord<byte[], byte[]>> list = new ArrayList<>();
+    for (ExtensibleConsumerRecord<byte[], byte[]> consumerRecord : consumerRecords) {
+      ExtensibleConsumerRecord handledRecord = filterAndAssembleRecords(consumerRecord);
+      if (handledRecord == null) {
+        continue;
       }
+      list.add(handledRecord);
     }
-    return new ConsumerRecords<>(filteredRecords);
+    return list;
   }
+
 
   /**
    * This method returns the current safe offset to commit for a specified partition.
@@ -302,59 +285,60 @@ public class ConsumerRecordsProcessor<K, V> {
 
   public void close() {
     _messageAssembler.close();
-    _auditor.close();
   }
 
-  private ConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
-    TopicPartition tp = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
-    ConsumerRecord<K, V> handledRecord = null;
-    K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
-    byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
-    V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
-    if (value != null) {
-      if (_auditor != null) {
-        _auditor.record(tp.topic(), key, value, consumerRecord.timestamp(), 1L,
-                        (long) consumerRecord.value().length, AuditType.SUCCESS);
-      }
-      handledRecord = new ConsumerRecord<>(
-          consumerRecord.topic(),
-          consumerRecord.partition(),
-          consumerRecord.offset(),
-          consumerRecord.timestamp(),
-          consumerRecord.timestampType(),
-          consumerRecord.checksum(),
-          consumerRecord.serializedKeySize(),
-          valueBytes.length,
-          _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key()),
-          value);
-    }
-    return handledRecord;
-  }
+  /**
+   * When we encounter an incomplete large message this filters (i.e. it returns null) otherwise this tracks records and
+   * returns completed large messages and non-large messages.
+   * @param srcRecord this is the record that was polled from the underlying Kafka consumer.
+   * @return this may return null
+   */
+  private ExtensibleConsumerRecord<byte[], byte[]> filterAndAssembleRecords(ExtensibleConsumerRecord<byte[], byte[]> srcRecord) {
+    TopicPartition topicPartition = new TopicPartition(srcRecord.topic(), srcRecord.partition());
+    MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(topicPartition, srcRecord.offset(), srcRecord);
 
-  private byte[] parseAndMaybeTrackRecord(TopicPartition tp, long messageOffset, byte[] bytes) {
-    MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
-    if (assembledResult.messageBytes() != null) {
-      LOG.trace("Got message {} from partition {}", messageOffset, tp);
-      boolean shouldSkip = shouldSkip(tp, messageOffset);
-      // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
-      long safeOffset = Math.min(messageOffset + 1, _messageAssembler.safeOffset(tp));
-      _deliveredMessageOffsetTracker.track(tp,
-                                           messageOffset,
-                                           safeOffset,
-                                           assembledResult.messageStartingOffset(),
-                                           !shouldSkip);
-      // We skip the messages whose offset is smaller than the high watermark.
-      if (shouldSkip) {
-        LOG.trace("Skipping message {} from partition {} because its offset is smaller than the high watermark",
-                  messageOffset, tp);
-        return null;
-      } else {
-        return assembledResult.messageBytes();
-      }
-    } else {
-      _deliveredMessageOffsetTracker.addNonMessageOffset(tp, messageOffset);
+    LOG.trace("Got message {} from partition {}", srcRecord.offset(), topicPartition);
+
+    long safeOffset = Math.min(srcRecord.offset() + 1, _messageAssembler.safeOffset(topicPartition));
+    if (shouldSkip(topicPartition, srcRecord.offset())) {
+      //The message had already been delivered to the consumer when it committed and it should not be seen again.
+      LOG.trace("Skipping message {} from partition {} because its offset is smaller than the high watermark",
+          srcRecord.offset(), topicPartition);
+      _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), false);
       return null;
     }
+
+    if (assembledResult == null) {
+      //Not a large message segment
+      _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, srcRecord.offset(), true);
+      return srcRecord;
+    }
+
+    if (assembledResult.messageBytes() == null) {
+      //Not a complete, large message
+      _deliveredMessageOffsetTracker.addNonMessageOffset(topicPartition, srcRecord.offset());
+      return null;
+    }
+
+    // Completed, large message value
+    _deliveredMessageOffsetTracker.track(topicPartition, srcRecord.offset(), safeOffset, assembledResult.messageStartingOffset(),
+        true);
+
+    int serializedKeySize = assembledResult.isOriginalKeyNull() ? 0 : srcRecord.key().length;
+    byte[] key = assembledResult.isOriginalKeyNull() ? null : srcRecord.key();
+    int serializedValueSize = assembledResult.messageBytes().length;
+
+    ExtensibleConsumerRecord<byte[], byte[]> largeMessageRecord =
+      new ExtensibleConsumerRecord<>(srcRecord.topic(), srcRecord.partition(), srcRecord.offset(),
+        srcRecord.timestamp(), srcRecord.timestampType(),
+        srcRecord.checksum(),
+        serializedKeySize, serializedValueSize,
+        key, assembledResult.messageBytes());
+    //TODO: checksums recomputed?
+    largeMessageRecord.copyHeadersFrom(srcRecord);
+    largeMessageRecord.removeHeader(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER);
+
+    return largeMessageRecord;
   }
 
   /**
@@ -371,4 +355,5 @@ public class ConsumerRecordsProcessor<K, V> {
     Long hw = _partitionConsumerHighWatermark.get(tp);
     return hw != null && hw > offset;
   }
+
 }

@@ -4,24 +4,24 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.consumer.ConsumerRecordsProcessor;
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+import com.linkedin.kafka.clients.utils.HeaderKeySpace;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
+import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
+import com.linkedin.kafka.clients.utils.SimplePartitioner;
 import com.linkedin.kafka.clients.utils.TestUtils;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
+import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
+import java.util.Collection;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
-import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
-import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -42,46 +42,42 @@ public class ConsumerRecordsProcessorTest {
   public void testFilter() throws Exception {
     // Create consumer record processor
     Serializer<String> stringSerializer = new StringSerializer();
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
 
     // Let consumer record 0 be a normal record.
     String message0 = "message0";
-    ConsumerRecord<byte[], byte[]> consumerRecord0 =
-        new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(),
-                             stringSerializer.serialize("topic", message0));
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord0 =
+        new ExtensibleConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(),
+            stringSerializer.serialize("topic", message0));
 
     // Let consumer record 1 be a large message.
-    byte[] message1Bytes =
-        segmentSerializer.serialize("topic",
-                                    TestUtils.createLargeMessageSegment(UUID.randomUUID(), 0, 2, 20, 10));
-    ConsumerRecord<byte[], byte[]> consumerRecord1 =
-        new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message1Bytes);
+    LargeMessageSegment segment =
+        TestUtils.createLargeMessageSegment(UUID.randomUUID(), 0, 2, 20, 10);
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord1 =
+        new ExtensibleConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), segment.segmentArray());
+    consumerRecord1.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, segment.segmentHeader());
 
     // Construct the consumer records.
-    List<ConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
+    List<ExtensibleConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
     recordList.add(consumerRecord0);
     recordList.add(consumerRecord1);
-    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordsMap = new HashMap<>();
-    recordsMap.put(new TopicPartition("topic", 0), recordList);
-    ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
 
-    ConsumerRecords<String, String> filteredRecords = consumerRecordsProcessor.process(records);
-    ConsumerRecord<String, String> consumerRecord = filteredRecords.iterator().next();
-    assertEquals(filteredRecords.count(), 1, "Only one record should be there after filtering.");
-    assertEquals(consumerRecord0.topic(), consumerRecord.topic(), "Topic should match");
-    assertEquals(consumerRecord0.partition(), consumerRecord.partition(), "partition should match");
-    assertTrue(Arrays.equals(consumerRecord0.key(), consumerRecord.key().getBytes()), "key should match");
-    assertEquals(consumerRecord0.offset(), consumerRecord.offset(), "Offset should match");
-    assertEquals(consumerRecord.value(), "message0", "\"message0\" should be the value");
+    Collection<ExtensibleConsumerRecord<byte[], byte[]>> filteredRecords = consumerRecordsProcessor.process(recordList);
+    ExtensibleConsumerRecord<byte[], byte[]> filteredXRecord = filteredRecords.iterator().next();
+    assertEquals(filteredRecords.size(), 1, "Only one record should be there after filtering.");
+    assertEquals(consumerRecord0.topic(), filteredXRecord.topic(), "Topic should match");
+    assertEquals(consumerRecord0.partition(), filteredXRecord.partition(), "partition should match");
+    assertEquals(consumerRecord0.key(), filteredXRecord.key(), "key should match");
+    assertEquals(consumerRecord0.offset(), filteredXRecord.offset(), "Offset should match");
+    assertEquals(consumerRecord0.value(), "message0".getBytes(), "\"message0\" should be the value");
   }
 
   @Test
   public void testCorrectness() {
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(getConsumerRecords());
-    assertEquals(processedRecords.count(), 4, "There should be 4 records");
-    Iterator<ConsumerRecord<String, String>> iter = processedRecords.iterator();
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
+    Collection<ExtensibleConsumerRecord<byte[], byte[]>> processedRecords = consumerRecordsProcessor.process(getConsumerRecords());
+    assertEquals(processedRecords.size(), 4, "There should be 4 records");
+    Iterator<ExtensibleConsumerRecord<byte[], byte[]>> iter = processedRecords.iterator();
     assertEquals(iter.next().offset(), 0, "Message offset should b 0");
     assertEquals(iter.next().offset(), 2, "Message offset should b 2");
     assertEquals(iter.next().offset(), 4, "Message offset should b 4");
@@ -91,33 +87,26 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testSafeOffsetWithoutLargeMessage() throws IOException {
     Serializer<String> stringSerializer = new StringSerializer();
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
 
     // Let consumer record 0 and 1 be a normal record.
     // Let consumer record 0 be a normal record.
     byte[] message0Bytes = stringSerializer.serialize("topic", "message0");
-    byte[] message0WrappedBytes = wrapMessageBytes(segmentSerializer, message0Bytes);
-    ConsumerRecord<byte[], byte[]> consumerRecord0 =
-        new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message0WrappedBytes);
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord0 =
+        new ExtensibleConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message0Bytes);
 
     // Let consumer record 1 be a normal message.
     byte[] message1Bytes = stringSerializer.serialize("topic", "message1");
-    byte[] message1WrappedBytes = wrapMessageBytes(segmentSerializer, message1Bytes);
-    ConsumerRecord<byte[], byte[]> consumerRecord1 =
-        new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message1WrappedBytes);
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord1 =
+        new ExtensibleConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message1Bytes);
 
     // Construct the consumer records.
     TopicPartition tp = new TopicPartition("topic", 0);
-    List<ConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
+    List<ExtensibleConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
     recordList.add(consumerRecord0);
     recordList.add(consumerRecord1);
-    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordsMap =
-        new HashMap<>();
-    recordsMap.put(tp, recordList);
-    ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
 
-    consumerRecordsProcessor.process(records);
+    consumerRecordsProcessor.process(recordList);
     Map<TopicPartition, OffsetAndMetadata> safeOffsets = consumerRecordsProcessor.safeOffsetsToCommit();
     assertEquals(safeOffsets.size(), 1, "Safe offsets should contain one entry");
     assertEquals(safeOffsets.get(tp).offset(), 2, "Safe offset of topic partition 0 should be 2");
@@ -136,8 +125,10 @@ public class ConsumerRecordsProcessorTest {
 
   @Test
   public void testSafeOffsetWithLargeMessage() throws IOException {
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords());
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
+    Collection<ExtensibleConsumerRecord<byte[], byte[]>> processedRecords =
+      consumerRecordsProcessor.process(getConsumerRecords());
+    assertEquals(processedRecords.size(), 4);
 
     // check safe offsets
     TopicPartition tp = new TopicPartition("topic", 0);
@@ -167,41 +158,46 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testEviction() {
     Serializer<String> stringSerializer = new StringSerializer();
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     // Create two large messages.
-    MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer);
+    MessageSplitter splitter = new MessageSplitterImpl(500, new UUIDFactoryImpl(), new SimplePartitioner() {
+      @Override
+      public int partition(String topic) {
+        throw new IllegalStateException("This should never be called.");
+      }
+    });
 
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
     consumerRecordsProcessor.process(getConsumerRecords());
     // The offset tracker now has 2, 4, 5 in it.
     TopicPartition tp = new TopicPartition("topic", 0);
 
-    UUID largeMessageId = UUID.randomUUID();
     byte[] largeMessage1Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));
-    List<ProducerRecord<byte[], byte[]>> splitLargeMessage =
-        splitter.split("topic", largeMessageId, largeMessage1Bytes);
+    ExtensibleProducerRecord<byte[], byte[]> largeMessage =
+        new ExtensibleProducerRecord<>("topic", tp.partition(), null, "key".getBytes(), largeMessage1Bytes);
+    Iterator<ExtensibleProducerRecord<byte[], byte[]>> splitLargeMessage = splitter.split(largeMessage).iterator();
 
     // Test evict
-    List<ConsumerRecord<byte[], byte[]>> recordList = new ArrayList<ConsumerRecord<byte[], byte[]>>();
+    List<ExtensibleConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
     // Let consumer record 6 be a large message segment.
-    ConsumerRecord<byte[], byte[]> consumerRecord6 =
-        new ConsumerRecord<>("topic", 0, 6, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage.get(0).value());
+    ExtensibleProducerRecord<byte[], byte[]> producerRecord6S0 = splitLargeMessage.next();
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord6 =
+      TestUtils.producerRecordToConsumerRecord(producerRecord6S0, 6, 0L, TimestampType.CREATE_TIME, 0, 0);
+
     // Let consumer record 7 be a normal record.
-    ConsumerRecord<byte[], byte[]> consumerRecord7 =
-        new ConsumerRecord<>("topic", 0, 7, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(),
-                             stringSerializer.serialize("topic", "message7"));
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord7 =
+        new ExtensibleConsumerRecord<>("topic", 0, 7, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(),
+            stringSerializer.serialize("topic", "message7"));
     // Let consumer record 8 completes consumer record 6
-    ConsumerRecord<byte[], byte[]> consumerRecord8 =
-        new ConsumerRecord<>("topic", 0, 8, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage.get(1).value());
+    ExtensibleProducerRecord<byte[], byte[]> producerRecord6S1 = splitLargeMessage.next();
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord8 =
+      TestUtils.producerRecordToConsumerRecord(producerRecord6S1, 8, 0L, TimestampType.CREATE_TIME, 0, 0);
 
     recordList.add(consumerRecord6);
     recordList.add(consumerRecord7);
     recordList.add(consumerRecord8);
 
-    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordsMap = new HashMap<>();
-    recordsMap.put(new TopicPartition("topic", 0), recordList);
-    ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
-    consumerRecordsProcessor.process(records);
+    consumerRecordsProcessor.process(recordList);
+
     // Now the offset tracker should have 4, 5, 6, 8 in side it.
     assertEquals(consumerRecordsProcessor.safeOffset(tp, 7L).longValue(), 6, "safe offset should be 6");
 
@@ -215,18 +211,19 @@ public class ConsumerRecordsProcessorTest {
 
   @Test
   public void verifyStartingOffset() {
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
     consumerRecordsProcessor.process(getConsumerRecords());
 
     TopicPartition tp = new TopicPartition("topic", 0);
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 4L), 3, "Starting offset of large message 2 should be 3");
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 5L), 1, "Starting offset of large message 1 should be 1");
-    assertEquals(consumerRecordsProcessor.startingOffset(tp, 0L), 0, "Starting offset of large message 0 should be 0");
+    //starting offset of message 0 is not known because it is not a large message
+    assertEquals(consumerRecordsProcessor.startingOffset(tp, 0L), 0, "Starting offset of normal message 0 should be 6");
   }
 
   @Test
   public void testStartingOffsetWithoutMessages() throws IOException {
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
 
     TopicPartition tp = new TopicPartition("topic", 0);
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 100L), 100, "Should return 100 because there are no " +
@@ -236,23 +233,18 @@ public class ConsumerRecordsProcessorTest {
   @Test(expectedExceptions = OffsetNotTrackedException.class)
   public void testStartingOffsetWithNormalMessages() throws IOException {
     Serializer<String> stringSerializer = new StringSerializer();
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
 
     // Let consumer record 0 be a normal record.
     byte[] message0Bytes = stringSerializer.serialize("topic", "message0");
-    byte[] message0WrappedBytes = wrapMessageBytes(segmentSerializer, message0Bytes);
-    ConsumerRecord<byte[], byte[]> consumerRecord0 =
-        new ConsumerRecord<>("topic", 0, 100L, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message0WrappedBytes);
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord0 =
+        new ExtensibleConsumerRecord<>("topic", 0, 100L, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message0Bytes);
 
     // Construct the consumer records.
-    List<ConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
+    List<ExtensibleConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
     recordList.add(consumerRecord0);
-    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordsMap = new HashMap<>();
-    recordsMap.put(new TopicPartition("topic", 0), recordList);
-    ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
 
-    consumerRecordsProcessor.process(records);
+    consumerRecordsProcessor.process(recordList);
 
     TopicPartition tp = new TopicPartition("topic", 0);
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 100L), 100, "Should return 100 because there are no " +
@@ -264,7 +256,7 @@ public class ConsumerRecordsProcessorTest {
 
   @Test
   public void testLastDelivered() {
-    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecordsProcessor consumerRecordsProcessor = createConsumerRecordsProcessor();
     consumerRecordsProcessor.process(getConsumerRecords());
 
     assertEquals(consumerRecordsProcessor.delivered(new TopicPartition("topic", 0)).longValue(), 5L,
@@ -273,67 +265,82 @@ public class ConsumerRecordsProcessorTest {
     assertNull(consumerRecordsProcessor.delivered(new TopicPartition("topic", 1)));
   }
 
-  private ConsumerRecords<byte[], byte[]> getConsumerRecords() {
+  /**
+   * Generates the sequence of records:
+   * <pre>
+   *   0 m0   -- not a large message
+   *   1 m1s0
+   *   2 m2   -- not a a large message
+   *   3 m3s0
+   *   4 m3s1 -- completes m3
+   *   5 m1s1 -- completes m1
+   * </pre>
+   */
+  private List<ExtensibleConsumerRecord<byte[], byte[]>> getConsumerRecords() {
     Serializer<String> stringSerializer = new StringSerializer();
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     // Create two large messages.
-    MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer);
+    SimplePartitioner simplePartitioner = new SimplePartitioner() {
+      @Override
+      public int partition(String topic) {
+        throw new IllegalStateException("This should not have been called.");
+      }
+    };
+    MessageSplitter splitter = new MessageSplitterImpl(500, new UUIDFactoryImpl(), simplePartitioner);
+    int partition  = 0;
 
-    UUID largeMessageId1 = UUID.randomUUID();
     byte[] largeMessage1Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));
-    List<ProducerRecord<byte[], byte[]>> splitLargeMessage1 =
-        splitter.split("topic", largeMessageId1, largeMessage1Bytes);
+    ExtensibleProducerRecord<byte[], byte[]> largeRecord1 =
+        new ExtensibleProducerRecord<>("topic", partition, null, "key".getBytes(), largeMessage1Bytes);
+    Iterator<ExtensibleProducerRecord<byte[], byte[]>> splitLargeMessage1 = splitter.split(largeRecord1).iterator();
 
-    UUID largeMessageId2 = UUID.randomUUID();
     byte[] largeMessage2Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));
-    List<ProducerRecord<byte[], byte[]>> splitLargeMessage2 =
-        splitter.split("topic", largeMessageId2, largeMessage2Bytes);
+    ExtensibleProducerRecord<byte[], byte[]> largeRecord2 =
+        new ExtensibleProducerRecord<>("topic", partition, null, "key".getBytes(), largeMessage2Bytes);
+    Iterator<ExtensibleProducerRecord<byte[], byte[]>> splitLargeMessage2 = splitter.split(largeRecord2).iterator();
 
     // Let consumer record 0 be a normal record.
-    ConsumerRecord<byte[], byte[]> consumerRecord0 =
-        new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message0"));
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord0 =
+        new ExtensibleConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0,
+          "key".getBytes(), stringSerializer.serialize("topic", "message0"));
     // Let consumer record 1 be a large message segment
-    ConsumerRecord<byte[], byte[]> consumerRecord1 =
-        new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage1.get(0).value());
+    ExtensibleProducerRecord<byte[], byte[]> producerRecord1S0 = splitLargeMessage1.next();
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord1 =
+      TestUtils.producerRecordToConsumerRecord(producerRecord1S0, 1, 0L, TimestampType.CREATE_TIME, 0, 0);
+
     // Let consumer record 2 be a normal message
-    ConsumerRecord<byte[], byte[]> consumerRecord2 =
-        new ConsumerRecord<>("topic", 0, 2, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message1"));
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord2 =
+        new ExtensibleConsumerRecord<>("topic", 0, 2, 0L, TimestampType.CREATE_TIME, 0, 0, 0,
+          "key".getBytes(), stringSerializer.serialize("topic", "message1"));
     // Let record 3 be a new large message segment
-    ConsumerRecord<byte[], byte[]> consumerRecord3 =
-        new ConsumerRecord<>("topic", 0, 3, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage2.get(0).value());
+    ExtensibleProducerRecord<byte[], byte[]> producerRecord2S0 = splitLargeMessage2.next();
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord3 =
+      TestUtils.producerRecordToConsumerRecord(producerRecord2S0, 3, 0L, TimestampType.CREATE_TIME, 0, 0);
+
     // let record 4 completes record 3
-    ConsumerRecord<byte[], byte[]> consumerRecord4 =
-        new ConsumerRecord<>("topic", 0, 4, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage2.get(1).value());
+    ExtensibleProducerRecord<byte[], byte[]> producerRecord2S1 = splitLargeMessage2.next();
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord4 =
+      TestUtils.producerRecordToConsumerRecord(producerRecord2S1, 4, 0L, TimestampType.CREATE_TIME, 0, 0);
+
     // let record 5 completes record 1
-    ConsumerRecord<byte[], byte[]> consumerRecord5 =
-        new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage1.get(1).value());
+    ExtensibleProducerRecord<byte[], byte[]> producerRecord1S1 = splitLargeMessage1.next();
+    ExtensibleConsumerRecord<byte[], byte[]> consumerRecord5 =
+      TestUtils.producerRecordToConsumerRecord(producerRecord1S1, 5, 0L, TimestampType.CREATE_TIME, 0, 0);
 
     // Construct the consumer records.
-    List<ConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
+    List<ExtensibleConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();
     recordList.add(consumerRecord0);
     recordList.add(consumerRecord1);
     recordList.add(consumerRecord2);
     recordList.add(consumerRecord3);
     recordList.add(consumerRecord4);
     recordList.add(consumerRecord5);
-    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordsMap =
-        new HashMap<>();
-    recordsMap.put(new TopicPartition("topic", 0), recordList);
-    return new ConsumerRecords<>(recordsMap);
+    return recordList;
   }
 
-  private ConsumerRecordsProcessor<String, String> createConsumerRecordsProcessor() {
-    Deserializer<String> stringDeserializer = new StringDeserializer();
-    Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
-    MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false, segmentDeserializer);
+  private ConsumerRecordsProcessor createConsumerRecordsProcessor() {
+    MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false);
     DeliveredMessageOffsetTracker deliveredMessageOffsetTracker = new DeliveredMessageOffsetTracker(4);
-    return new ConsumerRecordsProcessor<>(assembler, stringDeserializer, stringDeserializer,
-                                          deliveredMessageOffsetTracker, null);
+    return new ConsumerRecordsProcessor(assembler, deliveredMessageOffsetTracker);
   }
 
-  private byte[] wrapMessageBytes(Serializer<LargeMessageSegment> segmentSerializer, byte[] messageBytes) {
-    return segmentSerializer.serialize("topic",
-                                       new LargeMessageSegment(UUID.randomUUID(), 0, 1, messageBytes.length,
-                                                               ByteBuffer.wrap(messageBytes)));
-  }
 }

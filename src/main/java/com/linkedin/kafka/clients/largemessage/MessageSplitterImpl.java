@@ -4,9 +4,13 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.utils.HeaderKeySpace;
+import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.Serializer;
+import com.linkedin.kafka.clients.utils.SimplePartitioner;
+import com.linkedin.kafka.clients.utils.UUIDFactory;
+import java.util.Collection;
+import java.util.Collections;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -14,83 +18,72 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * This class is used by {@link com.linkedin.kafka.clients.producer.LiKafkaProducerImpl} to split to split
+ * This class is used by {@link com.linkedin.kafka.clients.producer.LiKafkaProducerImpl} to split
  * serialized records.
  */
-public class MessageSplitterImpl implements MessageSplitter {
+public class MessageSplitterImpl<K, V> implements MessageSplitter<K, V> {
   // This class does not do anything with the original record, so no key serializer is needed.
   private final int _maxSegmentSize;
-  private final Serializer<LargeMessageSegment> _segmentSerializer;
+  private final UUIDFactory _uuidFactory;
+  private final SimplePartitioner _partitioner;
 
-  public MessageSplitterImpl(int maxSegmentSize,
-                             Serializer<LargeMessageSegment> segmentSerializer) {
-    _maxSegmentSize = maxSegmentSize;
-    _segmentSerializer = segmentSerializer;
-  }
-
-  @Override
-  public List<ProducerRecord<byte[], byte[]>> split(String topic, UUID messageId, byte[] serializedRecord) {
-    return split(topic, messageId, null, serializedRecord);
-  }
-
-  @Override
-  public List<ProducerRecord<byte[], byte[]>> split(String topic, UUID messageId, byte[] key, byte[] serializedRecord) {
-    return split(topic, null, messageId, key, serializedRecord);
-  }
-
-  @Override
-  public List<ProducerRecord<byte[], byte[]>> split(String topic, Integer partition, UUID messageId, byte[] serializedRecord) {
-    return split(topic, partition, messageId, null, serializedRecord);
-  }
-
-  @Override
-  public List<ProducerRecord<byte[], byte[]>> split(String topic, Integer partition, UUID messageId, byte[] key, byte[] serializedRecord) {
-    return split(topic, partition, null, messageId, key, serializedRecord);
-  }
-
-  @Override
-  public List<ProducerRecord<byte[], byte[]>> split(String topic, Integer partition, Long timestamp, UUID messageId, byte[] key, byte[] serializedRecord) {
-    return split(topic, partition, timestamp, messageId, key, serializedRecord, _maxSegmentSize);
-  }
-
-  @Override
-  public List<ProducerRecord<byte[], byte[]>> split(String topic,
-                                                    Integer partition,
-                                                    Long timestamp,
-                                                    UUID messageId,
-                                                    byte[] key,
-                                                    byte[] serializedRecord,
-                                                    int maxSegmentSize) {
-
-    if (topic == null) {
-      throw new IllegalArgumentException("Topic cannot be empty for LiKafkaGenericMessageSplitter.");
+  /**
+   *
+   * @param simpleParitioner  This is used when the original record is missing both a key and a partition.  In that case we
+   *                     want all the segments of the original value to arrive at the same consumer.
+   */
+  public MessageSplitterImpl(int maxSegmentSize, UUIDFactory uuidFactory, SimplePartitioner simpleParitioner) {
+    if (maxSegmentSize <= 0) {
+      throw new IllegalArgumentException("maxSegmentSize must be a positive integer.");
     }
-    // We allow message id to be null, but it is strongly recommended to pass in a message id.
-    UUID segmentMessageId = messageId == null ? UUID.randomUUID() : messageId;
-    List<ProducerRecord<byte[], byte[]>> segments = new ArrayList<>();
-    // Get the total number of segments
-    int numberOfSegments = (serializedRecord.length + (maxSegmentSize - 1)) / maxSegmentSize;
-    // Get original message size in bytes
-    int messageSizeInBytes = serializedRecord.length;
-    ByteBuffer bytebuffer = ByteBuffer.wrap(serializedRecord);
+    if (uuidFactory == null) {
+      throw new IllegalArgumentException("uuidFactory must not be null");
+    }
+    this._maxSegmentSize = maxSegmentSize;
+    this._uuidFactory = uuidFactory;
+    this._partitioner = simpleParitioner;
+  }
 
-    byte[] segmentKey = key == null ? LiKafkaClientsUtils.uuidToBytes(segmentMessageId) : key;
+  @Override
+  public Collection<ExtensibleProducerRecord<byte[], byte[]>> split(ExtensibleProducerRecord<byte[], byte[]> previousRecord) {
+    int messageSizeInBytes = previousRecord.value() == null ? 0 : previousRecord.value().length;
+    if (messageSizeInBytes < _maxSegmentSize) {
+      return Collections.singleton(previousRecord);
+    }
+
+    UUID segmentMessageId = _uuidFactory.create();
+    // Get the total number of segments
+    int numberOfSegments = (messageSizeInBytes + (_maxSegmentSize - 1)) / _maxSegmentSize;
+    List<ExtensibleProducerRecord<byte[], byte[]>> segments = new ArrayList<>(numberOfSegments);
+
+    ByteBuffer bytebuffer = ByteBuffer.wrap(previousRecord.value());
+
+    byte[] key = previousRecord.key();
+    //If we don't set a key then mirror maker can scatter the message segments to the wind.
+    if (key == null) {
+      key = LiKafkaClientsUtils.uuidToBytes(segmentMessageId);
+    }
+
+    //If we don't set a partition then the partitioner may send all the segments to different consumers
+    Integer partition = previousRecord.partition();
+    if (partition == null) {
+      partition = _partitioner.partition(previousRecord.topic());
+    }
+
     // Sequence number starts from 0.
     for (int seq = 0; seq < numberOfSegments; seq++) {
-      int segmentStart = seq * maxSegmentSize;
-      int segmentLength = Math.min(serializedRecord.length - segmentStart, maxSegmentSize);
-      // For efficiency we do not make array copy, but just slice the ByteBuffer. The segment serializer needs to
-      // decide how to deal with the payload ByteBuffer.
+      int segmentStart = seq * _maxSegmentSize;
+      int segmentLength = Math.min(previousRecord.value().length - segmentStart, _maxSegmentSize);
       bytebuffer.position(segmentStart);
       ByteBuffer payload = bytebuffer.slice();
       payload.limit(segmentLength);
       LargeMessageSegment segment = new LargeMessageSegment(segmentMessageId, seq,
-          numberOfSegments, messageSizeInBytes, payload);
+          numberOfSegments, messageSizeInBytes, previousRecord.key() == null, payload);
 
-      // NOTE: we have to use null topic here to serialize because the segment should be topic independent.
-      byte[] segmentValue = _segmentSerializer.serialize(null, segment);
-      ProducerRecord<byte[], byte[]> segmentProducerRecord =
-          new ProducerRecord<>(topic, partition, timestamp, segmentKey, segmentValue);
+      ExtensibleProducerRecord<byte[], byte[]> segmentProducerRecord =
+        new ExtensibleProducerRecord<>(previousRecord.topic(), partition, previousRecord.timestamp(), key, segment.segmentArray());
+      segmentProducerRecord.copyHeadersFrom(previousRecord);
+      segmentProducerRecord.header(HeaderKeySpace.LARGE_MESSAGE_SEGMENT_HEADER, segment.segmentHeader());
       segments.add(segmentProducerRecord);
     }
 
