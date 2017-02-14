@@ -15,15 +15,25 @@ checkstyle {
     toolVersion = '5.9'
 }
 
-dependencies {
-    compile 'org.apache.kafka:kafka_2.10:0.10.1.1:test'
-    compile 'org.apache.kafka:kafka_2.10:0.10.1.1'
-    compile 'org.apache.kafka:kafka-clients:0.10.1.1'
-    compile 'org.scala-lang:scala-library:2.10.4'
-    compile 'org.apache.zookeeper:zookeeper:3.4.6'
-    compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
+sourceSets {
+    test {
+        java {
+            srcDirs = []
+        }
+        //needed because our java tests depend on scala classes, so must be compiled by scala
+        scala {
+            srcDirs = ['src/test/java', 'src/test/scala']
+        }
+    }
+}
 
-    testCompile "org.scala-lang:scala-library:2.10.4"
+dependencies {
+
+    compile 'org.apache.kafka:kafka-clients:0.10.1.1'
+
+    testCompile 'org.apache.kafka:kafka_2.10:0.10.1.1:test'
+    testCompile 'org.apache.kafka:kafka_2.10:0.10.1.1'
+    testCompile 'org.bouncycastle:bcpkix-jdk15on:1.54'
     testCompile 'org.testng:testng:6.8.8'
 }
 
