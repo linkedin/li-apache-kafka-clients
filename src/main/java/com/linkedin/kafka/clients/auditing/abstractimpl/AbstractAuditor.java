@@ -50,7 +50,7 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * For users who wants to have customized configurations, they may override the method:
  * <pre>
- *   public void configure(Map<String, ?> configs);
+ *   public void configure(Map&lt;String, ?&gt; configs);
  * </pre>
  *
  * An example implementation can be found in {@link LoggingAuditor}. The {@link LoggingAuditor} uses

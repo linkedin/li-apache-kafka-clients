@@ -100,9 +100,9 @@ public class ConsumerRecordsProcessor<K, V> {
    * <p>
    * For example, consider the following message/segment sequence:
    * <ul>
-   * <li>offset 0 ----> message0_segment0
-   * <li>offset 1 ----> message1
-   * <li>offset 2 ----> message0_segment1
+   * <li>offset 0 ----&gt; message0_segment0
+   * <li>offset 1 ----&gt; message1
+   * <li>offset 2 ----&gt; message0_segment1
    * </ul>
    * <p>
    * When safeOffset(tp, 0) is called, a {@link com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException} will

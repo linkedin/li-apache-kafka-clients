@@ -68,9 +68,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * props.put("segment.serializer", DefaultSegmentSerializer.class.getName());
  * props.put("auditor.class", LoggingAuditor.class.getName());
  *
- * LiKafkaProducer<String, String> liKafkaProducer = new LiKafkaProducerImpl<>(props);
- * for(int i = 0; i < 100; i++)
- *     liKafkaProducer.send(new ProducerRecord<String, String>("my-topic", Integer.toString(i), Integer.toString(i)));
+ * LiKafkaProducer&lt;String, String&gt; liKafkaProducer = new LiKafkaProducerImpl&lt;&gt;(props);
+ * for(int i = 0; i &lt; 100; i++)
+ *     liKafkaProducer.send(new ProducerRecord&lt;String, String$gt;("my-topic", Integer.toString(i), Integer.toString(i)));
  *
  * producer.close();
  * </code></pre>
@@ -90,7 +90,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <pre><code>
  * {@literal @}Override
  * {@literal @}SuppressWarnings("unchecked")
- * public void configure(Map<String, ?> configs) {
+ * public void configure(Map&lt;String, ?&gt; configs) {
  *    ...
  *    Producer&lt;byte[], byte[]&gt; producer = (Producer&lt;byte[], byte[]&gt;) configs.get(LiKafkaProducerConfig.CURRENT_PRODUCER);
  *    ...
