@@ -22,7 +22,7 @@ public interface Auditor<K, V> extends Configurable {
   /**
    * This method will be invoked by LiKafkaProducer on instantiation.
    * Notice that if the auditor is used by the producer, there will be an additional
-   * {@link KafkaProducer KafkaProducer<byte[], byte[]>} object passed in the configuration with the key of
+   * {@link KafkaProducer KafkaProducer&lt;byte[], byte[]&gt;} object passed in the configuration with the key of
    * {@link LiKafkaProducerConfig#CURRENT_PRODUCER}. User can use this producer send auditing events to the same Kafka
    * cluster the producer is is producing to. This is to avoid creating another producer.
    *
