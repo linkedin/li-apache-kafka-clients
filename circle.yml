@@ -6,5 +6,5 @@ deployment:
     master:
         branch: master
         commands: 
-		- LAST_TAG=`git describe --tags`; if [ `git rev-parse HEAD` == `git rev-parse $LAST_TAG` ]; then ./gradlew artifactoryPublish distributeBuild ; fi
+            - LAST_TAG=`git describe --tags`; if [ `git rev-parse HEAD` == `git rev-parse $LAST_TAG` ]; then ./gradlew artifactoryPublish distributeBuild ; fi
  
