@@ -313,8 +313,8 @@ public class ConsumerRecordsProcessor<K, V> {
     ConsumerRecord<K, V> handledRecord = null;
     K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
-    V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
     if (valueBytes != INCOMPLETE_RESULT) {
+      V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
       if (_auditor != null) {
         long sizeInBytes = (consumerRecord.key() == null ? 0 : consumerRecord.key().length) +
             (valueBytes == null ? 0 : valueBytes.length);
