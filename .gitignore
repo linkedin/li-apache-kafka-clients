@@ -9,5 +9,5 @@
 /build
 */build
 out/
-*/bin/
+bin/
 .reviewboardrc

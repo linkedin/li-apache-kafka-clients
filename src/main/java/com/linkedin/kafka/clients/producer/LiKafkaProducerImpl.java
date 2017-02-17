@@ -72,9 +72,9 @@ import java.nio.ByteBuffer;
  * props.put("auditor.class", LoggingAuditor.class.getName());
  * props.put("uuid.factory.class", UUIDFactoryImpl.class.getName());
  *
- * LiKafkaProducer<String, String> liKafkaProducer = new LiKafkaProducerImpl<>(props);
- * for(int i = 0; i < 100; i++)
- *     liKafkaProducer.send(new ProducerRecord<String, String>("my-topic", Integer.toString(i), Integer.toString(i)));
+ * LiKafkaProducer&lt;String, String&gt; liKafkaProducer = new LiKafkaProducerImpl&lt;&gt;(props);
+ * for(int i = 0; i &lt; 100; i++)
+ *     liKafkaProducer.send(new ProducerRecord&lt;String, String$gt;("my-topic", Integer.toString(i), Integer.toString(i)));
  *
  * producer.close();
  * </code></pre>
@@ -91,7 +91,7 @@ import java.nio.ByteBuffer;
  * <pre><code>
  * {@literal @}Override
  * {@literal @}SuppressWarnings("unchecked")
- * public void configure(Map<String, ?> configs) {
+ * public void configure(Map&lt;String, ?&gt; configs) {
  *    ...
  *    Producer&lt;byte[], byte[]&gt; producer = (Producer&lt;byte[], byte[]&gt;) configs.get(LiKafkaProducerConfig.CURRENT_PRODUCER);
  *    ...
@@ -196,6 +196,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       String topic = producerRecord.topic();
       K key = producerRecord.key();
       V value = producerRecord.value();
+      Object auditToken = _auditor.auditToken(key, value);
       Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
       if (LOG.isTraceEnabled()) {
         LOG.trace("Sending record with [key={}, value={}] to kafka topic {}",
@@ -210,8 +211,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         serializedKey = _keySerializer.serialize(topic, key);
       } catch (Exception t) {
         // Audit the attempt and the failure.
-        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.ATTEMPT);
-        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.FAILURE);
+        _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.ATTEMPT);
+        _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.FAILURE);
         throw new KafkaException(t);
       }
 
@@ -219,13 +220,13 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       boolean useLargeMessageProcessing = _largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize;
       if (!(producerRecord instanceof ExtensibleProducerRecord) && serializedValue == null) {
         return sendNullValue(producerRecord, callback, topic, key, value, timestamp, serializedValue, serializedKey,
-          sizeInBytes);
+          sizeInBytes, auditToken);
       }
 
       if (producerRecord instanceof ExtensibleProducerRecord && !((ExtensibleProducerRecord) producerRecord).hasHeaders() &&
         serializedValue == null) {
         return sendNullValue(producerRecord, callback, topic, key, value, timestamp, serializedValue, serializedKey,
-          sizeInBytes);
+          sizeInBytes, auditToken);
       }
 
       ExtensibleProducerRecord<byte[], byte[]> xRecord =
@@ -242,10 +243,10 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         xRecords = Collections.singleton(xRecord);
       }
 
-      _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+      _auditor.record(auditToken, topic, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
 
       Callback errorLoggingCallback =
-        new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
+        new ErrorLoggingCallback<>(auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
 
       if (useLargeMessageProcessing) {
         errorLoggingCallback = new LargeMessageCallback(xRecords.size(), errorLoggingCallback);
@@ -257,8 +258,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       }
       return future;
     } catch (Exception t) {
-      _auditor.record(producerRecord.topic(), producerRecord.key(), producerRecord.value(), producerRecord.timestamp(),
-          1L, 0L, AuditType.FAILURE);
+      _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
+          producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       throw new KafkaException(t);
     } finally {
       _numThreadsInSend.decrementAndGet();
@@ -266,11 +267,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   }
 
   private Future<RecordMetadata> sendNullValue(ProducerRecord<K, V> producerRecord, Callback callback, String topic,
-    K key, V value, Long timestamp, byte[] serializedValue, byte[] serializedKey, int sizeInBytes) {
+    K key, V value, Long timestamp, byte[] serializedValue, byte[] serializedKey, int sizeInBytes, Object auditToken) {
     Future<RecordMetadata> future; // We wrap the user callback for error logging and auditing purpose.
     Callback errorLoggingCallback =
-      new ErrorLoggingCallback<>(key, value, topic, timestamp, sizeInBytes, _auditor, callback);
-    _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+      new ErrorLoggingCallback<>(auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
+    _auditor.record(auditToken, topic, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
     ProducerRecord<byte[], byte[]> headerlessByteRecord =
       new ProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(),
         serializedKey, serializedValue);
@@ -349,40 +350,38 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   }
 
   private static class ErrorLoggingCallback<K, V> implements Callback {
-    private final K _key;
-    private final V _value;
     private final String _topic;
     private final Long _timestamp;
     private final Integer _serializedSize;
+    private final Object _auditToken;
     private final Auditor<K, V> _auditor;
     private final Callback _userCallback;
 
-    public ErrorLoggingCallback(K key,
-                                V value,
+    public ErrorLoggingCallback(Object auditToken,
                                 String topic,
                                 Long timestamp,
                                 Integer serializedSize,
                                 Auditor<K, V> auditor,
                                 Callback userCallback) {
-      _value = value;
-      _key = key;
       _topic = topic;
       _timestamp = timestamp;
       _serializedSize = serializedSize;
       _auditor = auditor;
+      _auditToken = auditToken;
       _userCallback = userCallback;
     }
 
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        LOG.error(String.format("Unable to send event %s with key %s to kafka topic %s",
-            _value.toString(), (_key != null) ? _key : "[none]", _topic), e);
+        LOG.error(String.format("Unable to send event %s with message id %s to kafka topic %s",
+                                _auditToken == null ? "[No Custom Info]" : _auditToken,
+                                 _topic), e);
         // Audit the failure.
-        _auditor.record(_topic, _key, _value, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
+        _auditor.record(_auditToken, _topic, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
       } else {
         // Audit the success.
-        _auditor.record(_topic, _key, _value, _timestamp, 1L, _serializedSize.longValue(), AuditType.SUCCESS);
+        _auditor.record(_auditToken, _topic, _timestamp, 1L, _serializedSize.longValue(), AuditType.SUCCESS);
       }
       if (_userCallback != null) {
         _userCallback.onCompletion(recordMetadata, e);

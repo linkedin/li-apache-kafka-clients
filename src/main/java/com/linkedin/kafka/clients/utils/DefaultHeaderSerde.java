@@ -8,7 +8,7 @@ import java.nio.ByteBuffer;
 
 
 /**
- * Utilities to implement header Serde.
+ * Utilities to implement header serializer and deserializer.
  */
 public interface DefaultHeaderSerde {
   /**

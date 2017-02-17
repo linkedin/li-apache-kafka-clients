@@ -6,7 +6,7 @@ package com.linkedin.kafka.clients.utils.tests
 
 import java.io.File
 import java.util
-import java.util.{Properties, Arrays}
+import java.util.Properties
 
 import kafka.common.KafkaException
 import kafka.server.{KafkaConfig, KafkaServer}

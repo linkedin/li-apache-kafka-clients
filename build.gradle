@@ -1,12 +1,44 @@
 /*
- * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ * Copyright 2017 LinkedIn Corp.
+ * Licensed under the BSD 2-Clause License (the "License"). 
+ * See License in the project root for license information.
  */
+
+group = 'com.linkedin.kafka.clients'
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath "org.jfrog.buildinfo:build-info-extractor-gradle:latest.release"
+    }
+}
 
 apply plugin: 'java'
 apply plugin: 'scala'
+apply plugin: 'eclipse'
 apply plugin: 'idea'
 apply plugin: 'checkstyle'
+apply plugin: 'maven-publish'
+apply plugin: 'com.jfrog.artifactory'
 
+
+//project layout
+
+sourceSets {
+    test {
+        java {
+            srcDirs = []
+        }
+        //needed because our java tests depend on scala classes, so must be compiled by scala
+        scala {
+            srcDirs = ['src/test/java', 'src/test/scala']
+        }
+    }
+}
+
+// dependencies
 repositories {
     maven {
         url "http://repository.apache.org/snapshots"
@@ -14,21 +46,20 @@ repositories {
     mavenCentral()
 }
 
-checkstyle {
-    toolVersion = '5.9'
-}
-
 dependencies {
     compile 'org.apache.kafka:kafka_2.10:0.10.2.0-SNAPSHOT:test'
     compile 'org.apache.kafka:kafka_2.10:0.10.2.0-SNAPSHOT'
     compile 'org.apache.kafka:kafka-clients:0.10.2.0-SNAPSHOT'
-    compile 'org.scala-lang:scala-library:2.10.4'
     compile 'org.apache.zookeeper:zookeeper:3.4.6'
     compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
 
-    testCompile "org.scala-lang:scala-library:2.10.4"
+    testCompile 'org.apache.kafka:kafka_2.10:0.10.1.1:test'
+    testCompile 'org.apache.kafka:kafka_2.10:0.10.1.1'
+    testCompile 'org.bouncycastle:bcpkix-jdk15on:1.54'
     testCompile 'org.testng:testng:6.8.8'
 }
+
+//test configurations
 
 test {
     useTestNG {}
@@ -37,6 +68,95 @@ test {
     }
 }
 
+//code quality and inspections
+
+checkstyle {
+    toolVersion = '7.5.1'
+}
+
+//build artifacts
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+task testJar(type: Jar, dependsOn: testClasses) {
+    classifier = 'tests'
+    from sourceSets.test.output
+}
+
+build.dependsOn 'testJar'
+
+configurations {
+    testArtifacts.extendsFrom testRuntime
+}
+
+artifacts {
+    testArtifacts testJar
+    archives sourcesJar
+    archives javadocJar
+}
+
+//maven artifact(s) generation
+
+publishing {
+    publications {
+        standardjava(MavenPublication) {
+            from components.java
+            artifact sourcesJar
+            artifact javadocJar
+            artifact testJar
+            pom.withXml {
+                asNode().children().last() + {
+                    resolveStrategy = Closure.DELEGATE_FIRST
+                    description 'li-apache-kafka-clients'
+                    url 'https://github.com/linkedin/li-apache-kafka-clients'
+                    scm {
+                        url 'https://github.com/linkedin/li-apache-kafka-clients'
+                        connection 'scm:git:git://github.com/linkedin/li-apache-kafka-clients.git'
+                        developerConnection 'scm:git:ssh:git@github.com:linkedin/li-apache-kafka-clients.git.git'
+                    }
+                    licenses {
+                        license {
+                            name 'BSD 2-CLAUSE LICENSE'
+                            url 'https://opensource.org/licenses/BSD-2-Clause'
+                            distribution 'repo'
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+//publishing (artifactory)
+
+artifactory {
+    publish {
+        contextUrl = 'https://linkedin.jfrog.io/linkedin'
+        repository {
+            repoKey = 'li-apache-kafka-clients'
+            username = System.getenv('ARTIFACTORY_USER')
+            password = System.getenv('ARTIFACTORY_KEY')
+        }
+        defaults {
+            publications ('standardjava')
+            publishBuildInfo = true
+            publishArtifacts = true
+            publishPom = true
+            publishIvy = true
+        }
+    }
+}
+
+//wrapper generation task
+
 task wrapper(type: Wrapper) {
-    gradleVersion = '2.13' //version required
+    gradleVersion = '3.3'
 }

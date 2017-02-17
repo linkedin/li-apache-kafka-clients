@@ -14,6 +14,7 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Locale;
 import java.nio.ByteBuffer;
+
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -258,10 +259,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     Map<TopicPartition, List<ConsumerRecord<K, V>>> consumerRecordsMap = new HashMap<>();
     for (ExtensibleConsumerRecord<byte[], byte[]> xRecord : xRecords) {
       ExtensibleConsumerRecord<K, V> userRecord = deserialize(xRecord);
+
       if (_auditor != null) {
         long totalBytes = userRecord.serializedKeySize() + userRecord.serializedValueSize();
-        _auditor.record(userRecord.topic(), userRecord.key(), userRecord.value(), userRecord.timestamp(), 1L, totalBytes,
-            AuditType.SUCCESS);
+        _auditor.record(_auditor.auditToken(userRecord.key(), userRecord.value()), userRecord.topic(),
+            userRecord.timestamp(), 1L, totalBytes, AuditType.SUCCESS);
       }
 
       TopicPartition topicPartition = new TopicPartition(userRecord.topic(), userRecord.partition());

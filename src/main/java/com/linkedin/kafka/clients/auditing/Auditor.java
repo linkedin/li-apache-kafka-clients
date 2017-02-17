@@ -22,7 +22,7 @@ public interface Auditor<K, V> extends Configurable {
   /**
    * This method will be invoked by LiKafkaProducer on instantiation.
    * Notice that if the auditor is used by the producer, there will be an additional
-   * {@link KafkaProducer KafkaProducer<byte[], byte[]>} object passed in the configuration with the key of
+   * {@link KafkaProducer KafkaProducer&lt;byte[], byte[]&gt;} object passed in the configuration with the key of
    * {@link LiKafkaProducerConfig#CURRENT_PRODUCER}. User can use this producer send auditing events to the same Kafka
    * cluster the producer is is producing to. This is to avoid creating another producer.
    *
@@ -36,22 +36,26 @@ public interface Auditor<K, V> extends Configurable {
   void start();
 
   /**
-   * Record the given event in the monitoring statistics. This method will be called by LiKafkaProducerImpl
-   * for each record it sends, no matter if the record is sent successfully or failed.
+   * Get the audit token from the key and value of the record.
+   * This method helps the producer avoid holding the key and value until the message sending is completed.
    *
-   * This method may be called from multiple threads, so the implementation must be thread safe.
+   * @param key the key of the record.
+   * @param value the value of the record.
+   * @return the custom audit information.
+   */
+  Object auditToken(K key, V value);
+
+  /**
+   * Audit the record based on the given information.
    *
-   * @param topic The topic of the event.
-   * @param key The key of the event.
-   * @param value The value of the event.
-   * @param timestamp The timestamp of the event.
+   * @param auditToken The user extracted auditing information.
+   * @param topic The topic of the record.
+   * @param timestamp The timestamp of the record.
    * @param messageCount The number of messages to record.
    * @param bytesCount The number of bytes to record.
-   * @param auditType The type of the event to audit.
    */
-  void record(String topic,
-              K key,
-              V value,
+  void record(Object auditToken,
+              String topic,
               Long timestamp,
               Long messageCount,
               Long bytesCount,

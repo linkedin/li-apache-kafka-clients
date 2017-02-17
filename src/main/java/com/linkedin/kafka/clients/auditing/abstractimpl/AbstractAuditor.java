@@ -44,13 +44,14 @@ import java.util.concurrent.TimeUnit;
  *   {@link #onTick(AuditStats)}
  *   {@link #onClosed(AuditStats, AuditStats)}
  *   {@link #createAuditStats()}
- *   {@link #getAuditKey(String, Object, Object, Long, Long, Long, com.linkedin.kafka.clients.auditing.AuditType)}
+ *   {@link #getAuditKey(Object, String, Long, Long, Long, AuditType)}
+ *   {@link #auditToken(Object, Object)}
  * </pre>
  *
  * <p>
  * For users who wants to have customized configurations, they may override the method:
  * <pre>
- *   public void configure(Map<String, ?> configs);
+ *   public void configure(Map&lt;String, ?&gt; configs);
  * </pre>
  *
  * An example implementation can be found in {@link LoggingAuditor}. The {@link LoggingAuditor} uses
@@ -91,6 +92,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    */
   public AbstractAuditor() {
     super();
+    this.setUncaughtExceptionHandler((t, e) -> LOG.error("Auditor encounter exception.", e));
     _time = new SystemTime();
   }
 
@@ -236,29 +238,29 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   protected abstract AuditStats createAuditStats();
 
   /**
-   * Get the audit key based on the event information. The audit key will be used to categorize the event that is
-   * being audited. For example, if user wants to categorize the events based on the size of the bytes, the audit key
+   * Get the audit key based on the record audit token. The audit key will be used to categorize the record that is
+   * being audited. For example, if user wants to categorize the records based on the size of the bytes, the audit key
    * could be the combination of topic and size rounded down to 100KB. An example audit key implementation can be
    * found in {@link AuditKey}.
    *
-   * @param topic the topic of the event being audited.
-   * @param key the key of the event being audited.
-   * @param value the value of the event being audited.
-   * @param timestamp the timestamp of the event being audited.
-   * @param messageCount the number of messages being audited.
+   * @param auditToken the custom audit token extracted from key and value of the record being audited.
+   * @param topic the topic of the record being audited.
+   * @param timestamp the timestamp of the record being audited.
+   * @param messageCount the number of records being audited.
    * @param bytesCount the number of bytes being audited.
-   * @param auditType the audit type of the event being audited.
    *
    * @return An object that can be served as an key in a {@link java.util.HashMap}. Returning null means skipping the
    * auditing.
    */
-  protected abstract Object getAuditKey(String topic,
-                                        K key,
-                                        V value,
+  protected abstract Object getAuditKey(Object auditToken,
+                                        String topic,
                                         Long timestamp,
                                         Long messageCount,
                                         Long bytesCount,
                                         AuditType auditType);
+
+  @Override
+  public abstract Object auditToken(K key, V value);
 
   @Override
   public void start() {
@@ -269,9 +271,8 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   }
 
   @Override
-  public void record(String topic,
-                     K key,
-                     V value,
+  public void record(Object auditToken,
+                     String topic,
                      Long timestamp,
                      Long messageCount,
                      Long bytesCount,
@@ -280,7 +281,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     do {
       try {
         AuditStats auditStats = timestamp == null || timestamp >= _nextTick ? _nextStats : _currentStats;
-        Object auditKey = getAuditKey(topic, key, value, timestamp, messageCount, bytesCount, auditType);
+        Object auditKey = getAuditKey(auditToken, topic, timestamp, messageCount, bytesCount, auditType);
         if (auditKey != null) {
           auditStats.update(auditKey, messageCount, bytesCount);
         }

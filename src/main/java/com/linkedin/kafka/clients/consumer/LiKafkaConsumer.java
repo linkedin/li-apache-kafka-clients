@@ -499,9 +499,9 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * <p>
    * For example, consider the following message/segment sequence:
    * <ul>
-   * <li>offset 0 ----> message0_segment0
-   * <li>offset 1 ----> message1
-   * <li>offset 2 ----> message0_segment1
+   * <li>offset 0 ----&gt; message0_segment0
+   * <li>offset 1 ----&gt; message1
+   * <li>offset 2 ----&gt; message0_segment1
    * </ul>
    * The offset of a large message is the offset of its last segment. In the above example the user will see
    * message 1 with offset 1 followed by message 0 with offset 2.
@@ -546,7 +546,7 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * @return Safe offset for the partition. null is returned if no message has been delivered from the given
    * partition.
    *
-   * @see {@link #safeOffset(TopicPartition, long)}
+   * @see LiKafkaConsumer#safeOffset(TopicPartition, long)
    */
   @InterfaceOrigin.LiKafkaClients
   Long safeOffset(TopicPartition tp);
@@ -561,7 +561,7 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    *
    * @return a map of safe offset for each partition.
    *
-   * @see {@link #safeOffset(TopicPartition, long)}
+   * @see LiKafkaConsumer#safeOffset(TopicPartition, long)
    */
   @InterfaceOrigin.LiKafkaClients
   Map<TopicPartition, Long> safeOffsets();

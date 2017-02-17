@@ -83,9 +83,9 @@ public class ConsumerRecordsProcessor {
    * <p>
    * For example, consider the following message/segment sequence:
    * <ul>
-   * <li>offset 0 ----> message0_segment0
-   * <li>offset 1 ----> message1
-   * <li>offset 2 ----> message0_segment1
+   * <li>offset 0 ----&gt; message0_segment0
+   * <li>offset 1 ----&gt; message1
+   * <li>offset 2 ----&gt; message0_segment1
    * </ul>
    * <p>
    * When safeOffset(tp, 0) is called, a {@link com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException} will
@@ -283,9 +283,35 @@ public class ConsumerRecordsProcessor {
     _partitionConsumerHighWatermark.remove(tp);
   }
 
+
   public void close() {
     _messageAssembler.close();
   }
+
+  /*
+  private ConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
+    TopicPartition tp = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
+    ConsumerRecord<K, V> handledRecord = null;
+    K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
+    byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
+    V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
+    if (value != null) {
+      if (_auditor != null) {
+        _auditor.record(_auditor.auditToken(key, value), tp.topic(), consumerRecord.timestamp(), 1L,
+                        (long) consumerRecord.value().length, AuditType.SUCCESS);
+      }
+      handledRecord = new ConsumerRecord<>(
+          consumerRecord.topic(),
+          consumerRecord.partition(),
+          consumerRecord.offset(),
+          consumerRecord.timestamp(),
+          consumerRecord.timestampType(),
+          consumerRecord.checksum(),
+          consumerRecord.serializedKeySize(),
+          valueBytes.length,
+          _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key()),
+          value);
+*/
 
   /**
    * When we encounter an incomplete large message this filters (i.e. it returns null) otherwise this tracks records and

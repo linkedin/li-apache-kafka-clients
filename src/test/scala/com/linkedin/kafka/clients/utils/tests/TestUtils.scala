@@ -6,7 +6,7 @@ package com.linkedin.kafka.clients.utils.tests
 
 import java.io.File
 import java.nio.file.Files
-import java.util.{Random, Properties}
+import java.util.{Properties, Random}
 
 import kafka.server.{KafkaServer, KafkaConfig}
 import org.apache.kafka.common.utils.Time
@@ -15,8 +15,8 @@ import org.apache.kafka.common.protocol.SecurityProtocol
 import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.common.utils.Utils.formatAddress
 
-import scala.collection.mutable.ArrayBuffer
 import scala.collection.JavaConversions._
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * This is a copy of open source embedded zookeeper but removed the dependency on o.a.k.test.TestUtils dependency.
