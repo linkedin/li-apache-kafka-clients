@@ -238,12 +238,12 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   protected abstract AuditStats createAuditStats();
 
   /**
-   * Get the audit key based on the record information. The audit key will be used to categorize the event that is
+   * Get the audit key based on the record audit token. The audit key will be used to categorize the record that is
    * being audited. For example, if user wants to categorize the records based on the size of the bytes, the audit key
    * could be the combination of topic and size rounded down to 100KB. An example audit key implementation can be
    * found in {@link AuditKey}.
    *
-   * @param auditInfo the custom audit information extracted from key and value of the record being audited.
+   * @param auditToken the custom audit token extracted from key and value of the record being audited.
    * @param topic the topic of the record being audited.
    * @param timestamp the timestamp of the record being audited.
    * @param messageCount the number of records being audited.
@@ -252,7 +252,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    * @return An object that can be served as an key in a {@link java.util.HashMap}. Returning null means skipping the
    * auditing.
    */
-  protected abstract Object getAuditKey(Object auditInfo,
+  protected abstract Object getAuditKey(Object auditToken,
                                         String topic,
                                         Long timestamp,
                                         Long messageCount,
@@ -271,7 +271,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   }
 
   @Override
-  public void record(Object auditInfo,
+  public void record(Object auditToken,
                      String topic,
                      Long timestamp,
                      Long messageCount,
@@ -281,7 +281,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     do {
       try {
         AuditStats auditStats = timestamp == null || timestamp >= _nextTick ? _nextStats : _currentStats;
-        Object auditKey = getAuditKey(auditInfo, topic, timestamp, messageCount, bytesCount, auditType);
+        Object auditKey = getAuditKey(auditToken, topic, timestamp, messageCount, bytesCount, auditType);
         if (auditKey != null) {
           auditStats.update(auditKey, messageCount, bytesCount);
         }
