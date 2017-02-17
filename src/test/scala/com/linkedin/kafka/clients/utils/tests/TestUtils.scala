@@ -99,7 +99,8 @@ object TestUtils {
                          enablePlaintext: Boolean = true,
                          enableSaslPlaintext: Boolean = false, saslPlaintextPort: Int = RandomPort,
                          enableSsl: Boolean = false, sslPort: Int = RandomPort,
-                         enableSaslSsl: Boolean = false, saslSslPort: Int = RandomPort, rack: Option[String] = None)
+                         enableSaslSsl: Boolean = false, saslSslPort: Int = RandomPort, rack: Option[String] = None,
+                         enableLogCleaner: Boolean = false)
   : Properties = {
 
     def shouldEnable(protocol: SecurityProtocol) = interBrokerSecurityProtocol.fold(false)(_ == protocol)
@@ -129,6 +130,7 @@ object TestUtils {
     props.put("delete.topic.enable", enableDeleteTopic.toString)
     props.put("controlled.shutdown.retry.backoff.ms", "100")
     props.put("log.cleaner.dedupe.buffer.size", "2097152")
+    props.put("log.cleaner.enable", enableLogCleaner.toString)
     rack.foreach(props.put("broker.rack", _))
 
     if (protocolAndPorts.exists { case (protocol, _) => usesSslTransportLayer(protocol)})
