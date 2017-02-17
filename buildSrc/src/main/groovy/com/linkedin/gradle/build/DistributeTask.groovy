@@ -17,24 +17,38 @@ class DistributeTask extends DefaultTask {
         def context = convention.clientConfig.publisher.contextUrl
         def password = convention.clientConfig.publisher.password
 
-	System.out.println("context " + context + " buildName " + buildName);
+        buildName = "li-apache-kafka-clients"
+
+	if (password == null || password.equals("")) {
+            throw new IllegalArgumentException("password not set");
+        }
+
         def body = [
             "publish"              : "true",
             "overrideExistingFiles": "false",
             "async"                : "true",
             "targetRepo"           : "maven",
             "sourceRepos"          : [buildName],
-            "dryRun"               : "true"
+            "dryRun"               : "false"
         ]
 
         def bodyString = new JsonBuilder(body).toString()
 
-        def content = Request.Post("$context/api/build/distribute/$buildName/$buildNumber")
+        def url = "$context/api/build/distribute/$buildName/$buildNumber"
+        logger.lifecycle("url {}", url)
+        def response = Request.Post(url)
             .bodyString(bodyString, ContentType.APPLICATION_JSON)
             .addHeader("X-JFrog-Art-Api", password)
             .execute()
-            .returnContent()
+            .returnResponse();
 
-        logger.lifecycle("Distribute Response: {}", content.asString())
+        def bout = new ByteArrayOutputStream()
+        response.getEntity().writeTo(bout);
+        String errMsg = new String(bout.toByteArray());
+        logger.lifecycle("Distribute Response: {} {}", response, errMsg)
+
+	if (!Integer.toString(response.getStatusLine().getStatusCode()).startsWith("2")) {
+           throw new IOException("http post failed")
+        }
     }
 }
