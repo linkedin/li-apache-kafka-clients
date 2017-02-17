@@ -47,14 +47,7 @@ public class CountingAuditStats implements AuditStats {
         throw new IllegalStateException("Stats has been closed. The caller should get the new AuditStats and retry.");
       }
 
-      AuditingCounts statsForTopic = _stats.get(auditKey);
-      if (statsForTopic == null) {
-        statsForTopic = new AuditingCounts();
-        AuditingCounts prev = _stats.putIfAbsent(auditKey, statsForTopic);
-        if (prev != null) {
-          statsForTopic = prev;
-        }
-      }
+      AuditingCounts statsForTopic = _stats.computeIfAbsent(auditKey, v -> new AuditingCounts());
       statsForTopic.recordMessage(messageCount, bytesCount);
     } finally {
       _recordingInProgress.decrementAndGet();

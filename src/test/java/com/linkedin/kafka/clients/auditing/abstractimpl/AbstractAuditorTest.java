@@ -35,10 +35,10 @@ public class AbstractAuditorTest {
 
     assertEquals(auditor.nextTick(), 60000, "The cutting over time should be 60000");
 
-    auditor.record(auditor.getCustomAuditInfo("key", "value"), TOPIC, 0L, 1L, 10L, AuditType.SUCCESS);
-    auditor.record(auditor.getCustomAuditInfo("key", "value"), TOPIC, 30000L, 1L, 10L, AuditType.SUCCESS);
-    auditor.record(auditor.getCustomAuditInfo("key", "value"), TOPIC, auditor.nextTick(), 1L, 10L, AuditType.SUCCESS);
-    auditor.record(auditor.getCustomAuditInfo("key", "value"), TOPIC, auditor.nextTick(), 1L, 10L, AuditType.SUCCESS);
+    auditor.record(auditor.auditToken("key", "value"), TOPIC, 0L, 1L, 10L, AuditType.SUCCESS);
+    auditor.record(auditor.auditToken("key", "value"), TOPIC, 30000L, 1L, 10L, AuditType.SUCCESS);
+    auditor.record(auditor.auditToken("key", "value"), TOPIC, auditor.nextTick(), 1L, 10L, AuditType.SUCCESS);
+    auditor.record(auditor.auditToken("key", "value"), TOPIC, auditor.nextTick(), 1L, 10L, AuditType.SUCCESS);
 
     assertEquals(auditor.currentStats().stats().get(new AuditKey(TOPIC, 0L, AuditType.SUCCESS)).messageCount(), 1,
         "There should be one message in the current stats");
@@ -192,7 +192,7 @@ public class AbstractAuditorTest {
       for (int typeIndex = 0; typeIndex < _auditTypes.length; typeIndex++) {
         for (int topicIndex = 0; topicIndex < _topics.length; topicIndex++) {
           for (long timestamp = 0; timestamp < _numTimestamps; timestamp++) {
-            _auditor.record(_auditor.getCustomAuditInfo("key", "value"), _topics[topicIndex], timestamp, 1L, 2L, _auditTypes[typeIndex]);
+            _auditor.record(_auditor.auditToken("key", "value"), _topics[topicIndex], timestamp, 1L, 2L, _auditTypes[typeIndex]);
           }
         }
       }
@@ -251,7 +251,7 @@ public class AbstractAuditorTest {
     }
 
     @Override
-    public Object getCustomAuditInfo(String key, String value) {
+    public Object auditToken(String key, String value) {
       return null;
     }
 

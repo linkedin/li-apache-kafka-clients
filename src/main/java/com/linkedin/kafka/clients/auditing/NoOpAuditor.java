@@ -23,7 +23,7 @@ public class NoOpAuditor<K, V> implements Auditor<K, V> {
   }
 
   @Override
-  public Object getCustomAuditInfo(K key, V value) {
+  public Object auditToken(K key, V value) {
     return null;
   }
 

@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * The auditor interface. This class allows user to implement their own auditing solution.
- * 
+ *
  * Notice that the auditor may be used by multiple threads, so the implementation should be thread safe.
  */
 public interface Auditor<K, V> extends Configurable {
@@ -36,25 +36,25 @@ public interface Auditor<K, V> extends Configurable {
   void start();
 
   /**
-   * Get the custom audit information from the key and value of the record.
+   * Get the audit token from the key and value of the record.
    * This method helps the producer avoid holding the key and value until the message sending is completed.
    *
    * @param key the key of the record.
    * @param value the value of the record.
    * @return the custom audit information.
    */
-  Object getCustomAuditInfo(K key, V value);
+  Object auditToken(K key, V value);
 
   /**
    * Audit the record based on the given information.
    *
-   * @param customAuditInfo The user extracted auditing information.
+   * @param auditToken The user extracted auditing information.
    * @param topic The topic of the record.
    * @param timestamp The timestamp of the record.
    * @param messageCount The number of messages to record.
    * @param bytesCount The number of bytes to record.
    */
-  void record(Object customAuditInfo,
+  void record(Object auditToken,
               String topic,
               Long timestamp,
               Long messageCount,

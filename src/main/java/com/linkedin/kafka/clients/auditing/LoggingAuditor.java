@@ -82,7 +82,7 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
-  public Object getCustomAuditInfo(K key, V value) {
+  public Object auditToken(K key, V value) {
     // The logging auditor does not have custom audit information.
     return null;
   }

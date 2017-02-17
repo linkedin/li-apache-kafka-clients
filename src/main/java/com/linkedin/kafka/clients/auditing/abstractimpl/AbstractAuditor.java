@@ -45,13 +45,13 @@ import java.util.concurrent.TimeUnit;
  *   {@link #onClosed(AuditStats, AuditStats)}
  *   {@link #createAuditStats()}
  *   {@link #getAuditKey(Object, String, Long, Long, Long, AuditType)}
- *   {@link #getCustomAuditInfo(Object, Object)}
+ *   {@link #auditToken(Object, Object)}
  * </pre>
  *
  * <p>
  * For users who wants to have customized configurations, they may override the method:
  * <pre>
- *   public void configure(Map<String, ?> configs);
+ *   public void configure(Map&lt;String, ?&gt; configs);
  * </pre>
  *
  * An example implementation can be found in {@link LoggingAuditor}. The {@link LoggingAuditor} uses
@@ -92,6 +92,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    */
   public AbstractAuditor() {
     super();
+    this.setUncaughtExceptionHandler((t, e) -> LOG.error("Auditor encounter exception.", e));
     _time = new SystemTime();
   }
 
@@ -145,8 +146,6 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
             LOG.error("Auditor encounter exception.", e);
           }
         }
-      } catch (Throwable t) {
-        LOG.error("Auditor encounter exception.", t);
       } finally {
         _currentStats.close();
         _nextStats.close();
@@ -261,7 +260,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
                                         AuditType auditType);
 
   @Override
-  public abstract Object getCustomAuditInfo(K key, V value);
+  public abstract Object auditToken(K key, V value);
 
   @Override
   public void start() {
