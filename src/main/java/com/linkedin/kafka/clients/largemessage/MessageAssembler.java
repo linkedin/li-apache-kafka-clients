@@ -20,6 +20,8 @@ public interface MessageAssembler {
    * When the segment provided can complete an original message, the original message will be returned. Otherwise it
    * returns null.
    *
+   * @param tp the partition of this segment.
+   * @param offset the offset of this segment.
    * @param segmentBytes a message segment in byte array format created by {@link MessageSplitter}
    * @return The assemble result if a message is successfully assembled, otherwise returns null.
    */
@@ -62,7 +64,7 @@ public interface MessageAssembler {
   void close();
 
   class AssembleResult {
-    static final byte[] INCOMPLETE_RESULT = new byte[0];
+    public static final byte[] INCOMPLETE_RESULT = new byte[0];
     private final byte[] _messageBytes;
     private final long _messageStartingOffset;
     private final long _messageEndingOffset;

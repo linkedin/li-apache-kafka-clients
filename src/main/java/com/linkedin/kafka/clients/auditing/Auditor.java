@@ -53,6 +53,7 @@ public interface Auditor<K, V> extends Configurable {
    * @param timestamp The timestamp of the record.
    * @param messageCount The number of messages to record.
    * @param bytesCount The number of bytes to record.
+   * @param auditType The type of the auditing action.
    */
   void record(Object auditToken,
               String topic,

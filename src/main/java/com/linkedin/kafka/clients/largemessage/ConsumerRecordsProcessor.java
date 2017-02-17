@@ -154,6 +154,7 @@ public class ConsumerRecordsProcessor<K, V> {
    * might be thrown.
    *
    * @param offsetsToCommit the offset map user attempting commit.
+   * @param ignoreConsumerHighWatermark whether to ignore the current consumer high watermark.
    * @return the safe offset map that user should use to commit offsets.
    */
   public Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit(Map<TopicPartition, OffsetAndMetadata> offsetsToCommit,
