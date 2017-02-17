@@ -17,7 +17,7 @@ public interface AuditStats {
   /**
    * The method that record the message for audit.
    *
-   * @param auditKey The audit key for the event. (e.g. combination of topic, key and audit type).
+   * @param auditKey The audit key for the record. (e.g. combination of topic, key and audit type).
    * @param messageCount The number of messages to record.
    * @param bytesCount the number of bytes to record.
    *

@@ -5,7 +5,8 @@
 package com.linkedin.kafka.clients.utils.tests
 
 import javax.security.auth.login.Configuration
-import kafka.utils.{ZkUtils, Logging, CoreUtils}
+
+import kafka.utils.{CoreUtils, Logging, ZkUtils}
 import kafka.zk.ZkFourLetterWords
 import org.apache.kafka.common.security.JaasUtils
 

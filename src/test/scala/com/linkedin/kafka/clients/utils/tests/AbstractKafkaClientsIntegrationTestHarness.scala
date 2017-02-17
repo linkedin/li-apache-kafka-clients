@@ -6,9 +6,9 @@ package com.linkedin.kafka.clients.utils.tests
 
 import java.util.Properties
 
-import com.linkedin.kafka.clients.consumer.{LiKafkaConsumerConfig, LiKafkaConsumer, LiKafkaConsumerImpl}
-import com.linkedin.kafka.clients.largemessage.{DefaultSegmentSerializer, DefaultSegmentDeserializer}
-import com.linkedin.kafka.clients.producer.{LiKafkaProducerConfig, LiKafkaProducer, LiKafkaProducerImpl}
+import com.linkedin.kafka.clients.consumer.{LiKafkaConsumer, LiKafkaConsumerConfig, LiKafkaConsumerImpl}
+import com.linkedin.kafka.clients.largemessage.{DefaultSegmentDeserializer, DefaultSegmentSerializer}
+import com.linkedin.kafka.clients.producer.{LiKafkaProducer, LiKafkaProducerConfig, LiKafkaProducerImpl}
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.serialization.{StringDeserializer, StringSerializer}
