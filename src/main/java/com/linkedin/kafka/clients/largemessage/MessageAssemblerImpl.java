@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
+import static com.linkedin.kafka.clients.largemessage.MessageAssembler.AssembleResult.INCOMPLETE_RESULT;
+
 
 /**
  * The implementation of {@link MessageAssembler}
@@ -30,6 +32,10 @@ public class MessageAssemblerImpl implements MessageAssembler {
 
   @Override
   public AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes) {
+    if (segmentBytes == null) {
+      return new AssembleResult(null, offset, offset);
+    }
+
     LargeMessageSegment segment = _segmentDeserializer.deserialize(tp.topic(), segmentBytes);
     if (segment == null) {
       return new AssembleResult(segmentBytes, offset, offset);
@@ -39,7 +45,8 @@ public class MessageAssemblerImpl implements MessageAssembler {
         return new AssembleResult(segment.payloadArray(), offset, offset);
       } else {
         LargeMessage.SegmentAddResult result = _messagePool.tryCompleteMessage(tp, offset, segment);
-        return new AssembleResult(result.serializedMessage(), result.startingOffset(), offset);
+        return new AssembleResult(result.serializedMessage() == null ? INCOMPLETE_RESULT : result.serializedMessage(),
+                                  result.startingOffset(), offset);
       }
     }
   }

@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.utils.TestUtils;
+import java.util.Collections;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -271,6 +272,17 @@ public class ConsumerRecordsProcessorTest {
                  "The last deivered message should be 5");
 
     assertNull(consumerRecordsProcessor.delivered(new TopicPartition("topic", 1)));
+  }
+
+  @Test
+  public void testNullValue() {
+    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecord<byte[], byte[]> consumerRecord =
+        new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), null);
+    ConsumerRecords<byte[], byte[]> consumerRecords =
+        new ConsumerRecords<>(Collections.singletonMap(new TopicPartition("topic", 0), Collections.singletonList(consumerRecord)));
+    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(consumerRecords);
+    assertNull(processedRecords.iterator().next().value());
   }
 
   private ConsumerRecords<byte[], byte[]> getConsumerRecords() {

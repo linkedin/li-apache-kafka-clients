@@ -61,7 +61,8 @@ public interface MessageAssembler {
    */
   void close();
 
-  static class AssembleResult {
+  class AssembleResult {
+    static final byte[] INCOMPLETE_RESULT = new byte[0];
     private final byte[] _messageBytes;
     private final long _messageStartingOffset;
     private final long _messageEndingOffset;
