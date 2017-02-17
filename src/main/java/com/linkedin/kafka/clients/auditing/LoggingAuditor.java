@@ -72,7 +72,7 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
-  protected Object getAuditKey(Object auditInfo,
+  protected Object getAuditKey(Object auditToken,
                                String topic,
                                Long timestamp,
                                Long messageCount,

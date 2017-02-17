@@ -28,7 +28,7 @@ public class NoOpAuditor<K, V> implements Auditor<K, V> {
   }
 
   @Override
-  public void record(Object auditInfo,
+  public void record(Object auditToken,
                      String topic,
                      Long timestamp,
                      Long messageCount,

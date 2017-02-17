@@ -256,7 +256,7 @@ public class AbstractAuditorTest {
     }
 
     @Override
-    protected Object getAuditKey(Object auditInfo,
+    protected Object getAuditKey(Object auditToken,
                                  String topic,
                                  Long timestamp,
                                  Long messageCount,
