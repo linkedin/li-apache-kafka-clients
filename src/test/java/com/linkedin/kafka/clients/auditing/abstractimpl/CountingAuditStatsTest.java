@@ -8,7 +8,6 @@ import com.linkedin.kafka.clients.auditing.AuditType;
 import org.testng.annotations.Test;
 
 import java.util.Map;
-import com.linkedin.kafka.clients.auditing.abstractimpl.CountingAuditStats.AuditInfo;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -42,7 +41,7 @@ public class CountingAuditStatsTest {
       }
     }
 
-    Map<Object, AuditInfo> counters = stats.stats();
+    Map<Object, CountingAuditStats.AuditingCounts> counters = stats.stats();
     long numBuckets = (NUM_TIMESTAMPS + BUCKET_MS - 1) / BUCKET_MS;
     long expectedNumMessages = NUM_TIMESTAMPS / numBuckets * NUM_THREAD;
     for (int typeIndex = 0; typeIndex < AUDIT_TYPES.length; typeIndex++) {

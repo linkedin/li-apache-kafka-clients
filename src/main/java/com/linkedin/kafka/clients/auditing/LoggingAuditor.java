@@ -37,13 +37,13 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   public void printSummary(AuditStats auditStats) {
     CountingAuditStats countingAuditStats = (CountingAuditStats) auditStats;
     long bucketMs = countingAuditStats.bucketMs();
-    Map<Object, CountingAuditStats.AuditInfo> stats = countingAuditStats.stats();
-    for (Map.Entry<Object, CountingAuditStats.AuditInfo> entry : stats.entrySet()) {
+    Map<Object, CountingAuditStats.AuditingCounts> stats = countingAuditStats.stats();
+    for (Map.Entry<Object, CountingAuditStats.AuditingCounts> entry : stats.entrySet()) {
       AuditKey auditKey = (AuditKey) entry.getKey();
-      CountingAuditStats.AuditInfo auditInfo = entry.getValue();
+      CountingAuditStats.AuditingCounts auditingCounts = entry.getValue();
       String start = new Date(auditKey.bucket() * bucketMs).toString();
       String end = new Date(auditKey.bucket() * bucketMs + bucketMs).toString();
-      AUDIT_LOG.info("[{} - {}] : {}, {}", start, end, auditKey, auditInfo);
+      AUDIT_LOG.info("[{} - {}] : {}, {}", start, end, auditKey, auditingCounts);
     }
   }
 
@@ -61,7 +61,7 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
 
   @Override
   public void onClosed(AuditStats currentStats, AuditStats nextStats) {
-    AUDIT_LOG.info("Logging Auditing stats on closure...");
+    AUDIT_LOG.info("Logging auditing stats on closure...");
     printSummary(currentStats);
     printSummary(nextStats);
   }
@@ -72,13 +72,18 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
-  protected Object getAuditKey(String topic,
-                               K key,
-                               V value,
+  protected Object getAuditKey(Object auditInfo,
+                               String topic,
                                Long timestamp,
                                Long messageCount,
                                Long sizeInBytes,
                                AuditType auditType) {
     return new AuditKey(topic, timestamp / _bucketMs, auditType);
+  }
+
+  @Override
+  public Object getCustomAuditInfo(K key, V value) {
+    // The logging auditor does not have custom audit information.
+    return null;
   }
 }

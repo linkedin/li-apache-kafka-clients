@@ -23,15 +23,20 @@ public class NoOpAuditor<K, V> implements Auditor<K, V> {
   }
 
   @Override
-  public void record(String topic,
-                     K key,
-                     V value,
+  public Object getCustomAuditInfo(K key, V value) {
+    return null;
+  }
+
+  @Override
+  public void record(Object auditInfo,
+                     String topic,
                      Long timestamp,
                      Long messageCount,
                      Long bytesCount,
                      AuditType auditType) {
 
   }
+
 
   @Override
   public void close(long timeout, TimeUnit unit) {
