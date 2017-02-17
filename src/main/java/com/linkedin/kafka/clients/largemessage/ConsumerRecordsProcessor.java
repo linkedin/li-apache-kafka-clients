@@ -20,6 +20,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.linkedin.kafka.clients.largemessage.MessageAssembler.AssembleResult.INCOMPLETE_RESULT;
+
+
 /**
  * This class processes consumer records returned by {@link org.apache.kafka.clients.consumer.KafkaConsumer#poll(long)}
  */
@@ -311,10 +314,12 @@ public class ConsumerRecordsProcessor<K, V> {
     K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
     V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
-    if (value != null) {
+    if (valueBytes != INCOMPLETE_RESULT) {
       if (_auditor != null) {
+        long sizeInBytes = (consumerRecord.key() == null ? 0 : consumerRecord.key().length) +
+            (valueBytes == null ? 0 : valueBytes.length);
         _auditor.record(_auditor.auditToken(key, value), tp.topic(), consumerRecord.timestamp(), 1L,
-                        (long) consumerRecord.value().length, AuditType.SUCCESS);
+                        sizeInBytes, AuditType.SUCCESS);
       }
       handledRecord = new ConsumerRecord<>(
           consumerRecord.topic(),
@@ -324,7 +329,7 @@ public class ConsumerRecordsProcessor<K, V> {
           consumerRecord.timestampType(),
           consumerRecord.checksum(),
           consumerRecord.serializedKeySize(),
-          valueBytes.length,
+          valueBytes == null ? 0 : valueBytes.length,
           _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key()),
           value);
     }
@@ -333,7 +338,7 @@ public class ConsumerRecordsProcessor<K, V> {
 
   private byte[] parseAndMaybeTrackRecord(TopicPartition tp, long messageOffset, byte[] bytes) {
     MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
-    if (assembledResult.messageBytes() != null) {
+    if (assembledResult.messageBytes() != INCOMPLETE_RESULT) {
       LOG.trace("Got message {} from partition {}", messageOffset, tp);
       boolean shouldSkip = shouldSkip(tp, messageOffset);
       // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
@@ -347,13 +352,13 @@ public class ConsumerRecordsProcessor<K, V> {
       if (shouldSkip) {
         LOG.trace("Skipping message {} from partition {} because its offset is smaller than the high watermark",
                   messageOffset, tp);
-        return null;
+        return INCOMPLETE_RESULT;
       } else {
         return assembledResult.messageBytes();
       }
     } else {
       _deliveredMessageOffsetTracker.addNonMessageOffset(tp, messageOffset);
-      return null;
+      return INCOMPLETE_RESULT;
     }
   }
 
