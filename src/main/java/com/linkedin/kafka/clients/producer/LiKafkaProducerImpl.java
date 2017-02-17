@@ -194,6 +194,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       String topic = producerRecord.topic();
       K key = producerRecord.key();
       V value = producerRecord.value();
+      Object auditToken = _auditor.auditToken(key, value);
       Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
       Integer partition = producerRecord.partition();
       Future<RecordMetadata> future = null;
@@ -212,17 +213,17 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         serializedKey = _keySerializer.serialize(topic, key);
       } catch (Throwable t) {
         // Audit the attempt and the failure.
-        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.ATTEMPT);
-        _auditor.record(topic, key, value, timestamp, 1L, 0L, AuditType.FAILURE);
+        _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.ATTEMPT);
+        _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.FAILURE);
         throw new KafkaException(t);
       }
       int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
           + (serializedValue == null ? 0 : serializedValue.length);
       // Audit the attempt.
-      _auditor.record(topic, key, value, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+      _auditor.record(auditToken, topic, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
       // We wrap the user callback for error logging and auditing purpose.
       Callback errorLoggingCallback =
-          new ErrorLoggingCallback<>(messageId, key, value, topic, timestamp, sizeInBytes, _auditor, callback);
+          new ErrorLoggingCallback<>(messageId, auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
       if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
         List<ProducerRecord<byte[], byte[]>> segmentRecords =
             _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue);
@@ -242,8 +243,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       }
       return future;
     } catch (Throwable t) {
-      _auditor.record(producerRecord.topic(), producerRecord.key(), producerRecord.value(), producerRecord.timestamp(),
-          1L, 0L, AuditType.FAILURE);
+      _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
+                      producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       throw new KafkaException(t);
     } finally {
       _numThreadsInSend.decrementAndGet();
@@ -298,43 +299,40 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   private static class ErrorLoggingCallback<K, V> implements Callback {
     private final UUID _messageId;
-    private final K _key;
-    private final V _value;
     private final String _topic;
     private final Long _timestamp;
     private final Integer _serializedSize;
+    private final Object _auditToken;
     private final Auditor<K, V> _auditor;
     private final Callback _userCallback;
 
     public ErrorLoggingCallback(UUID messageId,
-                                K key,
-                                V value,
+                                Object auditToken,
                                 String topic,
                                 Long timestamp,
                                 Integer serializedSize,
                                 Auditor<K, V> auditor,
                                 Callback userCallback) {
       _messageId = messageId;
-      _value = value;
-      _key = key;
       _topic = topic;
       _timestamp = timestamp;
       _serializedSize = serializedSize;
       _auditor = auditor;
+      _auditToken = auditToken;
       _userCallback = userCallback;
     }
 
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        LOG.error(String.format("Unable to send event %s with key %s and message id %s to kafka topic %s",
-            _value.toString(), (_key != null) ? _key : "[none]",
-            (_messageId != null) ? _messageId.toString().replaceAll("-", "") : "[none]", _topic), e);
+        LOG.error(String.format("Unable to send event %s with message id %s to kafka topic %s",
+                                _auditToken == null ? "[No Custom Info]" : _auditToken,
+                                (_messageId != null) ? _messageId.toString().replaceAll("-", "") : "[none]", _topic), e);
         // Audit the failure.
-        _auditor.record(_topic, _key, _value, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
+        _auditor.record(_auditToken, _topic, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
       } else {
         // Audit the success.
-        _auditor.record(_topic, _key, _value, _timestamp, 1L, _serializedSize.longValue(), AuditType.SUCCESS);
+        _auditor.record(_auditToken, _topic, _timestamp, 1L, _serializedSize.longValue(), AuditType.SUCCESS);
       }
       if (_userCallback != null) {
         _userCallback.onCompletion(recordMetadata, e);
