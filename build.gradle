@@ -4,6 +4,8 @@
  * See License in the project root for license information.
  */
 
+import com.linkedin.gradle.build.DistributeTask
+
 group = 'com.linkedin.kafka.clients'
 
 buildscript {
@@ -135,8 +137,8 @@ artifactory {
         contextUrl = 'https://linkedin.jfrog.io/linkedin'
         repository {
             repoKey = 'li-apache-kafka-clients'
-            username = System.getenv('ARTIFACTORY_USER')
-            password = System.getenv('ARTIFACTORY_KEY')
+            username = System.getenv('ARTIFACTORY_USER') ?: ""
+            password = System.getenv('ARTIFACTORY_KEY') ?: ""
         }
         defaults {
             publications ('standardjava')
@@ -147,6 +149,14 @@ artifactory {
         }
     }
 }
+
+/**
+ * Sends stuff to artifactory and then onto bintry/jcenter
+ */
+task distributeBuild(type: DistributeTask) {
+    dependsOn ':artifactoryPublish'
+}
+
 
 //wrapper generation task
 

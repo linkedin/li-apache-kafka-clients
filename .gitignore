@@ -11,3 +11,5 @@
 out/
 bin/
 .reviewboardrc
+*~
+
