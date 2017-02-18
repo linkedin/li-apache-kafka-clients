@@ -25,6 +25,19 @@ Users may also have a custom auditing solution by implementing the defined `Audi
 ### When to use li-apache-kafka-clients ###
 li-apache-kafka-clients is a wrapper library on top of vanilla Kafka Java clients. If one does not need the additional functions provided by li-apache-kafka-clients, the vanilla Kafka Java clients should be preferred.
 
+### Adding the Repository to Your Build ###
+```gradle
+repositories {
+    maven {
+        url "https://linkedin.jfrog.io/linkedin/li-apache-kafka-clients"
+    }
+}
+
+dependencies {
+    compile(group: 'com.linkedin.kafka.clients', name: 'li-apache-kafka-clients', version: '0.0.4')
+}
+```
+
 ### Build a jar and run all the unit tests ###
 `./gradlew build`
 
