@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+
 import org.apache.kafka.common.TopicPartition;
 
 import java.util.Map;
@@ -16,16 +18,17 @@ import java.util.Map;
 public interface MessageAssembler {
 
   /**
-   * Assemble the message segments to the original message.
-   * When the segment provided can complete an original message, the original message will be returned. Otherwise it
-   * returns null.
+   * Assemble the message segments to the original value.
+   * When the segment provided can complete an original value, the original value will be returned if it is a large
+   * message value.
    *
    * @param tp the partition of this segment.
    * @param offset the offset of this segment.
-   * @param segmentBytes a message segment in byte array format created by {@link MessageSplitter}
-   * @return The assemble result if a message is successfully assembled, otherwise returns null.
+   * @param srcRecord a message segment in byte array format created by {@link MessageSplitter}
+   * @return The assemble result.  When a message is fully assembled this AssembleResult.messageBytes() will return non-null
+   * else it wil be null.  If this returns null then srcRecord was not a large message segment.
    */
-  AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes);
+  AssembleResult assemble(TopicPartition tp, long offset, ExtensibleConsumerRecord<byte[], byte[]> srcRecord);
 
   /**
    * This method should return the safe offset to commit for each partition.
@@ -63,18 +66,27 @@ public interface MessageAssembler {
    */
   void close();
 
-  class AssembleResult {
-    public static final byte[] INCOMPLETE_RESULT = new byte[0];
+  /**
+   * The completely assembled original value else some kind of record of our current state.
+   */
+  static class AssembleResult {
+    private final boolean _originalKeyIsNull;
     private final byte[] _messageBytes;
     private final long _messageStartingOffset;
     private final long _messageEndingOffset;
 
-    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset) {
+    AssembleResult(byte[] messageBytes, long startingOffset, long endingOffset,
+      boolean originalKeyIsNull) {
       _messageBytes = messageBytes;
       _messageStartingOffset = startingOffset;
       _messageEndingOffset = endingOffset;
+      _originalKeyIsNull = originalKeyIsNull;
     }
 
+    /**
+     *
+     * @return This is null when the entire original value has not yet been received.
+     */
     public byte[] messageBytes() {
       return _messageBytes;
     }
@@ -85,6 +97,10 @@ public interface MessageAssembler {
 
     public long messageEndingOffset() {
       return _messageEndingOffset;
+    }
+
+    public boolean isOriginalKeyNull() {
+      return _originalKeyIsNull;
     }
 
   }

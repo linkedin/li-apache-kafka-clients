@@ -282,6 +282,11 @@ public class AbstractAuditorTest {
     }
 
     @Override
+    public long hiResClockMs() {
+      return now;
+    }
+
+    @Override
     public void sleep(long ms) {
       now += ms;
     }

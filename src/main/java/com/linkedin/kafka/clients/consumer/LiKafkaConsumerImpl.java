@@ -4,18 +4,21 @@
 
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessor;
+import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
-import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.utils.HeaderDeserializer;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Locale;
+import java.nio.ByteBuffer;
+
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
@@ -59,7 +62,6 @@ import java.util.regex.Pattern;
  * <li>message.assembler.expiration.offset.gap</li>
  * <li>max.tracked.messages.per.partition</li>
  * <li>exception.on.message.dropped</li>
- * <li>segment.deserializer.class</li>
  * </ul>
  * and it also takes a "auditor.class" configuration for auditing. (see {@link LiKafkaConsumerConfig} for more
  * configuration details).
@@ -67,44 +69,38 @@ import java.util.regex.Pattern;
 public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerImpl.class);
   private final Consumer<byte[], byte[]> _kafkaConsumer;
-  private final ConsumerRecordsProcessor<K, V> _consumerRecordsProcessor;
+  private final ConsumerRecordsProcessor _consumerRecordsProcessor;
   private final LiKafkaConsumerRebalanceListener<K, V> _consumerRebalanceListener;
   private final LiKafkaOffsetCommitCallback _offsetCommitCallback;
   private final boolean _autoCommitEnabled;
   private final long _autoCommitInterval;
   private final OffsetResetStrategy _offsetResetStrategy;
   private long _lastAutoCommitMs;
+  private final Deserializer<K> _keyDeserializer;
+  private final Deserializer<V> _valueDeserializer;
+  private final Auditor<K, V> _auditor;
+  private final HeaderDeserializer _headerDeserializer;
 
   public LiKafkaConsumerImpl(Properties props) {
-    this(new LiKafkaConsumerConfig(props), null, null, null, null);
-  }
-
-  public LiKafkaConsumerImpl(Properties props,
-                             Deserializer<K> keyDeserializer,
-                             Deserializer<V> valueDeserializer,
-                             Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
-                             Auditor<K, V> consumerAuditor) {
-    this(new LiKafkaConsumerConfig(props), keyDeserializer, valueDeserializer, largeMessageSegmentDeserializer, consumerAuditor);
+    this(new LiKafkaConsumerConfig(props), null, null, null);
   }
 
   public LiKafkaConsumerImpl(Map<String, Object> configs) {
-    this(new LiKafkaConsumerConfig(configs), null, null, null, null);
+    this(new LiKafkaConsumerConfig(configs), null, null, null);
   }
 
   public LiKafkaConsumerImpl(Map<String, Object> configs,
                              Deserializer<K> keyDeserializer,
                              Deserializer<V> valueDeserializer,
-                             Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
                              Auditor<K, V> consumerAuditor) {
-    this(new LiKafkaConsumerConfig(configs), keyDeserializer, valueDeserializer, largeMessageSegmentDeserializer, consumerAuditor);
+    this(new LiKafkaConsumerConfig(configs), keyDeserializer, valueDeserializer, consumerAuditor);
   }
 
   @SuppressWarnings("unchecked")
   private LiKafkaConsumerImpl(LiKafkaConsumerConfig configs,
-                              Deserializer<K> keyDeserializer,
-                              Deserializer<V> valueDeserializer,
-                              Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
-                              Auditor<K, V> consumerAuditor) {
+                             Deserializer<K> keyDeserializer,
+                             Deserializer<V> valueDeserializer,
+                             Auditor<K, V> consumerAuditor) {
 
     _autoCommitEnabled = configs.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG);
     _autoCommitInterval = configs.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG);
@@ -117,39 +113,33 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
 
-    // Instantiate segment deserializer if needed.
-    Deserializer segmentDeserializer = largeMessageSegmentDeserializer != null ? largeMessageSegmentDeserializer :
-        configs.getConfiguredInstance(LiKafkaConsumerConfig.SEGMENT_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
-    segmentDeserializer.configure(configs.originals(), false);
-
     // Instantiate message assembler if needed.
     int messageAssemblerCapacity = configs.getInt(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG);
     int messageAssemblerExpirationOffsetGap = configs.getInt(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_EXPIRATION_OFFSET_GAP_CONFIG);
     boolean exceptionOnMessageDropped = configs.getBoolean(LiKafkaConsumerConfig.EXCEPTION_ON_MESSAGE_DROPPED_CONFIG);
     MessageAssembler assembler = new MessageAssemblerImpl(messageAssemblerCapacity, messageAssemblerExpirationOffsetGap,
-                                                          exceptionOnMessageDropped, segmentDeserializer);
+                                                          exceptionOnMessageDropped);
 
     // Instantiate delivered message offset tracker if needed.
     int maxTrackedMessagesPerPartition = configs.getInt(LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG);
     DeliveredMessageOffsetTracker messageOffsetTracker = new DeliveredMessageOffsetTracker(maxTrackedMessagesPerPartition);
 
     // Instantiate auditor if needed.
-    Auditor<K, V> auditor = consumerAuditor != null ? consumerAuditor :
+    _auditor = consumerAuditor != null ? consumerAuditor :
         configs.getConfiguredInstance(LiKafkaConsumerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
-    auditor.configure(configs.originals());
-    auditor.start();
+    _auditor.configure(configs.originals());
+    _auditor.start();
 
     // Instantiate key and value deserializer if needed.
-    Deserializer<K> kDeserializer = keyDeserializer != null ? keyDeserializer :
+    _keyDeserializer = keyDeserializer != null ? keyDeserializer :
         configs.getConfiguredInstance(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
-    kDeserializer.configure(configs.originals(), true);
-    Deserializer<V> vDeserializer = valueDeserializer != null ? valueDeserializer :
+    _keyDeserializer.configure(configs.originals(), true);
+    _valueDeserializer = valueDeserializer != null ? valueDeserializer :
         configs.getConfiguredInstance(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
-    vDeserializer.configure(configs.originals(), false);
+    _valueDeserializer.configure(configs.originals(), false);
 
     // Instantiate consumer record processor
-    _consumerRecordsProcessor = new ConsumerRecordsProcessor<>(assembler, kDeserializer, vDeserializer,
-                                                               messageOffsetTracker, auditor);
+    _consumerRecordsProcessor = new ConsumerRecordsProcessor(assembler, messageOffsetTracker);
 
     // Instantiate consumer rebalance listener
     _consumerRebalanceListener = new LiKafkaConsumerRebalanceListener<>(_consumerRecordsProcessor,
@@ -157,6 +147,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     // Instantiate offset commit callback.
     _offsetCommitCallback = new LiKafkaOffsetCommitCallback();
+
+    _headerDeserializer = configs.getConfiguredInstance(LiKafkaConsumerConfig.HEADER_DESERIALIZER_CLASS,
+      HeaderDeserializer.class);
   }
 
   @Override
@@ -217,7 +210,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   @Override
   public ConsumerRecords<K, V> poll(long timeout) {
     long startMs = System.currentTimeMillis();
-    ConsumerRecords<K, V> processedRecords;
+    Collection<ExtensibleConsumerRecord<byte[], byte[]>> xRecords;
     // We will keep polling until timeout.
     long now = startMs;
     long expireMs = startMs + timeout;
@@ -256,10 +249,74 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
           }
         }
       }
-      processedRecords = _consumerRecordsProcessor.process(rawRecords);
+
+      Collection<ExtensibleConsumerRecord<byte[], byte[]>> convertedRecord = toXRecords(rawRecords);
+      xRecords = _consumerRecordsProcessor.process(convertedRecord);
+
       now = System.currentTimeMillis();
-    } while (processedRecords.isEmpty() && now < startMs + timeout);
-    return processedRecords;
+    } while (xRecords.isEmpty() && now < startMs + timeout);
+
+    Map<TopicPartition, List<ConsumerRecord<K, V>>> consumerRecordsMap = new HashMap<>();
+    for (ExtensibleConsumerRecord<byte[], byte[]> xRecord : xRecords) {
+      ExtensibleConsumerRecord<K, V> userRecord = deserialize(xRecord);
+
+      if (_auditor != null) {
+        long totalBytes = userRecord.serializedKeySize() + userRecord.serializedValueSize();
+        _auditor.record(_auditor.auditToken(userRecord.key(), userRecord.value()), userRecord.topic(),
+            userRecord.timestamp(), 1L, totalBytes, AuditType.SUCCESS);
+      }
+
+      TopicPartition topicPartition = new TopicPartition(userRecord.topic(), userRecord.partition());
+      List<ConsumerRecord<K, V>> listForTopicPartition =
+        consumerRecordsMap.computeIfAbsent(topicPartition, (x) -> new ArrayList<>());
+
+      listForTopicPartition.add(userRecord);
+    }
+
+    ConsumerRecords<K, V> consumerRecords = new ConsumerRecords<>(consumerRecordsMap);
+    return consumerRecords;
+  }
+
+  private ExtensibleConsumerRecord<K, V> deserialize(ExtensibleConsumerRecord<byte[], byte[]> record) {
+    K key = _keyDeserializer.deserialize(record.topic(), record.key());
+    V value = _valueDeserializer.deserialize(record.topic(), record.value());
+    ExtensibleConsumerRecord<K, V> deserializedRecord =
+        new ExtensibleConsumerRecord<>(record.topic(), record.partition(), record.offset(),
+            record.timestamp(), record.timestampType(),
+            record.checksum(),
+            record.serializedKeySize(), record.serializedValueSize(),
+            key, value,
+            record.headers());
+    return deserializedRecord;
+  }
+
+  private List<ExtensibleConsumerRecord<byte[], byte[]>> toXRecords(ConsumerRecords<byte[], byte[]> rawRecords) {
+    List<ExtensibleConsumerRecord<byte[], byte[]>> xRecords = new ArrayList<>(rawRecords.count());
+    for (ConsumerRecord<byte[], byte[]> rawRecord : rawRecords) {
+      xRecords.add(toXRecord(rawRecord));
+    }
+    return xRecords;
+  }
+
+  private ExtensibleConsumerRecord<byte[], byte[]> toXRecord(ConsumerRecord<byte[], byte[]> rawRecord) {
+    ByteBuffer rawByteBuffer = ByteBuffer.wrap(rawRecord.value() == null ? new byte[0] : rawRecord.value());
+    HeaderDeserializer.DeserializeResult headersDeserializeResult = _headerDeserializer.deserializeHeader(rawByteBuffer);
+
+    if (headersDeserializeResult.headers() == null) {
+      return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(), rawRecord.timestampType(),
+          rawRecord.checksum(), rawRecord.serializedKeySize(), rawRecord.serializedValueSize(), rawRecord.key(), rawRecord.value(), null);
+    }
+
+    int valueSize = headersDeserializeResult.value() == null ? 0 : headersDeserializeResult.value().remaining();
+    byte[] value = null;
+    if (headersDeserializeResult.value() != null) {
+      value = new byte[valueSize];
+      headersDeserializeResult.value().get(value);
+    }
+
+    return new ExtensibleConsumerRecord<>(rawRecord.topic(), rawRecord.partition(), rawRecord.offset(), rawRecord.timestamp(),
+        rawRecord.timestampType(), rawRecord.checksum(), rawRecord.serializedKeySize(), valueSize, rawRecord.key(),
+         value, headersDeserializeResult.headers());
   }
 
   @Override
@@ -504,6 +561,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     }
     _kafkaConsumer.close();
     _consumerRecordsProcessor.close();
+    _auditor.close();
+    _keyDeserializer.close();
+    _valueDeserializer.close();
   }
 
   @Override
@@ -592,4 +652,5 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     LOG.trace("Current offset and metadata map: {}", offsetAndMetadataMap);
     return offsetAndMetadataMap;
   }
+
 }

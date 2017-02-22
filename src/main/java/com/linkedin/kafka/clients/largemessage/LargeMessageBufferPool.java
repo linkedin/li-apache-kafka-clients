@@ -58,11 +58,11 @@ public class LargeMessageBufferPool {
   synchronized LargeMessage.SegmentAddResult tryCompleteMessage(TopicPartition tp, long offset, LargeMessageSegment segment) {
     LargeMessage message = validateSegmentAndGetMessage(tp, segment, offset);
 
-    int segmentSize = segment.payload.remaining();
+    int segmentSize = segment.segmentByteBuffer().remaining();
     maybeEvictMessagesForSpace(segmentSize);
 
     // Check if this segment completes the large message.
-    UUID messageId = segment.messageId;
+    UUID messageId = segment.messageId();
     LargeMessage.SegmentAddResult segmentAddResult = message.addSegment(segment, offset);
     _bufferUsed += segmentAddResult.bytesAdded();
     LOG.trace("Added {} bytes to messageId={}", segmentAddResult.bytesAdded(), messageId);
@@ -78,7 +78,7 @@ public class LargeMessageBufferPool {
         _incompleteMessageByPartition.put(tp, uuidSetForPartition);
       }
       uuidSetForPartition.add(messageId);
-      _offsetTracker.maybeTrackMessage(tp, messageId, offset);
+      _offsetTracker.trackMessage(tp, messageId, offset);
     }
 
     // Expire message if necessary.
@@ -163,35 +163,16 @@ public class LargeMessageBufferPool {
   }
 
   private LargeMessage validateSegmentAndGetMessage(TopicPartition tp, LargeMessageSegment segment, long offset) {
-    if (segment.payload == null) {
-      throw new InvalidSegmentException("Payload cannot be null");
-    }
-    segment.payload.rewind();
-    long segmentSize = segment.payload.remaining();
-    UUID messageId = segment.messageId;
-    int messageSizeInBytes = segment.messageSizeInBytes;
-    int numberOfSegments = segment.numberOfSegments;
-    int seq = segment.sequenceNumber;
-
-    if (messageId == null) {
-      throw new InvalidSegmentException("Message Id can not be null");
-    }
-    if (segmentSize > messageSizeInBytes) {
-      throw new InvalidSegmentException("Segment size should not be larger than message size.");
-    }
-
-    if (seq < 0 || seq > numberOfSegments - 1) {
-      throw new InvalidSegmentException("Sequence number " + seq
-          + " should fall between [0," + (numberOfSegments - 1) + "].");
-    }
+    UUID messageId = segment.messageId();
 
     // Create the incomplete message if needed.
     LargeMessage message = _incompleteMessageMap.get(messageId);
     if (message == null) {
-      message = new LargeMessage(tp, messageId, offset, messageSizeInBytes, numberOfSegments);
+      message = new LargeMessage(tp, messageId, offset, segment.originalValueSize(), segment.numberOfSegments());
       _incompleteMessageMap.put(messageId, message);
       LOG.trace("Incomplete message {} is created.", messageId);
     }
+
     if (message.startingOffset() > offset) {
       throw new InvalidSegmentException("Out of order segment offsets detected.");
     }
