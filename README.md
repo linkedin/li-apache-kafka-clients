@@ -28,13 +28,11 @@ li-apache-kafka-clients is a wrapper library on top of vanilla Kafka Java client
 ### Adding the Repository to Your Build ###
 ```gradle
 repositories {
-    maven {
-        url "https://linkedin.jfrog.io/linkedin/li-apache-kafka-clients"
-    }
+  jcenter()
 }
 
 dependencies {
-    compile(group: 'com.linkedin.kafka.clients', name: 'li-apache-kafka-clients', version: '0.0.4')
+  compile 'com.linkedin.kafka.clients:li-apache-kafka-clients:0.0.4'
 }
 ```
 
