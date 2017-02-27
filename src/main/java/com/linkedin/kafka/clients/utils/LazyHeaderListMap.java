@@ -6,7 +6,6 @@ package com.linkedin.kafka.clients.utils;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.HashSet;
