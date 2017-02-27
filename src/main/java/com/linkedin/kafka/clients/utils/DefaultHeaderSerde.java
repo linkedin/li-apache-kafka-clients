@@ -19,6 +19,7 @@ public interface DefaultHeaderSerde {
     = (0x4c6d4eef4b7a44L | 0b11000000_11000000_11000000_11000000_11000000_11000000_11000000_11000000L) &
     0b11011111_11011111_11011111_11011111_11011111_11011111_11011111_11011111L;
 
+  int MAGIC_SIZE = 8;
 
   byte VERSION_1 = 1;
 
@@ -34,10 +35,15 @@ public interface DefaultHeaderSerde {
   int KEY_SIZE_SIZE = 1;
 
   /**
+   * The size of the value size field.
+   */
+  int VALUE_SIZE_SIZE = 4;
+
+  /**
    * @return DEFAULT_HEADER_MAGIC as byte array.
    */
   static byte[] defaultHeaderMagicBytes() {
-    ByteBuffer bbuf = ByteBuffer.allocate(8);
+    ByteBuffer bbuf = ByteBuffer.allocate(MAGIC_SIZE);
     bbuf.putLong(DEFAULT_HEADER_MAGIC);
     return bbuf.array();
   }
@@ -61,9 +67,9 @@ public interface DefaultHeaderSerde {
       } else {
         //This character is a high surrogate which means the next char also composes the unicode
         //code point (character).  That also means it's in the unicode range starting with U+10000
-        //which means it' always encoded with 4 bytes in UTF-8
+        //which means it is always encoded with 4 bytes in UTF-8
         utf8Length += 4;
-        i++;
+        i++; //consume next character as well.
       }
     }
     return utf8Length;

@@ -6,9 +6,9 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.utils.HeaderUtils;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 
@@ -74,7 +74,7 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
     }
 
     if (headers == null) {
-      headers = new TreeMap<>();
+      headers = new HashMap<>();
     }
     headers.put(headerKey, headerValue);
   }
@@ -85,7 +85,7 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    */
   public void copyHeadersFrom(ExtensibleProducerRecord<K, V> other) {
     if (other.headers != null) {
-      this.headers = new TreeMap<>(other.headers); //TODO: copy on write?
+      this.headers = new HashMap<>(other.headers); //TODO: copy on write?
     }
   }
 
@@ -110,7 +110,8 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
   }
 
   /**
-   *
+   * This is not public because we don't want to expose the Map interface since this may change to something else in the
+   * future.
    * @return this may return null
    */
   Map<String, byte[]> headers() {

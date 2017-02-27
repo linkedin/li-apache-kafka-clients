@@ -87,7 +87,7 @@ public class DefaultHeaderSerializer implements HeaderSerializer, DefaultHeaderS
       return DefaultHeaderSerializer.VERSION_AND_FLAGS_SIZE;
     }
     // size of all the keys and the value length fields
-    int size = headers.size() * 5 + VERSION_AND_FLAGS_SIZE + ALL_HEADER_SIZE_FIELD_SIZE + _headerMagic.length;
+    int size = headers.size() * (KEY_SIZE_SIZE + VALUE_SIZE_SIZE) + VERSION_AND_FLAGS_SIZE + ALL_HEADER_SIZE_FIELD_SIZE + _headerMagic.length;
     for (Map.Entry<String, byte[]> headerEntry : headers.entrySet()) {
       size += headerEntry.getValue().length;
       size += DefaultHeaderSerde.utf8StringLength(headerEntry.getKey());

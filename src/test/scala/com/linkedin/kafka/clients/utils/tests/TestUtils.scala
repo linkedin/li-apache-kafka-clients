@@ -40,8 +40,28 @@ object TestUtils {
     server
   }
 
-  def getBrokerListStrFromServers(servers: Seq[KafkaServer], protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT): String = {
-    servers.map(s => formatAddress(s.config.hostName, s.boundPort(protocol))).mkString(",")
+  /**
+    * A backwards compatiable way of getting the port the server is listening at for a specific protocol.
+    */
+  private def boundPort(s : KafkaServer, protocol : SecurityProtocol) : Int = {
+    try {
+      //Try the old ways...
+      val m = classOf[KafkaServer].getDeclaredMethod("boundPort", classOf[SecurityProtocol])
+      m.invoke(s, protocol).asInstanceOf[Int]
+    } catch {
+      case _ : NoSuchMethodException => { // Try the new way.
+        val listenerNameClass = Class.forName("org.apache.kafka.common.network.ListenerName")
+        val boundPortWithListenerName = classOf[KafkaServer].getDeclaredMethod("boundPort", listenerNameClass)
+        val constructListenerName = listenerNameClass.getMethod("forSecurityProtocol", classOf[SecurityProtocol])
+        val listenerName = constructListenerName.invoke(listenerNameClass, protocol)
+        boundPortWithListenerName.invoke(s, listenerName).asInstanceOf[Int]
+      }
+      case e : Throwable => throw e
+    }
+  }
+
+  def getBrokerListStrFromServers(servers: Seq[KafkaServer], protocol : SecurityProtocol = SecurityProtocol.PLAINTEXT): String = {
+    servers.map(s => formatAddress(s.config.hostName, boundPort(s, protocol))).mkString(",")
   }
 
   /**

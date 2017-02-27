@@ -42,7 +42,7 @@ public class LargeMessage {
   public synchronized SegmentAddResult addSegment(LargeMessageSegment segment, long offset) {
     int seq = segment.sequenceNumber();
     int segmentSize = segment.segmentByteBuffer().remaining();
-    validateSegment(segment);
+    validateSegment(segment, offset);
     // Ignore duplicated segment.
     if (!_segments.containsKey(seq)) {
       _segments.put(seq, segment.segmentByteBuffer());
@@ -77,21 +77,23 @@ public class LargeMessage {
         _tp, _messageId, _numberOfSegments, _originalValueSize, _bufferedBytes);
   }
 
-  private void validateSegment(LargeMessageSegment segment) {
+  private void validateSegment(LargeMessageSegment segment, long offset) {
     int segmentSize = segment.segmentByteBuffer().remaining();
     int seq = segment.sequenceNumber();
 
     if (segmentSize <= 0) {
-      throw new InvalidSegmentException("Invalid segment: " + segment + ". Segment size should be greater than 0.");
+      throw new InvalidSegmentException("Invalid segment: " + segment + " with offset " + offset + ". Segment size should be greater than 0.");
     }
 
     if (_originalValueSize != segment.originalValueSize()
         || _numberOfSegments != segment.numberOfSegments()) {
-      throw new InvalidSegmentException("Segment number of offsets does not equal the known number of offsets for segment: " + segment);
+      throw new InvalidSegmentException("Segment number of offsets does not equal the known number of offsets for segment "
+          + segment + " with offset " + offset + ".");
     }
 
     if (!_segments.containsKey(seq) && _bufferedBytes + segmentSize > _originalValueSize) {
-      throw new InvalidSegmentException("Invalid segment: " + segment + ". Segments have more bytes than the " +
+      throw new InvalidSegmentException("Invalid segment: " + segment + " with offset " + offset +
+          ". Segments have more bytes than the " +
           "message has. Message size =" + _originalValueSize + ", segments total bytes = " +
           (_bufferedBytes + segmentSize));
     }

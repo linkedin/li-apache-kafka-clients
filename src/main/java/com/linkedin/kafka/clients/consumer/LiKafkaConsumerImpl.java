@@ -11,10 +11,13 @@ import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.utils.HeaderDeserializer;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Locale;
 import java.nio.ByteBuffer;
 
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -28,6 +31,7 @@ import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.clients.consumer.internals.NoOpConsumerRebalanceListener;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
@@ -560,6 +564,29 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       commitSync();
     }
     _kafkaConsumer.close();
+    _consumerRecordsProcessor.close();
+    _auditor.close();
+    _keyDeserializer.close();
+    _valueDeserializer.close();
+  }
+
+  /**
+   * This is not exposed in the LiKafkaConsumer interface incase you want to run this on earlier version of Kafka.
+   * If the underlying consumer implementation does have a timed close method then it is called else the non-timed
+   * close() is called.
+   */
+  public void close(long timeout, TimeUnit unit) {
+    if (_autoCommitEnabled) {
+      commitSync();
+    }
+    try {
+      Method timedCloseMethod = _kafkaConsumer.getClass().getDeclaredMethod("close", Long.TYPE, TimeUnit.class);
+      timedCloseMethod.invoke(_kafkaConsumer, timeout, unit);
+    } catch (NoSuchMethodException | IllegalAccessException cantCallTimedCloseMethod) {
+      _kafkaConsumer.close();
+    } catch (InvocationTargetException ite) {
+      throw new KafkaException(ite.getTargetException());
+    }
     _consumerRecordsProcessor.close();
     _auditor.close();
     _keyDeserializer.close();

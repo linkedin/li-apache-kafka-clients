@@ -5,8 +5,8 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
-import com.linkedin.kafka.clients.consumer.LiKafkaConsumerConfig;
 import com.linkedin.kafka.clients.utils.DefaultHeaderSerializer;
+import com.linkedin.kafka.clients.utils.HeaderSerializer;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import org.apache.kafka.clients.producer.Producer;
@@ -36,7 +36,9 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String UUID_FACTORY_CLASS_CONFIG = "uuid.factory.class";
   public static final String HEADER_SERIALIZER_CONFIG = "header.serializer.class";
 
-  public static final String HEADER_PARSER_DOC = LiKafkaConsumerConfig.HEADER_PARSER_DOC;
+  public static final String HEADER_SERIALIZER_DOC = "The name of the class implementing " + HeaderSerializer.class +
+      ".  You shouldn't need to change this unless you want some more optimized encoding or need to accept" +
+      " some kind of internal legacy message formats.";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +
@@ -69,7 +71,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(KEY_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, KEY_SERIALIZER_CLASS_DOC)
         .define(VALUE_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, VALUE_SERIALIZER_CLASS_DOC)
         .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactoryImpl.class, Importance.MEDIUM, UUID_FACTORY_CLASS_DOC)
-        .define(HEADER_SERIALIZER_CONFIG, Type.CLASS, DefaultHeaderSerializer.class, Importance.LOW, HEADER_PARSER_DOC);
+        .define(HEADER_SERIALIZER_CONFIG, Type.CLASS, DefaultHeaderSerializer.class, Importance.LOW,
+            HEADER_SERIALIZER_DOC);
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {

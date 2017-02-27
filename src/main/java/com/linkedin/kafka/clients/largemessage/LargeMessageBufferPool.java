@@ -170,7 +170,7 @@ public class LargeMessageBufferPool {
     if (message == null) {
       message = new LargeMessage(tp, messageId, offset, segment.originalValueSize(), segment.numberOfSegments());
       _incompleteMessageMap.put(messageId, message);
-      LOG.trace("Incomplete message {} is created.", messageId);
+      LOG.trace("Incomplete message {} is created on {} with offset {}.", messageId, tp, offset);
     }
 
     if (message.startingOffset() > offset) {

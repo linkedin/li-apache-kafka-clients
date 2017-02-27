@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.utils;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.HashSet;
@@ -27,12 +28,11 @@ public class LazyHeaderListMap implements Map<String, byte[]> {
 
   private static final class Entry implements Map.Entry<String, byte[]> {
     private final String key;
-    private final byte[] value;
+    private byte[] value;
 
     public Entry(String key, byte[] value) {
-      if (key == null) {
-        throw new NullPointerException("key must not be null");
-      }
+      HeaderUtils.validateHeaderKey(key);
+
       if (value == null) {
         throw new NullPointerException("value must not be null");
       }
@@ -53,7 +53,43 @@ public class LazyHeaderListMap implements Map<String, byte[]> {
 
     @Override
     public byte[] setValue(byte[] value) {
-      throw new UnsupportedOperationException();
+      if (value == null) {
+        throw new IllegalArgumentException("Value must not be null.");
+      }
+      byte[] oldValue = this.value;
+      this.value = value;
+      return oldValue;
+    }
+
+    /**
+     * This compares the way Map.Entry says we should compare two entries, but note this does not work well for byte arrays.
+     */
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+
+      if (!(o instanceof Map.Entry)) {
+        return false;
+      }
+
+      Map.Entry e1 = this;
+      Map.Entry e2 = (Map.Entry) o;
+
+      return (e1.getKey() == null ?
+          e2.getKey() == null : e1.getKey().equals(e2.getKey()))  &&
+          (e1.getValue() == null ?
+              e2.getValue() == null : e1.getValue().equals(e2.getValue()));
+    }
+
+    /**
+     * This computes a hashCode() the way Map.Entry says we should compute hashCode, but note this does not work well for byte arrays.
+     */
+    @Override
+    public int hashCode() {
+      return (getKey() == null   ? 0 : getKey().hashCode()) ^
+          (getValue() == null ? 0 : getValue().hashCode());
     }
   };
 

@@ -6,7 +6,7 @@ package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.utils.DefaultHeaderDeserializer;
-import com.linkedin.kafka.clients.utils.HeaderSerializer;
+import com.linkedin.kafka.clients.utils.HeaderDeserializer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
@@ -37,7 +37,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
 
-  public static final String HEADER_PARSER_DOC = "The name of a class implementing " + HeaderSerializer.class
+  public static final String HEADER_SERIALIZER_DOC = "The name of a class implementing " + HeaderDeserializer.class
     + " interface.  You shouldn't need to change this unless you want some more optimized encoding or need to accept"
     + "some kind of internal legacy message formats.";
 
@@ -142,8 +142,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
         .define(HEADER_DESERIALIZER_CLASS,
                 Type.CLASS,
                 DefaultHeaderDeserializer.class,
-                Importance.LOW,
-                HEADER_PARSER_DOC);
+                Importance.LOW, HEADER_SERIALIZER_DOC);
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {

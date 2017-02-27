@@ -218,17 +218,23 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
       int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length) + (serializedValue == null ? 0 : serializedValue.length);
       boolean useLargeMessageProcessing = _largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize;
+
+      //Check if we want to send an actual null value.  This happens when we have a ProducerRecord and not an
+      //ExtensibleProducer record and the value of the producer record is null.
       if (!(producerRecord instanceof ExtensibleProducerRecord) && serializedValue == null) {
-        return sendNullValue(producerRecord, callback, topic, key, value, timestamp, serializedValue, serializedKey,
+        return sendNullValue(producerRecord, callback, topic, timestamp, serializedValue, serializedKey,
           sizeInBytes, auditToken);
       }
 
+      //Check if we want to send an actual null value.  This happens when we have an ExtensibleProducerRecord that does
+      //not have any headers and the headers and the value is null.
       if (producerRecord instanceof ExtensibleProducerRecord && !((ExtensibleProducerRecord) producerRecord).hasHeaders() &&
         serializedValue == null) {
-        return sendNullValue(producerRecord, callback, topic, key, value, timestamp, serializedValue, serializedKey,
+        return sendNullValue(producerRecord, callback, topic, timestamp, serializedValue, serializedKey,
           sizeInBytes, auditToken);
       }
 
+      // Otherwise we want to send some kind of non-null value.
       ExtensibleProducerRecord<byte[], byte[]> xRecord =
         new ExtensibleProducerRecord<>(producerRecord.topic(), producerRecord.partition(), producerRecord.timestamp(),
           serializedKey, serializedValue);
@@ -267,7 +273,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   }
 
   private Future<RecordMetadata> sendNullValue(ProducerRecord<K, V> producerRecord, Callback callback, String topic,
-    K key, V value, Long timestamp, byte[] serializedValue, byte[] serializedKey, int sizeInBytes, Object auditToken) {
+      Long timestamp, byte[] serializedValue, byte[] serializedKey, int sizeInBytes, Object auditToken) {
     Future<RecordMetadata> future; // We wrap the user callback for error logging and auditing purpose.
     Callback errorLoggingCallback =
       new ErrorLoggingCallback<>(auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
@@ -284,17 +290,17 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
    * This assumes that the value is not a large value that would be segmented by large message support.
    */
   public static ProducerRecord<byte[], byte[]> serializeWithHeaders(ExtensibleProducerRecord<byte[], byte[]> xRecord,
-    HeaderSerializer headerParser) {
+    HeaderSerializer headerSerializer) {
 
     if (!xRecord.hasHeaders()) {
       return new ProducerRecord<byte[], byte[]>(xRecord.topic(), xRecord.partition(), xRecord.timestamp(), xRecord.key(), xRecord.value());
     }
 
-    int headersSize = headerParser.serializedHeaderSize(xRecord.headers());
+    int headersSize = headerSerializer.serializedHeaderSize(xRecord.headers());
     int serializedValueSize = (xRecord.value() == null ? 0 : xRecord.value().length) + headersSize;
 
     ByteBuffer valueWithHeaders = ByteBuffer.allocate(serializedValueSize);
-    headerParser.serializeHeader(valueWithHeaders, xRecord.headers(), xRecord.value() == null);
+    headerSerializer.serializeHeader(valueWithHeaders, xRecord.headers(), xRecord.value() == null);
     if (xRecord.value() != null) {
       valueWithHeaders.put(xRecord.value());
     }
@@ -374,7 +380,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        LOG.error(String.format("Unable to send record %sto kafka topic %s",
+        LOG.error(String.format("Unable to send record %s to kafka topic %s",
                                 _auditToken == null ? "[No Custom Info]" : _auditToken,
                                  _topic), e);
         // Audit the failure.
