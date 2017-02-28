@@ -560,14 +560,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void close() {
-    if (_autoCommitEnabled) {
-      commitSync();
-    }
-    _kafkaConsumer.close();
-    _consumerRecordsProcessor.close();
-    _auditor.close();
-    _keyDeserializer.close();
-    _valueDeserializer.close();
+    closeWithoutExceptions(() -> _kafkaConsumer.close());
   }
 
   /**
@@ -576,21 +569,47 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
    * close() is called.
    */
   public void close(long timeout, TimeUnit unit) {
-    if (_autoCommitEnabled) {
-      commitSync();
-    }
+   Runnable testForTimedCloseMethodAndClose = () -> {
+     try {
+       Method timedCloseMethod = _kafkaConsumer.getClass().getDeclaredMethod("close", Long.TYPE, TimeUnit.class);
+       timedCloseMethod.invoke(_kafkaConsumer, timeout, unit);
+     } catch (NoSuchMethodException | IllegalAccessException cantCallTimedCloseMethod) {
+       _kafkaConsumer.close();
+     } catch (InvocationTargetException ite) {
+       throw new KafkaException(ite.getTargetException());
+     }
+   };
+
+   closeWithoutExceptions(testForTimedCloseMethodAndClose);
+  }
+
+  private void closeWithoutExceptions(Runnable consumerClose) {
+    KafkaException autoCommitException = null;
     try {
-      Method timedCloseMethod = _kafkaConsumer.getClass().getDeclaredMethod("close", Long.TYPE, TimeUnit.class);
-      timedCloseMethod.invoke(_kafkaConsumer, timeout, unit);
-    } catch (NoSuchMethodException | IllegalAccessException cantCallTimedCloseMethod) {
-      _kafkaConsumer.close();
-    } catch (InvocationTargetException ite) {
-      throw new KafkaException(ite.getTargetException());
+      if (_autoCommitEnabled) {
+        commitSync();
+      }
+    } catch (KafkaException ke) {
+      autoCommitException = ke;
     }
-    _consumerRecordsProcessor.close();
-    _auditor.close();
-    _keyDeserializer.close();
-    _valueDeserializer.close();
+    catchExceptionAndLog(consumerClose);
+    catchExceptionAndLog(() -> _consumerRecordsProcessor.close());
+    catchExceptionAndLog(() -> _auditor.close());
+    catchExceptionAndLog(() -> _keyDeserializer.close());
+    catchExceptionAndLog(() -> _valueDeserializer.close());
+
+    // Probably want to let the user know that their offsets may not be committed.
+    if (autoCommitException != null) {
+      throw autoCommitException;
+    }
+  }
+
+  private void catchExceptionAndLog(Runnable closeMe) {
+    try {
+      closeMe.run();
+    } catch (Exception e) {
+      LOG.debug("Caught exception during close.", e);
+    }
   }
 
   @Override

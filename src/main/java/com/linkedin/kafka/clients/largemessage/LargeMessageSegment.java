@@ -93,7 +93,7 @@ public class LargeMessageSegment {
     ByteBuffer headerReader = ByteBuffer.wrap(headerPayload);
     byte headerVersion = headerReader.get();
     if (headerVersion != CURRENT_VERSION) {
-      throw new IllegalArgumentException("Invalid large message header, expected version " + CURRENT_VERSION +
+      throw new IllegalArgumentException("Unsupported large message header format, expected version " + CURRENT_VERSION +
         " but found version " + headerVersion + ".");
     }
     if (segment == null) {

@@ -24,6 +24,9 @@ import java.util.function.BiConsumer;
  */
 public class DefaultHeaderDeserializer implements HeaderDeserializer, DefaultHeaderSerde {
 
+  private final static ThreadLocal<CharsetDecoder> UTF_8_DECODER_THREAD_LOCAL =
+    ThreadLocal.withInitial(() -> StandardCharsets.UTF_8.newDecoder());
+
   /**
    * This does nothing.
    */
@@ -59,7 +62,7 @@ public class DefaultHeaderDeserializer implements HeaderDeserializer, DefaultHea
    * @param mapBuilder a function that will consume the new headers as they are deserialized.
    */
   static void parseHeader(ByteBuffer src, BiConsumer<String, byte[]> mapBuilder) {
-    CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder();
+    CharsetDecoder decoder = UTF_8_DECODER_THREAD_LOCAL.get();
     CharBuffer charBuffer = CharBuffer.allocate(HeaderUtils.MAX_KEY_LENGTH);
     int originalLimit = src.limit();
     while (src.hasRemaining()) {

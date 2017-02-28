@@ -22,7 +22,11 @@ import java.util.Map;
  */
 public class DefaultHeaderSerializer implements HeaderSerializer, DefaultHeaderSerde {
 
+  private static final ThreadLocal<CharsetEncoder> UTF_8_ENCODER_THREAD_LOCAL =
+    ThreadLocal.withInitial(() -> StandardCharsets.UTF_8.newEncoder());
+
   private final byte[] _headerMagic;
+
 
   public DefaultHeaderSerializer() {
     this(DefaultHeaderSerde.defaultHeaderMagicBytes());
@@ -55,7 +59,7 @@ public class DefaultHeaderSerializer implements HeaderSerializer, DefaultHeaderS
       return;
     }
 
-    CharsetEncoder utf8Encoder = StandardCharsets.UTF_8.newEncoder();
+    CharsetEncoder utf8Encoder = UTF_8_ENCODER_THREAD_LOCAL.get();
 
     int startPosition = dest.position();
     for (Map.Entry<String, byte[]> header : headers.entrySet()) {

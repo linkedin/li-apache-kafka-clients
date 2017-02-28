@@ -54,13 +54,13 @@ public class DefaultHeaderSerializerTest {
   @Test
   public void headerSerializationTest() {
     DefaultHeaderSerializer headerSerializer = new DefaultHeaderSerializer();
-    ByteBuffer bbuf = ByteBuffer.allocate(1024*16);
+    ByteBuffer bbuf = ByteBuffer.allocate(1024 * 16);
     Map<String, byte[]> headers = new HashMap<>();
     String headerValue = "header-value";
     String headerKey = "header-key";
     headers.put(headerKey, headerValue.getBytes());
     assertEquals(headerSerializer.serializedHeaderSize(headers),
-        8 /*magic*/+ 1 /*ver*/+ 4/*totallen*/ + 1 /*header-key len*/ + headerKey.length() +  4 /* value len */ +
+        8 /* magic */ + 1 /* ver */ + 4 /* totallen */ + 1 /* header-key len */ + headerKey.length() +  4 /* value len */ +
             headerValue.length());
     headerSerializer.serializeHeader(bbuf, headers, false);
     bbuf.flip();

@@ -44,15 +44,15 @@ public class ConsumerRecordsProcessor {
    * @return filtered consumer records.
    */
   public Collection<ExtensibleConsumerRecord<byte[], byte[]>> process(Collection<ExtensibleConsumerRecord<byte[], byte[]>> consumerRecords) {
-    List<ExtensibleConsumerRecord<byte[], byte[]>> list = new ArrayList<>();
+    List<ExtensibleConsumerRecord<byte[], byte[]>> processedRecords = new ArrayList<>(consumerRecords.size());
     for (ExtensibleConsumerRecord<byte[], byte[]> consumerRecord : consumerRecords) {
       ExtensibleConsumerRecord handledRecord = filterAndAssembleRecords(consumerRecord);
       if (handledRecord == null) {
         continue;
       }
-      list.add(handledRecord);
+      processedRecords.add(handledRecord);
     }
-    return list;
+    return processedRecords;
   }
 
 
@@ -320,7 +320,7 @@ public class ConsumerRecordsProcessor {
       return srcRecord;
     }
 
-    if (assembledResult.messageBytes() == null) {
+    if (assembledResult.isFullyAssembled()) {
       //Not a complete, large message
       _deliveredMessageOffsetTracker.addNonMessageOffset(topicPartition, srcRecord.offset());
       return null;

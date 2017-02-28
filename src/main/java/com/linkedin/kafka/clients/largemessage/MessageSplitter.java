@@ -10,7 +10,7 @@ import java.util.Collection;
 /**
  * Message splitter for large messages
  */
-public interface MessageSplitter<K, V> {
+public interface MessageSplitter {
 
   /**
    * Split the large message into several {@link com.linkedin.kafka.clients.producer.ExtensibleProducerRecord}

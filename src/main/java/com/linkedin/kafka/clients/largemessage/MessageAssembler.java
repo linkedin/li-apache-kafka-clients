@@ -91,6 +91,14 @@ public interface MessageAssembler {
       return _messageBytes;
     }
 
+    /**
+     * Test if the value returned from the message assembler has been fully formed.
+     * @return false if {@link #messageBytes()} would return null else returns true.
+     */
+    public boolean isFullyAssembled() {
+      return _messageBytes == null;
+    }
+
     public long messageStartingOffset() {
       return _messageStartingOffset;
     }
