@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.annotation.InterfaceStability;
 import org.apache.kafka.common.record.TimestampType;
 
 /**
@@ -23,6 +24,7 @@ import org.apache.kafka.common.record.TimestampType;
  * live in a separate space from the underlying Kafka protocol.
  * </p>
  */
+@InterfaceStability.Unstable
 public class ExtensibleConsumerRecord<K, V> extends ConsumerRecord<K, V> {
   private volatile Map<String, byte[]> headers;
 

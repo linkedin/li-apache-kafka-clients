@@ -7,11 +7,13 @@ package com.linkedin.kafka.clients.utils;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import org.apache.kafka.common.Configurable;
+import org.apache.kafka.common.annotation.InterfaceStability;
 
 
 /**
  * Reassembles the header part of the message produced by the corresponding {@link HeaderSerializer}.
  */
+@InterfaceStability.Unstable
 public interface HeaderDeserializer extends Configurable {
   /**
    *

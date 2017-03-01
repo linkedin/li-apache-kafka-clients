@@ -10,7 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.producer.ProducerRecord;
-
+import org.apache.kafka.common.annotation.InterfaceStability;
 
 /**
  * <p>
@@ -29,6 +29,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
  * {@link com.linkedin.kafka.clients.producer.LiKafkaProducer#send} has been called.
  * </p>
  */
+@InterfaceStability.Unstable
 public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
 
   private Map<String, byte[]> headers;

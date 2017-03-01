@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.apache.kafka.common.annotation.InterfaceStability;
+
 
 /**
  * LiKafkaConsumer is a consumer built on top of {@link Consumer}. LiKafkaConsumer has built-in support for large
@@ -50,6 +52,7 @@ import java.util.regex.Pattern;
  * offsets of messages (e.g. providing offsets to or retrieving offsets from LiKafkaConsumer), the above methods may
  * be handy. Please read the documentation of the corresponding method to ensure correct usage.
  */
+@InterfaceStability.Unstable
 public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
 
   /**

@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.kafka.common.annotation.InterfaceStability;
+
 
 /**
  * The general producer interface that allows allows pluggable serializers and deserializers.
@@ -24,6 +26,7 @@ import java.util.concurrent.TimeUnit;
  * future extensions.
  * @see LiKafkaProducerImpl
  */
+@InterfaceStability.Unstable
 public interface LiKafkaProducer<K, V> extends Producer<K, V> {
   /**
    * Send the given record asynchronously and return a future which will eventually contain the response information.

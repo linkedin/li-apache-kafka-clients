@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.utils;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import org.apache.kafka.common.Configurable;
+import org.apache.kafka.common.annotation.InterfaceStability;
 
 
 /**
@@ -14,6 +15,7 @@ import org.apache.kafka.common.Configurable;
  * have some existing wire format that needs needs to be dealt with or have some internal requirements on message value
  * format.
  */
+@InterfaceStability.Unstable
 public interface HeaderSerializer extends Configurable {
 
   /**
