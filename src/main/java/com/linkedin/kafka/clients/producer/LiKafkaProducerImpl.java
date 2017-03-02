@@ -293,23 +293,14 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     HeaderSerializer headerSerializer) {
 
     if (!xRecord.hasHeaders()) {
-      return new ProducerRecord<byte[], byte[]>(xRecord.topic(), xRecord.partition(), xRecord.timestamp(), xRecord.key(), xRecord.value());
+      return new ProducerRecord<>(xRecord.topic(), xRecord.partition(), xRecord.timestamp(), xRecord.key(),
+                                  xRecord.value());
     }
 
-    int headersSize = headerSerializer.serializedHeaderSize(xRecord.headers());
-    int serializedValueSize = (xRecord.value() == null ? 0 : xRecord.value().length) + headersSize;
+    ByteBuffer value = xRecord.value() == null ? null : ByteBuffer.wrap(xRecord.value());
+    byte[] valueWithHeaders = headerSerializer.serializeHeaderWithValue(xRecord.headers(), value);
 
-    ByteBuffer valueWithHeaders = ByteBuffer.allocate(serializedValueSize);
-    headerSerializer.serializeHeader(valueWithHeaders, xRecord.headers(), xRecord.value() == null);
-    if (xRecord.value() != null) {
-      valueWithHeaders.put(xRecord.value());
-    }
-
-    if (valueWithHeaders.hasRemaining()) {
-      throw new IllegalStateException("Detected slack when writing headers to byte buffer.");
-    }
-
-    return new ProducerRecord<>(xRecord.topic(), xRecord.partition(), xRecord.timestamp(), xRecord.key(), valueWithHeaders.array());
+    return new ProducerRecord<>(xRecord.topic(), xRecord.partition(), xRecord.timestamp(), xRecord.key(), valueWithHeaders);
   }
 
 

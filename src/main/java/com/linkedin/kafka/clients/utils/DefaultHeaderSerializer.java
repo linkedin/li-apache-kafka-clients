@@ -44,39 +44,43 @@ public class DefaultHeaderSerializer implements HeaderSerializer, DefaultHeaderS
   }
 
   /**
-   * @param dest The destination byte buffer where we should write the headers to.  If this method throws an exception
-   *             the caller can not assume any particular state of dest.
    * @param headers This writes the version field if headers is null.
    */
   @Override
-  public void serializeHeader(ByteBuffer dest, Map<String, byte[]> headers, boolean userValueIsNull) {
+  public byte[] serializeHeaderWithValue(Map<String, byte[]> headers, ByteBuffer value) {
+    int sizeWithHeaders = (value == null ? 0 : value.remaining()) + serializedHeaderSize(headers);
+    ByteBuffer dest = ByteBuffer.allocate(sizeWithHeaders);
     int originalPosition = dest.position();
     dest.put(_headerMagic);
-    byte versionAndFlags = (byte) (VERSION_1 | (userValueIsNull ? USER_VALUE_IS_NULL_FLAG : 0));
+    byte versionAndFlags = (byte) (VERSION_1 | (value == null ? USER_VALUE_IS_NULL_FLAG : 0));
     dest.put(versionAndFlags);
     dest.putInt(0); //updated later
-    if (headers == null) {
-      return;
-    }
+    if (headers != null) {
 
-    CharsetEncoder utf8Encoder = UTF_8_ENCODER_THREAD_LOCAL.get();
+      CharsetEncoder utf8Encoder = UTF_8_ENCODER_THREAD_LOCAL.get();
 
-    int startPosition = dest.position();
-    for (Map.Entry<String, byte[]> header : headers.entrySet()) {
-      HeaderUtils.validateHeaderKey(header.getKey());
-      String key = header.getKey();
-      int keySize = DefaultHeaderSerde.utf8StringLength(key);
-      if (keySize > HeaderUtils.MAX_KEY_LENGTH) {
-        throw new IllegalArgumentException("Header key \"" + key + "\" is too long.");
+      int startPosition = dest.position();
+      for (Map.Entry<String, byte[]> header : headers.entrySet()) {
+        HeaderUtils.validateHeaderKey(header.getKey());
+        String key = header.getKey();
+        int keySize = DefaultHeaderSerde.utf8StringLength(key);
+        if (keySize > HeaderUtils.MAX_KEY_LENGTH) {
+          throw new IllegalArgumentException("Header key \"" + key + "\" is too long.");
+        }
+        dest.put((byte) keySize);
+        serializeHeaderKey(dest, key, utf8Encoder);
+        dest.putInt(header.getValue().length);
+        dest.put(header.getValue());
       }
-      dest.put((byte) keySize);
-      serializeHeaderKey(dest, key, utf8Encoder);
-      dest.putInt(header.getValue().length);
-      dest.put(header.getValue());
+
+      int headerSize = dest.position() - startPosition;
+      dest.putInt(originalPosition + _headerMagic.length + VERSION_AND_FLAGS_SIZE, headerSize);
+    }
+    if (value != null) {
+      dest.put(value);
     }
 
-    int headerSize = dest.position() - startPosition;
-    dest.putInt(originalPosition + _headerMagic.length + VERSION_AND_FLAGS_SIZE, headerSize);
+    return dest.array();
   }
 
   /**
@@ -85,8 +89,7 @@ public class DefaultHeaderSerializer implements HeaderSerializer, DefaultHeaderS
    * @return VERSION_AND_FLAGS_SIZE if headers is null else the number of bytes needed to represent the header key and value, but
    * without the magic number.
    */
-  @Override
-  public int serializedHeaderSize(Map<String, byte[]> headers) {
+  int serializedHeaderSize(Map<String, byte[]> headers) {
     if (headers == null) {
       return DefaultHeaderSerializer.VERSION_AND_FLAGS_SIZE;
     }

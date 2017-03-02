@@ -84,7 +84,7 @@ public class ExtensibleProducerRecord<K, V> extends ProducerRecord<K, V> {
    * Overrides all the headers on this object if the other object has headers.  This method is not thread safe.
    * @param other non-null
    */
-  public void copyHeadersFrom(ExtensibleProducerRecord<K, V> other) {
+  public void copyHeadersFrom(ExtensibleProducerRecord<?, ?> other) {
     if (other.headers != null) {
       this.headers = new HashMap<>(other.headers); //TODO: copy on write?
     }
