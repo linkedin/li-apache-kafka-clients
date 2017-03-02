@@ -4,7 +4,7 @@
  */
 package com.linkedin.kafka.clients.producer;
 
-import com.linkedin.kafka.clients.utils.HeaderUtils;
+import com.linkedin.kafka.clients.headers.HeaderUtils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;

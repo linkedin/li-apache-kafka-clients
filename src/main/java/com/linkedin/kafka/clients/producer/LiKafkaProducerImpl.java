@@ -9,7 +9,7 @@ import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
-import com.linkedin.kafka.clients.utils.HeaderSerializer;
+import com.linkedin.kafka.clients.headers.HeaderSerializer;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import java.util.Collection;
 import java.util.Collections;

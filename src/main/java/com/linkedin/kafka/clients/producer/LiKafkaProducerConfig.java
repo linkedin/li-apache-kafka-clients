@@ -5,8 +5,8 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
-import com.linkedin.kafka.clients.utils.DefaultHeaderSerializer;
-import com.linkedin.kafka.clients.utils.HeaderSerializer;
+import com.linkedin.kafka.clients.headers.DefaultHeaderSerializer;
+import com.linkedin.kafka.clients.headers.HeaderSerializer;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
 import org.apache.kafka.clients.producer.Producer;

@@ -6,7 +6,7 @@ package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
 import com.linkedin.kafka.clients.largemessage.MessageAssembler;
-import com.linkedin.kafka.clients.utils.HeaderUtils;
+import com.linkedin.kafka.clients.headers.HeaderUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collection;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;

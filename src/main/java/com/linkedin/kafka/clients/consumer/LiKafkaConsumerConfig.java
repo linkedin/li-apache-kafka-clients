@@ -5,8 +5,8 @@
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
-import com.linkedin.kafka.clients.utils.DefaultHeaderDeserializer;
-import com.linkedin.kafka.clients.utils.HeaderDeserializer;
+import com.linkedin.kafka.clients.headers.DefaultHeaderDeserializer;
+import com.linkedin.kafka.clients.headers.HeaderDeserializer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;

@@ -4,10 +4,10 @@
  */
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.utils.DefaultHeaderDeserializer;
-import com.linkedin.kafka.clients.utils.DefaultHeaderSerializer;
-import com.linkedin.kafka.clients.utils.HeaderDeserializer;
-import com.linkedin.kafka.clients.utils.LazyHeaderListMap;
+import com.linkedin.kafka.clients.headers.DefaultHeaderDeserializer;
+import com.linkedin.kafka.clients.headers.DefaultHeaderSerializer;
+import com.linkedin.kafka.clients.headers.HeaderDeserializer;
+import com.linkedin.kafka.clients.headers.LazyHeaderListMap;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.HashSet;

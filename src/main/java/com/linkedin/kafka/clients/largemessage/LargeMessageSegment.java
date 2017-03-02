@@ -5,7 +5,7 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
-import com.linkedin.kafka.clients.utils.HeaderUtils;
+import com.linkedin.kafka.clients.headers.HeaderUtils;
 import java.nio.ByteBuffer;
 import java.util.UUID;
 

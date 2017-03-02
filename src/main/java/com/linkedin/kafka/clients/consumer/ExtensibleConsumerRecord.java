@@ -4,8 +4,8 @@
  */
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.utils.HeaderUtils;
-import com.linkedin.kafka.clients.utils.LazyHeaderListMap;
+import com.linkedin.kafka.clients.headers.HeaderUtils;
+import com.linkedin.kafka.clients.headers.LazyHeaderListMap;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;

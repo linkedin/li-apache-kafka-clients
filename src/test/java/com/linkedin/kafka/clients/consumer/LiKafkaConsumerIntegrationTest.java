@@ -11,8 +11,8 @@ import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducerImpl;
-import com.linkedin.kafka.clients.utils.DefaultHeaderSerializer;
-import com.linkedin.kafka.clients.utils.HeaderSerializer;
+import com.linkedin.kafka.clients.headers.DefaultHeaderSerializer;
+import com.linkedin.kafka.clients.headers.HeaderSerializer;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.UUIDFactory;
 import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;

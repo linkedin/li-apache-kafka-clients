@@ -9,7 +9,7 @@ import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
 import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.auditing.Auditor;
-import com.linkedin.kafka.clients.utils.HeaderDeserializer;
+import com.linkedin.kafka.clients.headers.HeaderDeserializer;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
