@@ -17,7 +17,7 @@ import java.util.UUID;
 import static org.testng.Assert.assertEquals;
 
 /**
- * Test for DefaultSegmentSerializer and DefaultSegmentDeserializer.
+ * Test that a large message segment can be parsed.
  */
 public class SerializerDeserializerTest {
 
@@ -25,27 +25,21 @@ public class SerializerDeserializerTest {
   public void testSerde() {
     Serializer<String> stringSerializer = new StringSerializer();
     Deserializer<String> stringDeserializer = new StringDeserializer();
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
-    Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
 
     String s = TestUtils.getRandomString(100);
     assertEquals(s.length(), 100);
     byte[] stringBytes = stringSerializer.serialize("topic", s);
     assertEquals(stringBytes.length, 100);
     LargeMessageSegment segment =
-        new LargeMessageSegment(UUID.randomUUID(), 0, 2, stringBytes.length, ByteBuffer.wrap(stringBytes));
-    // String bytes + segment header
-    byte[] serializedSegment = segmentSerializer.serialize("topic", segment);
-    assertEquals(serializedSegment.length, 1 + stringBytes.length + LargeMessageSegment.SEGMENT_INFO_OVERHEAD + 4);
+        new LargeMessageSegment(UUID.randomUUID(), 0, 2, stringBytes.length, false, ByteBuffer.wrap(stringBytes));
 
-    LargeMessageSegment deserializedSegment = segmentDeserializer.deserialize("topic", serializedSegment);
-    assertEquals(deserializedSegment.messageId, segment.messageId);
-    assertEquals(deserializedSegment.messageSizeInBytes, segment.messageSizeInBytes);
-    assertEquals(deserializedSegment.numberOfSegments, segment.numberOfSegments);
-    assertEquals(deserializedSegment.sequenceNumber, segment.sequenceNumber);
-    assertEquals(deserializedSegment.payload.limit(), 100);
-    String deserializedString = stringDeserializer.deserialize("topic", deserializedSegment.payloadArray());
-    assertEquals(deserializedString.length(), s.length());
+    LargeMessageSegment deserializedSegment = new LargeMessageSegment(segment.segmentHeader(), segment.segmentByteBuffer());
+    assertEquals(deserializedSegment.messageId(), segment.messageId());
+    assertEquals(deserializedSegment.originalValueSize(), stringBytes.length);
+    assertEquals(deserializedSegment.numberOfSegments(), 2);
+    assertEquals(deserializedSegment.sequenceNumber(), 0);
+    String deserializedString = stringDeserializer.deserialize("topic", deserializedSegment.segmentArray());
+    assertEquals(deserializedString, s);
 
   }
 }

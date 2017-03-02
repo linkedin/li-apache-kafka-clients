@@ -18,7 +18,7 @@ import java.util.UUID;
 /**
  * The class keeps track of the safe offset for each partition.
  */
-public class LargeMessageOffsetTracker {
+class LargeMessageOffsetTracker {
 
   private final Map<TopicPartition, QueuedMap<UUID, Long>> _offsetMap;
 
@@ -65,7 +65,10 @@ public class LargeMessageOffsetTracker {
     }
   }
 
-  void maybeTrackMessage(TopicPartition tp, UUID messageId, long offset) {
+  /**
+   * If the specified messageId has not been seen before then track the associated offset as its starting offset.
+   */
+  void trackMessage(TopicPartition tp, UUID messageId, long offset) {
     QueuedMap<UUID, Long> offsetMapForPartition = getAndMaybePutOffsetMapForPartition(tp);
     if (offsetMapForPartition.get(messageId) == null) {
       offsetMapForPartition.put(messageId, offset);

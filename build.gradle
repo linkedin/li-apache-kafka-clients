@@ -25,6 +25,7 @@ apply plugin: 'checkstyle'
 apply plugin: 'maven-publish'
 apply plugin: 'com.jfrog.artifactory'
 
+
 //project layout
 
 sourceSets {
@@ -39,17 +40,22 @@ sourceSets {
     }
 }
 
-//project dependencies
-
+// dependencies
 repositories {
     mavenCentral()
 }
 
-dependencies {
-    compile 'org.apache.kafka:kafka-clients:0.10.1.1'
+def kafkaVersion = '0.10.2.0'
 
-    testCompile 'org.apache.kafka:kafka_2.10:0.10.1.1:test'
-    testCompile 'org.apache.kafka:kafka_2.10:0.10.1.1'
+dependencies {
+    compile 'org.apache.kafka:kafka_2.10:' + kafkaVersion + ':test'
+    compile 'org.apache.kafka:kafka_2.10:' + kafkaVersion
+    compile 'org.apache.kafka:kafka-clients:' + kafkaVersion
+    compile 'org.apache.zookeeper:zookeeper:3.4.6'
+    compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
+
+    testCompile 'org.apache.kafka:kafka_2.10:' + kafkaVersion + ':test'
+    testCompile 'org.apache.kafka:kafka_2.10:' + kafkaVersion
     testCompile 'org.bouncycastle:bcpkix-jdk15on:1.54'
     testCompile 'org.testng:testng:6.8.8'
 }

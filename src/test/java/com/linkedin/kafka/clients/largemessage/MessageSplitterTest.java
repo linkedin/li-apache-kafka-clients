@@ -4,8 +4,14 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.consumer.ExtensibleConsumerRecord;
+import com.linkedin.kafka.clients.headers.HeaderUtils;
+import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 import com.linkedin.kafka.clients.utils.TestUtils;
-import org.apache.kafka.clients.producer.ProducerRecord;
+import com.linkedin.kafka.clients.utils.UUIDFactory;
+import com.linkedin.kafka.clients.utils.UUIDFactoryImpl;
+import java.nio.ByteBuffer;
+import java.util.Collection;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
@@ -13,10 +19,12 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.testng.annotations.Test;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+
 
 /**
  * Unit test for message splitter.
@@ -26,34 +34,51 @@ public class MessageSplitterTest {
   public void testSplit() {
     TopicPartition tp = new TopicPartition("topic", 0);
     UUID id = UUID.randomUUID();
+    UUIDFactory uuidFactory = new UUIDFactoryImpl() {
+      @Override
+      public UUID create() {
+        return id;
+      }
+    };
     String message = TestUtils.getRandomString(1000);
     Serializer<String> stringSerializer = new StringSerializer();
     Deserializer<String> stringDeserializer = new StringDeserializer();
-    Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
-    Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
-    MessageSplitter splitter = new MessageSplitterImpl(200, segmentSerializer);
+    MessageSplitter splitter = new MessageSplitterImpl(200, uuidFactory);
 
     byte[] serializedMessage = stringSerializer.serialize("topic", message);
-    List<ProducerRecord<byte[], byte[]>> records = splitter.split("topic", id, serializedMessage);
-    assertEquals(records.size(), 5, "Should have 6 segments.");
-    MessageAssembler assembler = new MessageAssemblerImpl(10000, 10000, true, segmentDeserializer);
-    String assembledMessage = null;
-    UUID uuid = null;
-    for (int i = 0; i < records.size(); i++) {
-      ProducerRecord<byte[], byte[]> record = records.get(i);
-      LargeMessageSegment segment = segmentDeserializer.deserialize("topic", record.value());
-      if (uuid == null) {
-        uuid = segment.messageId;
-      } else {
-        assertEquals(segment.messageId, uuid, "messageId should match.");
-      }
-      assertEquals(segment.numberOfSegments, 5, "segment number should be 5");
-      assertEquals(segment.messageSizeInBytes, serializedMessage.length, "message size should the same");
-      assertEquals(segment.sequenceNumber, i, "SequenceNumber should match");
+    ExtensibleProducerRecord<byte[], byte[]> producerRecord =
+        new ExtensibleProducerRecord<>("topic", 0, null, "key".getBytes(), serializedMessage);
+    Collection<ExtensibleProducerRecord<byte[], byte[]>> records = splitter.split(producerRecord);
+    assertEquals(records.size(), 5, "Should have 5 segments.");
+    MessageAssembler assembler = new MessageAssemblerImpl(10000, 10000, true);
 
-      assembledMessage = stringDeserializer.deserialize(null, assembler.assemble(tp, i, record.value()).messageBytes());
+    int expectedSequenceNumber = 0;
+    MessageAssembler.AssembleResult assembledMessage = null;
+    int totalHeadersSize = 0;
+
+    for (ExtensibleProducerRecord<byte[], byte[]> splitRecord : records) {
+      ExtensibleConsumerRecord<byte[], byte[]> splitConsumerRecord = TestUtils.producerRecordToConsumerRecord(splitRecord,
+          expectedSequenceNumber, expectedSequenceNumber, null, 0, 0);
+      totalHeadersSize += splitRecord.header(HeaderUtils.LARGE_MESSAGE_SEGMENT_HEADER).length + 8 + 1 + 4 + 4 + 4;
+      assembledMessage = assembler.assemble(tp, expectedSequenceNumber, splitConsumerRecord);
+      if (expectedSequenceNumber != 4) {
+        assertNull(assembledMessage.messageBytes());
+      }
+
+      // Check that each segment looks good
+      LargeMessageSegment segment =
+          new LargeMessageSegment(splitConsumerRecord.header(HeaderUtils.LARGE_MESSAGE_SEGMENT_HEADER), ByteBuffer.wrap(splitConsumerRecord.value()));
+      assertEquals(segment.messageId(), id, "messageId should match.");
+      assertEquals(segment.numberOfSegments(), 5, "number of segments should be 5");
+      assertEquals(segment.originalValueSize(), serializedMessage.length, "original value size should the same");
+      assertEquals(segment.sequenceNumber(), expectedSequenceNumber, "SequenceNumber should match");
+      assertEquals(segment.originalKeyWasNull(), false);
+      expectedSequenceNumber++;
     }
-    assertEquals(assembledMessage, message, "messages should match.");
+
+    assertTrue(totalHeadersSize != 0);
+    String deserializedOriginalValue = stringDeserializer.deserialize(null, assembledMessage.messageBytes());
+    assertEquals(deserializedOriginalValue, message, "values should match.");
   }
 
 }

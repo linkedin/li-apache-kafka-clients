@@ -71,11 +71,10 @@ public class LargeMessageTest {
     LargeMessageSegment segment1 = TestUtils.createLargeMessageSegment(messageId, 1, numberOfSegments, messageSizeInBytes, 10);
     message.addSegment(segment0, 0);
     message.addSegment(segment1, 1);
-
   }
 
   @Test
-  public void testConflictUUID() {
+  public void testValidation() {
     LargeMessage message = new LargeMessage(new TopicPartition("topic", 0),
         UUID.randomUUID(),
         0L,
@@ -83,13 +82,13 @@ public class LargeMessageTest {
         numberOfSegments);
 
     LargeMessageSegment segment = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments, messageSizeInBytes, 10);
-    message.addSegment(segment, 0);
     segment = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments + 1, messageSizeInBytes, 10);
     try {
       message.addSegment(segment, numberOfSegments + 1);
       fail("Should throw exception.");
     } catch (Throwable t) {
-      assertTrue(t.getMessage().startsWith("Detected UUID conflict"));
+      // too many segments
+      assertTrue(t.getMessage().startsWith("Segment number of offsets"));
     }
 
     segment = TestUtils.createLargeMessageSegment(messageId, 0, numberOfSegments, messageSizeInBytes + 1, 10);
@@ -97,7 +96,8 @@ public class LargeMessageTest {
       message.addSegment(segment, numberOfSegments);
       fail("Should throw exception.");
     } catch (Throwable t) {
-      assertTrue(t.getMessage().startsWith("Detected UUID conflict"));
+      // Bad original value size
+      assertTrue(t.getMessage().startsWith("Segment number of offsets"));
     }
   }
 }

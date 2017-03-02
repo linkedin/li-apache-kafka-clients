@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.apache.kafka.common.annotation.InterfaceStability;
+
 
 /**
  * LiKafkaConsumer is a consumer built on top of {@link Consumer}. LiKafkaConsumer has built-in support for large
@@ -50,6 +52,7 @@ import java.util.regex.Pattern;
  * offsets of messages (e.g. providing offsets to or retrieving offsets from LiKafkaConsumer), the above methods may
  * be handy. Please read the documentation of the corresponding method to ensure correct usage.
  */
+@InterfaceStability.Unstable
 public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
 
   /**
@@ -192,7 +195,8 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * @param timeout The time, in milliseconds, spent waiting in poll if data is not available in the buffer.
    *                If 0, returns immediately with any records that are available currently in the buffer, else returns empty.
    *                Must not be negative.
-   * @return map of topic to records since the last fetch for the subscribed list of topics and partitions
+   * @return map of topic to records since the last fetch for the subscribed list of topics and partitions.
+   * The records contained in the returned ConsumerRecords are of type {@link ExtensibleConsumerRecord}.
    * @throws org.apache.kafka.clients.consumer.InvalidOffsetException if the offset for a partition or set of
    *                                                                  partitions is undefined or out of range and no offset
    *                                                                  reset policy has been configured
@@ -416,7 +420,7 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * returns the safe offset committed by the consumer for the specified partition.
    *
    * @param partition The partition to query the committed offset.
-   * @return The actual offset committed to Kafka for this partition, or -1 is returned if there is no committed
+   * @return The actual offset committed to Kafka for this partition, or null is returned if there is no committed
    * safe offset.
    */
   @InterfaceOrigin.LiKafkaClients
