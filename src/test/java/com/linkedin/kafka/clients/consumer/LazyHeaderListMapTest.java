@@ -30,10 +30,7 @@ public class LazyHeaderListMapTest {
     expected.put("header.0", VALUE_0);
     expected.put("header.1", VALUE_1);
     DefaultHeaderSerializer headerSerializer = new DefaultHeaderSerializer();
-    int sizeBytes = headerSerializer.serializedHeaderSize(expected);
-    ByteBuffer serializedHeaders = ByteBuffer.allocate(sizeBytes);
-    headerSerializer.serializeHeader(serializedHeaders, expected, false);
-    serializedHeaders.rewind();
+    ByteBuffer serializedHeaders = ByteBuffer.wrap(headerSerializer.serializeHeaderWithValue(expected, null));
 
     HeaderDeserializer headerDeserializer = new DefaultHeaderDeserializer();
     HeaderDeserializer.DeserializeResult deserializeResult = headerDeserializer.deserializeHeader(serializedHeaders);

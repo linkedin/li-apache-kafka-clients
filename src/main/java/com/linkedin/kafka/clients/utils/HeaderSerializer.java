@@ -25,21 +25,12 @@ public interface HeaderSerializer extends Configurable {
 
   /**
    *
-   * @param dest The destination byte buffer where we should write the headers to.  If this method throws an exception
-   *             the caller can not assume any particular state of dest.
    * @param headers If this is non-null then serialized header bytes will be written to dest.  If this is null then
    *                an implementation may still write something like a magic number to dest.
-   * @param nullValue When true the user value of the message is actually null.  This is here so the header format
-   *                    may preserve the null when unpacking the user value.
+   * @param value   The value bytes to be put with headers. The implementation needs to take care of the case where
+   *                value is null. So that the header can set the user value to null when unpacking.
+   *                We use byte buffer as value instead of bytes here so that we can avoid unnecessary memory copy
+   *                for large message serialization.
    */
-  void serializeHeader(ByteBuffer dest, Map<String, byte[]> headers, boolean nullValue);
-
-  /**
-   * The serialized size of all the headers.  The producer may optionally not serialize an empty header in order to
-   * preserve the ability to send truly null values to the broker.
-   *
-   * @param headers This may be null
-   * @return non-negative, if headers is null this may still return a number greater than zero.
-   */
-  int serializedHeaderSize(Map<String, byte[]> headers);
+  byte[] serializeHeaderWithValue(Map<String, byte[]> headers, ByteBuffer value);
 }
