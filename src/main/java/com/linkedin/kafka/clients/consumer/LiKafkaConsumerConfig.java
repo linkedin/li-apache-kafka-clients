@@ -146,7 +146,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {
-    super(CONFIG, props);
+    super(CONFIG, props, false);
   }
 
   /**
