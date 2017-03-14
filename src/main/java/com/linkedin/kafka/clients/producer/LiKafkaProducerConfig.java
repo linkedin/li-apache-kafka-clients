@@ -67,7 +67,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {
-    super(CONFIG, props);
+    super(CONFIG, props, false);
   }
 
   public Map<String, Object> configsWithCurrentProducer(Producer<byte[], byte[]> producer) {
