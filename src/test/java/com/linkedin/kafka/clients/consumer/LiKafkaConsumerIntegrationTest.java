@@ -265,36 +265,43 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testSeekToBeginning() {
-    String topic = "testSeekToBeginning";
+  public void testSeekToBeginningAndEnd() {
+    String topic = "testSeekToBeginningAndEnd";
     produceSyntheticMessages(topic);
     Properties props = new Properties();
-    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testSeekToBeginning");
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testSeekToBeginningAndEnd");
     // Make sure we start to consume from the beginning.
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
-    LiKafkaConsumer<String, String> consumer = createConsumer(props);
-    try {
-      TopicPartition tp = new TopicPartition(topic, 0);
-      consumer.assign(Collections.singleton(tp));
 
-      ConsumerRecords<String, String> records = ConsumerRecords.empty();
-      while (records.isEmpty()) {
-        records = consumer.poll(100);
-      }
-      assertEquals(records.iterator().next().offset(), 2L);
-      // Commit the messages
-      consumer.commitSync();
+    LiKafkaConsumer<String, String> tempConsumer = createConsumer(props);
+    TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+    // We commit some message to the broker before seek to end. This is to test if the consumer will be affected
+    // by committed offsets after seek to beginning or end.
+    tempConsumer.assign(Collections.singleton(tp));
+    tempConsumer.seek(tp, Long.MAX_VALUE);
+    tempConsumer.commitSync();
+    tempConsumer.close();
+    // Produce a message and ensure it can be consumed.
+    Properties producerProps = new Properties();
+    producerProps.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props);
+         LiKafkaProducer<String, String> producer = createProducer(producerProps)) {
+      consumer.assign(Collections.singleton(tp));
       // Seek to beginning, the follow up poll() should ignore the committed high watermark.
       consumer.seekToBeginning(Collections.singleton(tp));
-      records = ConsumerRecords.empty();
-      while (records.isEmpty()) {
-        records = consumer.poll(100);
-      }
-      assertEquals(records.iterator().next().offset(), 2L, "Should see message offset 2 again.");
-    } finally {
-      consumer.close();
+      ConsumerRecords<String, String> records = consumer.poll(1000L);
+      assertEquals(records.iterator().next().offset(), 2L, "Should see message offset 2.");
+
+      consumer.seekToEnd(Collections.singleton(tp));
+      consumer.poll(10L);
+      assertEquals(10L, consumer.position(tp));
+
+      producer.send(new ProducerRecord<>(topic, SYNTHETIC_PARTITION_0, null, "test"));
+      producer.close();
+      records = consumer.poll(1000L);
+      assertEquals(records.iterator().next().offset(), 10L, "Should see message offset 10.");
     }
   }
 
