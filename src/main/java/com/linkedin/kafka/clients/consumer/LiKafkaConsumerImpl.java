@@ -232,12 +232,12 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         switch (_offsetResetStrategy) {
           case EARLIEST:
-            _kafkaConsumer.seekToBeginning(oe.partitions());
             oe.partitions().forEach(_consumerRecordsProcessor::clear);
+            _kafkaConsumer.seekToBeginning(oe.partitions());
             break;
           case LATEST:
-            _kafkaConsumer.seekToEnd(oe.partitions());
             oe.partitions().forEach(_consumerRecordsProcessor::clear);
+            _kafkaConsumer.seekToEnd(oe.partitions());
             break;
           default:
             throw oe;
@@ -377,6 +377,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     _kafkaConsumer.seekToEnd(partitions);
     for (TopicPartition tp : partitions) {
       _consumerRecordsProcessor.clear(tp);
+      // We set the high watermark to 0 if user is seeking to end. This is needed to prevent the consumer from
+      // retrieving high watermark from the committed offsets.
+      _consumerRecordsProcessor.setPartitionConsumerHighWaterMark(tp, 0L);
     }
   }
 
