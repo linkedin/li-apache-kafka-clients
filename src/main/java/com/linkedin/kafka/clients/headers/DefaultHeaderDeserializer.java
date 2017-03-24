@@ -37,7 +37,7 @@ public class DefaultHeaderDeserializer extends DefaultHeaderSerde implements Hea
   @Override
   public DeserializeResult deserializeHeader(ByteBuffer src) {
     if (!isHeaderMessage(src)) {
-      return new DeserializeResult(null, src);
+      return new DeserializeResult(null, src, false);
     }
     byte versionAndFlags = src.get();
     int foundVersion = versionAndFlags & 0x0F;
@@ -53,7 +53,7 @@ public class DefaultHeaderDeserializer extends DefaultHeaderSerde implements Hea
     src.limit(origLimit);
     Map<String, byte[]> headers = new LazyHeaderListMap(headerBuffer);
     boolean userValueIsNull = (versionAndFlags & USER_VALUE_IS_NULL_FLAG) != 0;
-    return new DeserializeResult(headers, userValueIsNull ? null : src);
+    return new DeserializeResult(headers, userValueIsNull ? null : src, true);
   }
 
   /**

@@ -28,16 +28,17 @@ public interface HeaderDeserializer extends Configurable {
   DeserializeResult deserializeHeader(ByteBuffer src);
 
   class DeserializeResult {
-    private Map<String, byte[]> _headers;
-    private ByteBuffer _value;
+    private final Map<String, byte[]> _headers;
+    private final ByteBuffer _value;
+    private final boolean _success;
 
-    public DeserializeResult(Map<String, byte[]> headers, ByteBuffer value) {
+    public DeserializeResult(Map<String, byte[]> headers, ByteBuffer value, boolean success) {
       this._headers = headers;
       this._value = value;
+      this._success = success;
     }
 
     /**
-     *
      * @return This may return null if the message did not have headers.
      */
     public Map<String, byte[]> headers() {
@@ -45,11 +46,19 @@ public interface HeaderDeserializer extends Configurable {
     }
 
     /**
-     *
      * @return  This may return null in which case the original user value was also null
      */
     public ByteBuffer value() {
       return _value;
+    }
+
+    /**
+     * @return  This will return true if the header deserializer was able to deserialize the headers else this will
+     * return false.  This is useful if you want to build some kind of chained deserializer that needs to check for
+     * legacy formats.
+     */
+    public boolean success() {
+      return _success;
     }
   }
 }

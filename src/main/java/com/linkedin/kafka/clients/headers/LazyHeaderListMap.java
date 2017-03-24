@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.headers;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.HashSet;
@@ -79,7 +80,7 @@ public class LazyHeaderListMap implements Map<String, byte[]> {
       return (e1.getKey() == null ?
           e2.getKey() == null : e1.getKey().equals(e2.getKey()))  &&
           (e1.getValue() == null ?
-              e2.getValue() == null : e1.getValue().equals(e2.getValue()));
+              e2.getValue() == null : Arrays.equals((byte[])e1.getValue(), (byte[])e2.getValue()));
     }
 
     /**
@@ -87,8 +88,8 @@ public class LazyHeaderListMap implements Map<String, byte[]> {
      */
     @Override
     public int hashCode() {
-      return (getKey() == null   ? 0 : getKey().hashCode()) ^
-          (getValue() == null ? 0 : getValue().hashCode());
+      return (getKey() == null   ? 0 : getKey().hashCode() ^
+          (getValue() == null ? 0 : Arrays.hashCode(getValue())));
     }
   };
 
@@ -463,7 +464,75 @@ public class LazyHeaderListMap implements Map<String, byte[]> {
 
   @Override
   public Set<Map.Entry<String, byte[]>> entrySet() {
-    throw new UnsupportedOperationException();
+    lazyInit();
+
+    return new Set<Map.Entry<String, byte[]>>() {
+
+      @Override
+      public int size() {
+        return LazyHeaderListMap.this.size();
+      }
+
+      @Override
+      public boolean isEmpty() {
+        return LazyHeaderListMap.this.isEmpty();
+      }
+
+      @Override
+      public boolean contains(Object o) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public Iterator<Map.Entry<String, byte[]>> iterator() {
+        return _backingList.iterator();
+      }
+
+      @Override
+      public Object[] toArray() {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public <T> T[] toArray(T[] a) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean add(Map.Entry<String, byte[]> stringEntry) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean remove(Object o) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean containsAll(Collection<?> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean addAll(Collection<? extends Map.Entry<String, byte[]>> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean retainAll(Collection<?> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean removeAll(Collection<?> c) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public void clear() {
+        throw new UnsupportedOperationException();
+      }
+    }; // Set<Map.Entry<String, byte[]>>
   }
 
   @Override

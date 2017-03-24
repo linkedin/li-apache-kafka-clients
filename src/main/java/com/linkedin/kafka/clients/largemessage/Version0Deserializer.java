@@ -1,5 +1,6 @@
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.headers.DefaultHeaderDeserializer;
 import com.linkedin.kafka.clients.headers.HeaderDeserializer;
 import com.linkedin.kafka.clients.headers.HeaderUtils;
 import java.nio.ByteBuffer;
@@ -24,16 +25,16 @@ import org.slf4j.LoggerFactory;
  * X bytes  - payload
  * </pre>
  */
-public class Version0Deseriaizer implements HeaderDeserializer {
+public class Version0Deserializer implements HeaderDeserializer {
 
-  private final static Logger LOG = LoggerFactory.getLogger(Version0Deseriaizer.class);
+  private final static Logger LOG = LoggerFactory.getLogger(Version0Deserializer.class);
   static final int SEGMENT_INFO_OVERHEAD = 16 + Integer.BYTES + Integer.BYTES + Integer.BYTES;
   static final byte LARGE_MESSAGE_ONLY_VERSION = 0;
   static final int CHECKSUM_LENGTH = Integer.BYTES;
 
-  private final HeaderDeserializer _tryFirst;
+  private HeaderDeserializer _tryFirst;
 
-  public Version0Deseriaizer(HeaderDeserializer tryFirst) {
+  public Version0Deserializer(HeaderDeserializer tryFirst) {
     if (tryFirst == null) {
       throw new IllegalArgumentException("This deserializer only supports legacy serilized values.  No new values of"
           + " this type are supported.");
@@ -41,21 +42,26 @@ public class Version0Deseriaizer implements HeaderDeserializer {
     _tryFirst = tryFirst;
   }
 
+  public Version0Deserializer() {
+    this(new DefaultHeaderDeserializer());
+  }
+
   @Override
   public DeserializeResult deserializeHeader(ByteBuffer src) {
     DeserializeResult deserializeResult = _tryFirst.deserializeHeader(src);
-    if (src == null && deserializeResult.value() == null) {
-      return deserializeResult;  //null value
-    }
-    if (deserializeResult.headers() != null || deserializeResult.value() != src) {
-      return deserializeResult; // good deserialization
+    if (deserializeResult.success()) {
+      return deserializeResult;
     }
 
-    //Attempt to deserialize verison 0 headers
+    if (src == null) {
+      return new DeserializeResult(null, null, true);
+    }
+
+    //Attempt to deserialize version 0 headers
     int headerLength = 1 + SEGMENT_INFO_OVERHEAD + CHECKSUM_LENGTH;
     if (src.remaining() < headerLength) {
       // Serialized segment size too small, not large message segment.
-      return new DeserializeResult(null, src);
+      return new DeserializeResult(null, src, false);
     }
     int originalSrcPosition = src.position();
     byte version = src.get();
@@ -63,7 +69,7 @@ public class Version0Deseriaizer implements HeaderDeserializer {
       LOG.debug("Serialized version byte is not than {}, not large message segment.",
           LARGE_MESSAGE_ONLY_VERSION);
       src.position(originalSrcPosition);
-      return new DeserializeResult(null, src);
+      return new DeserializeResult(null, src, false);
     }
     int checksum = src.getInt();
     long messageIdMostSignificantBits = src.getLong();
@@ -72,7 +78,7 @@ public class Version0Deseriaizer implements HeaderDeserializer {
         checksum != ((int) (messageIdMostSignificantBits + messageIdLeastSignificantBits))) {
       LOG.debug("Serialized segment checksum does not match, not a large message segment.");
       src.position(originalSrcPosition);
-      return new DeserializeResult(null, src);
+      return new DeserializeResult(null, src, false);
     }
 
     UUID messageId = new UUID(messageIdMostSignificantBits, messageIdLeastSignificantBits);
@@ -84,12 +90,12 @@ public class Version0Deseriaizer implements HeaderDeserializer {
     Map<String, byte[]> headers = new HashMap<>(1);
     headers.put(HeaderUtils.LARGE_MESSAGE_SEGMENT_HEADER, currentVersionOfLargeMessageSegment.segmentHeader());
     ByteBuffer payload = src.slice();
-    return new DeserializeResult(headers, payload);
+    return new DeserializeResult(headers, payload, true);
   }
 
   @Override
   public void configure(Map<String, ?> configs) {
-
+    _tryFirst.configure(configs);
   }
 
 }
