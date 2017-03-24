@@ -62,7 +62,7 @@ public class LazyHeaderListMap implements Map<String, byte[]> {
     }
 
     /**
-     * This compares the way Map.Entry says we should compare two entries, but note this does not work well for byte arrays.
+     * This compares Map.Entry but not the way Map.Entry says we should compare two entries, because that does not work well for byte arrays.
      */
     @Override
     public boolean equals(Object o) {
@@ -84,7 +84,7 @@ public class LazyHeaderListMap implements Map<String, byte[]> {
     }
 
     /**
-     * This computes a hashCode() the way Map.Entry says we should compute hashCode, but note this does not work well for byte arrays.
+     * This computes a hashCode() the not the way way Map.Entry says we should compute hashCode, as that does not work well for byte arrays.
      */
     @Override
     public int hashCode() {
