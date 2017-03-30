@@ -143,16 +143,16 @@ public class ConsumerRecordsProcessor {
     for (TopicPartition tp : offsetsToCommit.keySet()) {
       long origOffset = offsetsToCommit.get(tp).offset();
       Long safeOffsetToCommit = origOffset;
-      if (origOffset > 0) {
+      Long earliestTrackedOffset = _deliveredMessageOffsetTracker.earliestTrackedOffset(tp);
+      // When origOffset is smaller or equals to the earliest tracked offset, we simply use it without additional
+      // lookup. Notice that in this case, (origOffset - 1) will be out of the tracked range.
+      if (earliestTrackedOffset != null && origOffset > earliestTrackedOffset) {
         // We need to find the previous delivered offset from this partition and use its safe offset.
         Long previousDeliveredOffset = _deliveredMessageOffsetTracker.closestDeliveredUpTo(tp, origOffset - 1);
         if (previousDeliveredOffset != null) {
           safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp, previousDeliveredOffset);
         } else {
-          safeOffsetToCommit = _deliveredMessageOffsetTracker.earliestTrackedOffset(tp);
-          if (safeOffsetToCommit == null) {
-            safeOffsetToCommit = origOffset;
-          }
+          safeOffsetToCommit = earliestTrackedOffset;
         }
       }
       // We need to combine the metadata with the high watermark. High watermark should never rewind.
