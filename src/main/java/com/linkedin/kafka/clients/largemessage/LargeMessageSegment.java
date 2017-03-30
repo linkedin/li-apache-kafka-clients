@@ -131,7 +131,7 @@ public class LargeMessageSegment {
   }
 
 
-  byte[] segmentHeader() {
+  public byte[] segmentHeader() {
     ByteBuffer headerValue =
       ByteBuffer.allocate(1 /* version*/ + 8 + 8 /* uuid */ + 4 /* sequenceNumber */ + 4 /* numberOfSegments */ +
       4 /* originalValueSize */ + 1 /* originalWasNull */);
@@ -150,7 +150,7 @@ public class LargeMessageSegment {
     return _segment;
   }
 
-  UUID messageId() {
+  public UUID messageId() {
     return _messageId;
   }
 
@@ -158,11 +158,11 @@ public class LargeMessageSegment {
    * The size of the original, serialized value before segmentation.
    * @return non-negative
    */
-  int originalValueSize() {
+  public int originalValueSize() {
     return _originalValueSize;
   }
 
-  int numberOfSegments() {
+  public int numberOfSegments() {
     return _numberOfSegments;
   }
 
@@ -176,11 +176,11 @@ public class LargeMessageSegment {
     }
   }
 
-  int sequenceNumber() {
+  public int sequenceNumber() {
     return _sequenceNumber;
   }
 
-  boolean originalKeyWasNull() {
+  public boolean originalKeyWasNull() {
     return _originalKeyWasNull;
   }
 }

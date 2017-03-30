@@ -18,6 +18,8 @@ import org.testng.annotations.Test;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+
 
 public class LazyHeaderListMapTest {
 
@@ -49,5 +51,22 @@ public class LazyHeaderListMapTest {
     actualKeys.add(keyIterator.next());
     assertEquals(actualKeys, expectedKeys);
     assertFalse(keyIterator.hasNext());
+  }
+
+  @Test
+  public void testEntrySetIteration() {
+    LazyHeaderListMap lazyHeaderListMap = new LazyHeaderListMap();
+    lazyHeaderListMap.put("a", new byte[]{ 9 });
+    lazyHeaderListMap.put("b", new byte[]{ 10});
+    Iterator<Map.Entry<String, byte[]>> it = lazyHeaderListMap.entrySet().iterator();
+    assertTrue(it.hasNext());
+    Map.Entry<String, byte[]> entry = it.next();
+    assertEquals(entry.getKey(), "a");
+    assertEquals(entry.getValue(), new byte[] { 9 });
+    assertTrue(it.hasNext());
+    entry = it.next();
+    assertEquals(entry.getKey(), "b");
+    assertEquals(entry.getValue(), new byte[] { 10 });
+    assertFalse(it.hasNext());
   }
 }
