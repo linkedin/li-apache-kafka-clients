@@ -288,7 +288,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   @Override
   public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
     // Ignore the high watermark.
-    commitOffsets(offsets, false, null, true);
+    commitOffsets(offsets, true, callback, false);
   }
 
   // Private function to avoid duplicate code.
