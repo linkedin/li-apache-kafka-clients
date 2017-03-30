@@ -362,17 +362,27 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.assign(Collections.singleton(tp));
       consumer.poll(5000); // M2
       final AtomicBoolean offsetCommitted = new AtomicBoolean(false);
-      consumer.commitAsync(new OffsetCommitCallback() {
+      OffsetCommitCallback commitCallback = new OffsetCommitCallback() {
         @Override
         public void onComplete(Map<TopicPartition, OffsetAndMetadata> topicPartitionOffsetAndMetadataMap, Exception e) {
-          assertEquals(topicPartitionOffsetAndMetadataMap.get(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
           offsetCommitted.set(true);
         }
-      });
+      };
+      consumer.commitAsync(commitCallback);
       while (!offsetCommitted.get()) {
         consumer.poll(10);
       }
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
+      assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
+
+      offsetCommitted.set(false);
+      Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
+      offsetMap.put(tp, new OffsetAndMetadata(0));
+      consumer.commitAsync(offsetMap, commitCallback);
+      while (!offsetCommitted.get()) {
+        consumer.poll(10);
+      }
+      assertEquals(consumer.committed(tp), new OffsetAndMetadata(0, ""), "The committed user offset should be 0");
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
     }
   }
