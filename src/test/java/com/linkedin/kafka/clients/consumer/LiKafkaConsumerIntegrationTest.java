@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.consumer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 
+import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.producer.ExtensibleProducerRecord;
 
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
@@ -259,6 +260,78 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(8, "new commit")));
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(8, "new commit"));
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 8);
+    } finally {
+      consumer.close();
+    }
+  }
+
+  @Test
+  public void testCommitWithOffsetMap() {
+    String topic = "testCommitWithOffsetMap";
+    produceSyntheticMessages(topic);
+    Properties props = new Properties();
+    // All the consumers should have the same group id.
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommitWithOffsetMap");
+    // Make sure we start to consume from the beginning.
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    // Only fetch one record at a time.
+    props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
+    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    LiKafkaConsumer<String, String> consumer = createConsumer(props);
+
+    try {
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      consumer.assign(Collections.singleton(tp));
+
+      // First test tracked range from 0 to 9
+      consumer.seekToBeginning(Collections.singleton(tp));
+      while (consumer.position(tp) != 10) {
+        consumer.poll(10L);
+      }
+      // test commit first tracked offset.
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(0L)));
+      assertEquals(0L, consumer.committed(tp).offset());
+      assertEquals(0L, consumer.committedSafeOffset(tp).longValue());
+      // test last consumed offset + 1
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(10L)));
+      assertEquals(10L, consumer.committed(tp).offset());
+      assertEquals(10L, consumer.committedSafeOffset(tp).longValue());
+      // test a delivered offset (offset of M0 is 5L)
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(6L)));
+      assertEquals(6L, consumer.committed(tp).offset());
+      assertEquals(3L, consumer.committedSafeOffset(tp).longValue());
+      // test a non-message offset,
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(3L)));
+      assertEquals(3L, consumer.committed(tp).offset());
+      assertEquals(0L, consumer.committedSafeOffset(tp).longValue());
+
+      // Now test tracked range from 2 to 9
+      consumer.seek(tp, 100L); // clear up internal state.
+      consumer.seek(tp, 2L);
+      while (consumer.position(tp) != 10) {
+        consumer.poll(10L);
+      }
+      // test commit an offset smaller than the first tracked offset.
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(0L)));
+      assertEquals(0L, consumer.committed(tp).offset());
+      assertEquals(0L, consumer.committedSafeOffset(tp).longValue());
+      // test commit first tracked offset.
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(2L)));
+      assertEquals(2L, consumer.committed(tp).offset());
+      assertEquals(2L, consumer.committedSafeOffset(tp).longValue());
+      // test last consumed offset + 1
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(10L)));
+      assertEquals(10L, consumer.committed(tp).offset());
+      assertEquals(4L, consumer.committedSafeOffset(tp).longValue());
+      // test a delivered offset (offset of M3 is 6L)
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(7L)));
+      assertEquals(7L, consumer.committed(tp).offset());
+      assertEquals(4L, consumer.committedSafeOffset(tp).longValue());
+      // test a non-message offset,
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(3L)));
+      assertEquals(3L, consumer.committed(tp).offset());
+      assertEquals(3L, consumer.committedSafeOffset(tp).longValue());
+
     } finally {
       consumer.close();
     }
@@ -855,7 +928,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * 5: M0_SEG1(END)
    * 6: M3_SEG1(END)
    * 7: M4_SEG0 (START) (END)
-   * 8: M5_SEG0 (START) (END)
+   * 8: M5_SEG0 (START)
    * 9: M5_SEG1 (END)
    * partition SYNTHETIC_PARTITION_1
    * 0: M0_SEG0 (START)
