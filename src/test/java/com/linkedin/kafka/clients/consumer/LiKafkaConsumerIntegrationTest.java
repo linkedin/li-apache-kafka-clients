@@ -8,6 +8,7 @@ import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
+import com.linkedin.kafka.clients.producer.UUIDFactory;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
@@ -925,7 +926,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * </pre>
    */
   private void produceSyntheticMessages(String topic) {
-    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE, new DefaultSegmentSerializer());
+    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE,
+                                                       new DefaultSegmentSerializer(),
+                                                       new UUIDFactory.DefaultUUIDFactory<>());
 
     Properties props = new Properties();
     props.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());

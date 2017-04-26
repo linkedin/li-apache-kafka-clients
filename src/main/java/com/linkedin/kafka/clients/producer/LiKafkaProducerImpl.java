@@ -10,7 +10,6 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
-import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -115,6 +114,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   // raw byte producer
   private final Producer<byte[], byte[]> _producer;
   /*package private for testing*/ Auditor<K, V> _auditor;
+  private final UUIDFactory<K, V> _uuidFactory;
 
   // A counter of the threads in the middle of sending messages. This is needed to ensure when we close the producer
   // everything is audited.
@@ -170,8 +170,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer
           : configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
       segmentSerializer.configure(configs.originals(), false);
-      _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer);
-
+      _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
+      _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
       // Instantiate auditor if necessary
       _auditor = auditor != null ? auditor
           : configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
@@ -204,7 +204,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
       Integer partition = producerRecord.partition();
       Future<RecordMetadata> future = null;
-      UUID messageId = getUuid(key, value);
+      UUID messageId = _uuidFactory.getUuid(producerRecord);
       if (LOG.isTraceEnabled()) {
         LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}",
             messageId.toString().replaceAll("-", ""),
@@ -273,10 +273,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   @Override
   public Map<MetricName, ? extends Metric> metrics() {
     return _producer.metrics();
-  }
-
-  protected UUID getUuid(K key, V value) {
-    return LiKafkaClientsUtils.randomUUID();
   }
 
   @Override

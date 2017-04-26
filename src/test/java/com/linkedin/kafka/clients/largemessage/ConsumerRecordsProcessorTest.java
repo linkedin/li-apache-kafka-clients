@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
+import com.linkedin.kafka.clients.producer.UUIDFactory;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import java.util.Collections;
@@ -171,7 +172,7 @@ public class ConsumerRecordsProcessorTest {
     Serializer<String> stringSerializer = new StringSerializer();
     Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     // Create two large messages.
-    MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer);
+    MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer, new UUIDFactory.DefaultUUIDFactory<>());
 
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
     consumerRecordsProcessor.process(getConsumerRecords());
@@ -290,7 +291,7 @@ public class ConsumerRecordsProcessorTest {
     Serializer<String> stringSerializer = new StringSerializer();
     Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     // Create two large messages.
-    MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer);
+    MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer, new UUIDFactory.DefaultUUIDFactory<>());
 
     UUID largeMessageId1 = LiKafkaClientsUtils.randomUUID();
     byte[] largeMessage1Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));
