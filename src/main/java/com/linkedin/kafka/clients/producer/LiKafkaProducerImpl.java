@@ -10,6 +10,7 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -153,30 +154,35 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     // Instantiate the open source producer, which always sents raw bytes.
     _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
 
-    // Instantiate the key serializer if necessary.
-    _keySerializer = keySerializer != null ? keySerializer :
-        configs.getConfiguredInstance(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
-    _keySerializer.configure(configs.originals(), true);
-    // Instantiate the key serializer if necessary.
-    _valueSerializer = valueSerializer != null ? valueSerializer :
-        configs.getConfiguredInstance(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, Serializer.class);
-    _valueSerializer.configure(configs.originals(), false);
+    try {
+      // Instantiate the key serializer if necessary.
+      _keySerializer = keySerializer != null ? keySerializer
+          : configs.getConfiguredInstance(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
+      _keySerializer.configure(configs.originals(), true);
+      // Instantiate the key serializer if necessary.
+      _valueSerializer = valueSerializer != null ? valueSerializer
+          : configs.getConfiguredInstance(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, Serializer.class);
+      _valueSerializer.configure(configs.originals(), false);
 
-    // prepare to handle large messages.
-    _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
-    _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
-    Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer :
-        configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
-    segmentSerializer.configure(configs.originals(), false);
-    _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer);
+      // prepare to handle large messages.
+      _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
+      _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
+      Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer
+          : configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
+      segmentSerializer.configure(configs.originals(), false);
+      _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer);
 
-    // Instantiate auditor if necessary
-    _auditor = auditor != null ? auditor :
-        configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
-    _auditor.configure(configs.configsWithCurrentProducer(_producer));
-    _auditor.start();
-    _numThreadsInSend = new AtomicInteger(0);
-    _closed = false;
+      // Instantiate auditor if necessary
+      _auditor = auditor != null ? auditor
+          : configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
+      _auditor.configure(configs.configsWithCurrentProducer(_producer));
+      _auditor.start();
+      _numThreadsInSend = new AtomicInteger(0);
+      _closed = false;
+    } catch (Exception e) {
+      _producer.close();
+      throw e;
+    }
   }
 
   @Override
@@ -270,7 +276,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   }
 
   protected UUID getUuid(K key, V value) {
-    return UUID.randomUUID();
+    return LiKafkaClientsUtils.randomUUID();
   }
 
   @Override

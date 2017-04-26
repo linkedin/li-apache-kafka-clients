@@ -66,7 +66,7 @@ public class MessageSplitterImpl implements MessageSplitter {
       throw new IllegalArgumentException("Topic cannot be empty for LiKafkaGenericMessageSplitter.");
     }
     // We allow message id to be null, but it is strongly recommended to pass in a message id.
-    UUID segmentMessageId = messageId == null ? UUID.randomUUID() : messageId;
+    UUID segmentMessageId = messageId == null ? LiKafkaClientsUtils.randomUUID() : messageId;
     List<ProducerRecord<byte[], byte[]>> segments = new ArrayList<>();
     // Get the total number of segments
     int numberOfSegments = (serializedRecord.length + (maxSegmentSize - 1)) / maxSegmentSize;

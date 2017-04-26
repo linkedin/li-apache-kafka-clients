@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
@@ -33,7 +34,7 @@ public class SerializerDeserializerTest {
     byte[] stringBytes = stringSerializer.serialize("topic", s);
     assertEquals(stringBytes.length, 100);
     LargeMessageSegment segment =
-        new LargeMessageSegment(UUID.randomUUID(), 0, 2, stringBytes.length, ByteBuffer.wrap(stringBytes));
+        new LargeMessageSegment(LiKafkaClientsUtils.randomUUID(), 0, 2, stringBytes.length, ByteBuffer.wrap(stringBytes));
     // String bytes + segment header
     byte[] serializedSegment = segmentSerializer.serialize("topic", segment);
     assertEquals(serializedSegment.length, 1 + stringBytes.length + LargeMessageSegment.SEGMENT_INFO_OVERHEAD + 4);
@@ -46,6 +47,5 @@ public class SerializerDeserializerTest {
     assertEquals(deserializedSegment.payload.limit(), 100);
     String deserializedString = stringDeserializer.deserialize("topic", deserializedSegment.payloadArray());
     assertEquals(deserializedString.length(), s.length());
-
   }
 }

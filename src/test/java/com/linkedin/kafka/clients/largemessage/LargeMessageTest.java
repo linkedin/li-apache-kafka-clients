@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import org.apache.kafka.common.TopicPartition;
 import org.testng.annotations.Test;
@@ -21,12 +22,12 @@ import static org.testng.Assert.fail;
 public class LargeMessageTest {
   private final int messageSizeInBytes = 15;
   private final int numberOfSegments = 2;
-  private final UUID messageId = UUID.randomUUID();
+  private final UUID messageId = LiKafkaClientsUtils.randomUUID();
 
   @Test
   public void testIncompleteMessage() {
     LargeMessage message = new LargeMessage(new TopicPartition("topic", 0),
-        UUID.randomUUID(),
+        LiKafkaClientsUtils.randomUUID(),
         0L,
         messageSizeInBytes,
         numberOfSegments);
@@ -50,7 +51,7 @@ public class LargeMessageTest {
   @Test(expectedExceptions = InvalidSegmentException.class)
   public void testZeroLengthSegment() {
     LargeMessage message = new LargeMessage(new TopicPartition("topic", 0),
-        UUID.randomUUID(),
+        LiKafkaClientsUtils.randomUUID(),
         0L,
         messageSizeInBytes,
         numberOfSegments);
@@ -62,7 +63,7 @@ public class LargeMessageTest {
   @Test(expectedExceptions = InvalidSegmentException.class)
   public void testSegmentTotalSizeGreaterThanMesssageSize() {
     LargeMessage message = new LargeMessage(new TopicPartition("topic", 0),
-        UUID.randomUUID(),
+        LiKafkaClientsUtils.randomUUID(),
         0L,
         messageSizeInBytes,
         numberOfSegments);
@@ -77,7 +78,7 @@ public class LargeMessageTest {
   @Test
   public void testConflictUUID() {
     LargeMessage message = new LargeMessage(new TopicPartition("topic", 0),
-        UUID.randomUUID(),
+        LiKafkaClientsUtils.randomUUID(),
         0L,
         messageSizeInBytes,
         numberOfSegments);
