@@ -138,7 +138,6 @@ try {
     // Instantiate auditor if needed.
     Auditor<K, V> auditor = consumerAuditor != null ? consumerAuditor :
         configs.getConfiguredInstance(LiKafkaConsumerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
-    auditor.configure(configs.originals());
     auditor.start();
 
     // Instantiate key and value deserializer if needed.

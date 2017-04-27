@@ -175,7 +175,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       // Instantiate auditor if necessary
       _auditor = auditor != null ? auditor
           : configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
-      _auditor.configure(configs.configsWithCurrentProducer(_producer));
       _auditor.start();
       _numThreadsInSend = new AtomicInteger(0);
       _closed = false;

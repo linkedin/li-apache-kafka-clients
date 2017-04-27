@@ -54,11 +54,6 @@ public class LiKafkaProducerConfig extends AbstractConfig {
 
   public static final String UUID_FACTORY_CLASS_DOC = "The UUID factory class to use for UUID generation.";
 
-  public static final String CURRENT_PRODUCER_DOC = "A Producer<byte[], byte[]> that can be used to send events to the " +
-      "same Kafka cluster as the LiKafkaProducer is sending records to. Technically speaking this is not a " +
-      "configuration. We add this configuration because in many cases the auditor needs a producer to send " +
-      "messages, it is more efficient to reuse the same producer used by LiKafkaProducer.";
-
   static {
     CONFIG = new ConfigDef()
         .define(LARGE_MESSAGE_ENABLED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM, LARGE_MESSAGE_ENABLED_DOC)
@@ -72,13 +67,6 @@ public class LiKafkaProducerConfig extends AbstractConfig {
 
   LiKafkaProducerConfig(Map<?, ?> props) {
     super(CONFIG, props, false);
-  }
-
-  public Map<String, Object> configsWithCurrentProducer(Producer<byte[], byte[]> producer) {
-    Map<String, Object> newConfigs = new HashMap<>();
-    newConfigs.putAll(this.originals());
-    newConfigs.put(CURRENT_PRODUCER, producer);
-    return newConfigs;
   }
 
 }
