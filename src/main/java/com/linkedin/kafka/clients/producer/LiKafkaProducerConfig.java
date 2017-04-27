@@ -30,6 +30,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String KEY_SERIALIZER_CLASS_CONFIG = ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG;
   public static final String VALUE_SERIALIZER_CLASS_CONFIG = ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG;
   public static final String SEGMENT_SERIALIZER_CLASS_CONFIG = "segment.serializer";
+  public static final String UUID_FACTORY_CLASS_CONFIG = "uuid.factory.class";
   public static final String CURRENT_PRODUCER = "current.producer";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
@@ -51,10 +52,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String SEGMENT_SERIALIZER_CLASS_DOC = "The class of segment serializer. The segment serializer " +
       "will be used to serialize large message segments when large message is enabled for LiKafkaProducer.";
 
-  public static final String CURRENT_PRODUCER_DOC = "A Producer<byte[], byte[]> that can be used to send events to the " +
-      "same Kafka cluster as the LiKafkaProducer is sending records to. Technically speaking this is not a " +
-      "configuration. We add this configuration because in many cases the auditor needs a producer to send " +
-      "messages, it is more efficient to reuse the same producer used by LiKafkaProducer.";
+  public static final String UUID_FACTORY_CLASS_DOC = "The UUID factory class to use for UUID generation.";
 
   static {
     CONFIG = new ConfigDef()
@@ -63,18 +61,12 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(AUDITOR_CLASS_CONFIG, Type.CLASS, NoOpAuditor.class.getName(), Importance.MEDIUM, AUDITOR_CLASS_DOC)
         .define(KEY_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, KEY_SERIALIZER_CLASS_DOC)
         .define(VALUE_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, VALUE_SERIALIZER_CLASS_DOC)
-        .define(SEGMENT_SERIALIZER_CLASS_CONFIG, Type.CLASS, DefaultSegmentSerializer.class.getName(), Importance.MEDIUM, SEGMENT_SERIALIZER_CLASS_DOC);
+        .define(SEGMENT_SERIALIZER_CLASS_CONFIG, Type.CLASS, DefaultSegmentSerializer.class.getName(), Importance.MEDIUM, SEGMENT_SERIALIZER_CLASS_DOC)
+        .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactory.DefaultUUIDFactory.class.getName(), Importance.LOW, UUID_FACTORY_CLASS_DOC);
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {
     super(CONFIG, props, false);
-  }
-
-  public Map<String, Object> configsWithCurrentProducer(Producer<byte[], byte[]> producer) {
-    Map<String, Object> newConfigs = new HashMap<>();
-    newConfigs.putAll(this.originals());
-    newConfigs.put(CURRENT_PRODUCER, producer);
-    return newConfigs;
   }
 
 }

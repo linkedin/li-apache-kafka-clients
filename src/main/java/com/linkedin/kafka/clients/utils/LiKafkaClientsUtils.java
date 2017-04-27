@@ -5,14 +5,38 @@
 package com.linkedin.kafka.clients.utils;
 
 import java.nio.ByteBuffer;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.UUID;
 
 /**
  * Util class for likafka-clients.
  */
 public class LiKafkaClientsUtils {
+  private static SecureRandom _secureRandom;
+
+  static {
+    try {
+      _secureRandom = SecureRandom.getInstance("SHA1PRNG");
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException("Cannot get random UUID due to", e);
+    }
+  }
 
   private LiKafkaClientsUtils() {
+  }
+
+  public static UUID randomUUID() {
+    byte[] bytes = new byte[16];
+    _secureRandom.nextBytes(bytes);
+    // Set UUID version number 4
+    bytes[6] &= 0x0f;
+    bytes[6] |= 0x40;
+    // Set IETF variant
+    bytes[8] &= 0x3f;
+    bytes[8] |= 0x80;
+    ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+    return new UUID(byteBuffer.getLong(), byteBuffer.getLong());
   }
 
   public static byte[] uuidToBytes(UUID uuid) {

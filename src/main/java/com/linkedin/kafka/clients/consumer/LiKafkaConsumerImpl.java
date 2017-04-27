@@ -13,6 +13,7 @@ import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -116,6 +117,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     _kafkaConsumer = new KafkaConsumer<>(configs.configForVanillaConsumer(),
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
+try {
 
     // Instantiate segment deserializer if needed.
     Deserializer segmentDeserializer = largeMessageSegmentDeserializer != null ? largeMessageSegmentDeserializer :
@@ -136,7 +138,6 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     // Instantiate auditor if needed.
     Auditor<K, V> auditor = consumerAuditor != null ? consumerAuditor :
         configs.getConfiguredInstance(LiKafkaConsumerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
-    auditor.configure(configs.originals());
     auditor.start();
 
     // Instantiate key and value deserializer if needed.
@@ -157,6 +158,10 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     // Instantiate offset commit callback.
     _offsetCommitCallback = new LiKafkaOffsetCommitCallback();
+    } catch (Exception e) {
+      _kafkaConsumer.close();
+      throw e;
+    }
   }
 
   @Override
