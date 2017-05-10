@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.producer.UUIDFactory;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.TestUtils;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
@@ -25,13 +27,13 @@ public class MessageSplitterTest {
   @Test
   public void testSplit() {
     TopicPartition tp = new TopicPartition("topic", 0);
-    UUID id = UUID.randomUUID();
+    UUID id = LiKafkaClientsUtils.randomUUID();
     String message = TestUtils.getRandomString(1000);
     Serializer<String> stringSerializer = new StringSerializer();
     Deserializer<String> stringDeserializer = new StringDeserializer();
     Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
-    MessageSplitter splitter = new MessageSplitterImpl(200, segmentSerializer);
+    MessageSplitter splitter = new MessageSplitterImpl(200, segmentSerializer, new UUIDFactory.DefaultUUIDFactory<>());
 
     byte[] serializedMessage = stringSerializer.serialize("topic", message);
     List<ProducerRecord<byte[], byte[]>> records = splitter.split("topic", id, serializedMessage);

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
@@ -52,6 +53,6 @@ public class MessageAssemblerTest {
 
   private byte[] wrapMessageBytes(Serializer<LargeMessageSegment> segmentSerializer, byte[] messageBytes) {
     return segmentSerializer.serialize("topic",
-        new LargeMessageSegment(UUID.randomUUID(), 0, 1, messageBytes.length, ByteBuffer.wrap(messageBytes)));
+        new LargeMessageSegment(LiKafkaClientsUtils.randomUUID(), 0, 1, messageBytes.length, ByteBuffer.wrap(messageBytes)));
   }
 }

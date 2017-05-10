@@ -114,6 +114,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   // raw byte producer
   private final Producer<byte[], byte[]> _producer;
   /*package private for testing*/ Auditor<K, V> _auditor;
+  private final UUIDFactory<K, V> _uuidFactory;
 
   // A counter of the threads in the middle of sending messages. This is needed to ensure when we close the producer
   // everything is audited.
@@ -153,34 +154,39 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     // Instantiate the open source producer, which always sents raw bytes.
     _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
 
-    // Instantiate the key serializer if necessary.
-    _keySerializer = keySerializer != null ? keySerializer :
-        configs.getConfiguredInstance(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
-    _keySerializer.configure(configs.originals(), true);
-    // Instantiate the key serializer if necessary.
-    _valueSerializer = valueSerializer != null ? valueSerializer :
-        configs.getConfiguredInstance(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, Serializer.class);
-    _valueSerializer.configure(configs.originals(), false);
+    try {
+      // Instantiate the key serializer if necessary.
+      _keySerializer = keySerializer != null ? keySerializer
+          : configs.getConfiguredInstance(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
+      _keySerializer.configure(configs.originals(), true);
+      // Instantiate the key serializer if necessary.
+      _valueSerializer = valueSerializer != null ? valueSerializer
+          : configs.getConfiguredInstance(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, Serializer.class);
+      _valueSerializer.configure(configs.originals(), false);
 
-    // prepare to handle large messages.
-    _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
-    _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
-    Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer :
-        configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
-    segmentSerializer.configure(configs.originals(), false);
-    _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer);
-
-    // Instantiate auditor if necessary
-    LiKafkaProducerConfig auditorConfigs = configs.configsWithCurrentProducer(_producer);
-    if (auditor != null) {
-      _auditor = auditor;
-      _auditor.configure(configs.originals());
-    } else {
-      _auditor = auditorConfigs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
+      // prepare to handle large messages.
+      _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
+      _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
+      Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer
+          : configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
+      segmentSerializer.configure(configs.originals(), false);
+      _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
+      _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
+      // Instantiate auditor if necessary
+      LiKafkaProducerConfig auditorConfigs = configs.configsWithCurrentProducer(_producer);
+      if (auditor != null) {
+        _auditor = auditor;
+        _auditor.configure(configs.originals());
+      } else {
+        _auditor = auditorConfigs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
+      }
+      _auditor.start();
+      _numThreadsInSend = new AtomicInteger(0);
+      _closed = false;
+    } catch (Exception e) {
+      _producer.close();
+      throw e;
     }
-    _auditor.start();
-    _numThreadsInSend = new AtomicInteger(0);
-    _closed = false;
   }
 
   @Override
@@ -202,7 +208,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
       Integer partition = producerRecord.partition();
       Future<RecordMetadata> future = null;
-      UUID messageId = getUuid(key, value);
+      UUID messageId = _uuidFactory.getUuid(producerRecord);
       if (LOG.isTraceEnabled()) {
         LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}",
             messageId.toString().replaceAll("-", ""),
@@ -271,10 +277,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   @Override
   public Map<MetricName, ? extends Metric> metrics() {
     return _producer.metrics();
-  }
-
-  protected UUID getUuid(K key, V value) {
-    return UUID.randomUUID();
   }
 
   @Override
