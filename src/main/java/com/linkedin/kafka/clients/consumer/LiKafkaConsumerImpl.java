@@ -113,7 +113,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     _lastAutoCommitMs = System.currentTimeMillis();
     // We need to set the auto commit to false in KafkaConsumer because it is not large message aware.
     ByteArrayDeserializer byteArrayDeserializer = new ByteArrayDeserializer();
-    _kafkaConsumer = new KafkaConsumer<>(configs.configForVanillaConsumer(),
+    _kafkaConsumer = new KafkaConsumer<>(configs.configForVanillaConsumer().originals(),
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
 
@@ -134,9 +134,13 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     DeliveredMessageOffsetTracker messageOffsetTracker = new DeliveredMessageOffsetTracker(maxTrackedMessagesPerPartition);
 
     // Instantiate auditor if needed.
-    Auditor<K, V> auditor = consumerAuditor != null ? consumerAuditor :
-        configs.getConfiguredInstance(LiKafkaConsumerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
-    auditor.configure(configs.originals());
+    Auditor<K, V> auditor;
+    if (consumerAuditor != null) {
+      auditor = consumerAuditor;
+      auditor.configure(configs.originals());
+    } else {
+      auditor = configs.getConfiguredInstance(LiKafkaConsumerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
+    }
     auditor.start();
 
     // Instantiate key and value deserializer if needed.

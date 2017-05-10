@@ -70,11 +70,11 @@ public class LiKafkaProducerConfig extends AbstractConfig {
     super(CONFIG, props, false);
   }
 
-  public Map<String, Object> configsWithCurrentProducer(Producer<byte[], byte[]> producer) {
+  LiKafkaProducerConfig configsWithCurrentProducer(Producer<byte[], byte[]> producer) {
     Map<String, Object> newConfigs = new HashMap<>();
     newConfigs.putAll(this.originals());
     newConfigs.put(CURRENT_PRODUCER, producer);
-    return newConfigs;
+    return new LiKafkaProducerConfig(newConfigs);
   }
 
 }

@@ -150,12 +150,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
    * This method returns the configurations that are going to be used by the vanilla open source Kafka Consumer.
    * It disables auto commit and change the offset reset strategy to be NONE.
    */
-  Map<String, Object> configForVanillaConsumer() {
+  LiKafkaConsumerConfig configForVanillaConsumer() {
     Map<String, Object> newConfigs = new HashMap<>();
     newConfigs.putAll(this.originals());
     newConfigs.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
     newConfigs.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
-    return newConfigs;
+    return new LiKafkaConsumerConfig(newConfigs);
   }
 
 }
