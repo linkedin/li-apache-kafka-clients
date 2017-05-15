@@ -5,10 +5,11 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
+import com.linkedin.kafka.clients.common.config.LiAbstractConfig;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.config.AbstractConfig;
+import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigDef.Importance;
@@ -20,7 +21,7 @@ import java.util.Map;
 /**
  * The configuration class for LiKafkaProducer
  */
-public class LiKafkaProducerConfig extends AbstractConfig {
+public class LiKafkaProducerConfig extends LiAbstractConfig {
 
   private static final ConfigDef CONFIG;
 
@@ -69,10 +70,22 @@ public class LiKafkaProducerConfig extends AbstractConfig {
     super(CONFIG, props, false);
   }
 
-  LiKafkaProducerConfig configsWithCurrentProducer(Producer<byte[], byte[]> producer) {
+  /**
+   * This method won't call {@link Configurable#configure(Map)} for {@link LiKafkaProducerConfig#AUDITOR_CLASS_CONFIG}
+   * during instance creation
+   */
+  @Override
+  public <T> T getConfiguredInstance(String key, Class<T> t) {
+    if (AUDITOR_CLASS_CONFIG.equals(key)) {
+      return getInstance(key, t);
+    }
+    return super.getConfiguredInstance(key, t);
+  }
+
+  public Map<String, Object> configsWithCurrentProducer(Producer<byte[], byte[]> producer) {
     Map<String, Object> newConfigs = new HashMap<>();
     newConfigs.putAll(this.originals());
     newConfigs.put(CURRENT_PRODUCER, producer);
-    return new LiKafkaProducerConfig(newConfigs);
+    return newConfigs;
   }
 }

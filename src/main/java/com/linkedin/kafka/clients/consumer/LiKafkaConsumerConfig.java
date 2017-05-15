@@ -4,10 +4,11 @@
 
 package com.linkedin.kafka.clients.consumer;
 
+import com.linkedin.kafka.clients.common.config.LiAbstractConfig;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.config.AbstractConfig;
+import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigDef.Importance;
@@ -20,7 +21,7 @@ import java.util.Map;
 /**
  * The configuration class for LiKafkaConsumer
  */
-public class LiKafkaConsumerConfig extends AbstractConfig {
+public class LiKafkaConsumerConfig extends LiAbstractConfig {
 
   private static final ConfigDef CONFIG;
 
@@ -147,15 +148,27 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   }
 
   /**
+   * This method won't call {@link Configurable#configure(Map)} for {@link LiKafkaConsumerConfig#AUDITOR_CLASS_CONFIG}
+   * during instance creation
+   */
+  @Override
+  public <T> T getConfiguredInstance(String key, Class<T> t) {
+    if (AUDITOR_CLASS_CONFIG.equals(key)) {
+      return getInstance(key, t);
+    }
+    return super.getConfiguredInstance(key, t);
+  }
+
+  /**
    * This method returns the configurations that are going to be used by the vanilla open source Kafka Consumer.
    * It disables auto commit and change the offset reset strategy to be NONE.
    */
-  LiKafkaConsumerConfig configForVanillaConsumer() {
+  Map<String, Object> configForVanillaConsumer() {
     Map<String, Object> newConfigs = new HashMap<>();
     newConfigs.putAll(this.originals());
     newConfigs.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
     newConfigs.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
-    return new LiKafkaConsumerConfig(newConfigs);
+    return newConfigs;
   }
 
 }
