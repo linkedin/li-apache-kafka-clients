@@ -173,9 +173,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
       _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
       // Instantiate auditor if necessary
-      _auditor = auditor != null ? auditor
-          : configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
-      _auditor.configure(configs.configsWithCurrentProducer(_producer));
+      if (auditor != null) {
+        _auditor = auditor;
+        _auditor.configure(configs.configsWithCurrentProducer(_producer));
+      } else {
+        _auditor = configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class, _producer);
+      }
       _auditor.start();
       _numThreadsInSend = new AtomicInteger(0);
       _closed = false;

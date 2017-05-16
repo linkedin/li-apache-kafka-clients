@@ -4,11 +4,10 @@
 
 package com.linkedin.kafka.clients.consumer;
 
-import com.linkedin.kafka.clients.common.config.LiAbstractConfig;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.Configurable;
+import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigDef.Importance;
@@ -21,7 +20,7 @@ import java.util.Map;
 /**
  * The configuration class for LiKafkaConsumer
  */
-public class LiKafkaConsumerConfig extends LiAbstractConfig {
+public class LiKafkaConsumerConfig extends AbstractConfig {
 
   private static final ConfigDef CONFIG;
 
@@ -145,18 +144,6 @@ public class LiKafkaConsumerConfig extends LiAbstractConfig {
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {
     super(CONFIG, props, false);
-  }
-
-  /**
-   * This method won't call {@link Configurable#configure(Map)} for {@link LiKafkaConsumerConfig#AUDITOR_CLASS_CONFIG}
-   * during instance creation
-   */
-  @Override
-  public <T> T getConfiguredInstance(String key, Class<T> t) {
-    if (AUDITOR_CLASS_CONFIG.equals(key)) {
-      return getInstance(key, t);
-    }
-    return super.getConfiguredInstance(key, t);
   }
 
   /**
