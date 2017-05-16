@@ -85,7 +85,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * In many cases, after the auditor collected the auditing information, it will send the auditing information out.
  * One option is to send the information to a Kafka topic, which is what we do at LinkedIn. To avoid creating another
  * producer to send the auditing information. LiKafkaClients will pass its underlying vanilla {@link KafkaProducer}
- * to the auditor when invoking {@link Auditor#configure(java.util.Map)}. The auditor implementation can get that
+ * to the auditor when invoking {@link Auditor#configure(java.util.Map)}, but only if you configure
+ * {@link LiKafkaProducerConfig#AUDITOR_CLASS_CONFIG} in producer properties. The auditor implementation can get that
  * producer from the passed in configuration map. For example:
  * <pre><code>
  * {@literal @}Override
@@ -96,6 +97,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *    ...
  * }
  * </code></pre>
+ * If you pass {@link Auditor} as a constructor argument, you may want to invoke {@link Auditor#configure(java.util.Map)}
+ * explicitly in your code before passing it into {@link LiKafkaProducerImpl} constructor.
  * If the underlying KafkaProducer is shared by the auditor implementation. The auditor should not close the shared
  * vanilla producer when {@link Auditor#close()} is invoked.
  */
@@ -173,12 +176,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
       _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
       // Instantiate auditor if necessary
-      if (auditor != null) {
-        _auditor = auditor;
-        _auditor.configure(configs.configsWithCurrentProducer(_producer));
-      } else {
-        _auditor = configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class, _producer);
-      }
+      _auditor = auditor != null ? auditor
+          : configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class, _producer);
       _auditor.start();
       _numThreadsInSend = new AtomicInteger(0);
       _closed = false;
