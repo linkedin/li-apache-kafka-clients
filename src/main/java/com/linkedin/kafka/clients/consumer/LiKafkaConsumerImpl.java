@@ -136,8 +136,8 @@ try {
     DeliveredMessageOffsetTracker messageOffsetTracker = new DeliveredMessageOffsetTracker(maxTrackedMessagesPerPartition);
 
     // Instantiate auditor if needed.
-    Auditor<K, V> auditor = consumerAuditor != null ? consumerAuditor :
-        configs.getConfiguredInstance(LiKafkaConsumerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
+    Auditor<K, V> auditor = consumerAuditor != null ? consumerAuditor
+        : configs.getConfiguredInstance(LiKafkaConsumerConfig.AUDITOR_CLASS_CONFIG, Auditor.class);
     auditor.start();
 
     // Instantiate key and value deserializer if needed.

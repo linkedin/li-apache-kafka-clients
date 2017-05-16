@@ -24,15 +24,22 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
    * @return A LiKafkaProducer which is ready to use.
    */
   def createProducer(props: Properties = null): LiKafkaProducer[String, String] = {
+    new LiKafkaProducerImpl[String, String](getProducerProperties(props))
+  }
+
+  /**
+    * Get the default producer properties.
+    * @param props the properties that users want to specify
+    * @return the producer properties ready to instantiate a producer
+    */
+  def getProducerProperties(props: Properties = null): Properties = {
     val producerProps = Option(props).getOrElse(new Properties())
     maybeSetProperties(producerProps, ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapUrl)
     maybeSetProperties(producerProps, LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG, "200")
     maybeSetProperties(producerProps, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
     maybeSetProperties(producerProps, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
     maybeSetProperties(producerProps, LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, classOf[DefaultSegmentSerializer].getName)
-
-    val stringSerializer = new StringSerializer
-    new LiKafkaProducerImpl[String, String](producerProps, stringSerializer, stringSerializer, null, null)
+    producerProps
   }
 
   /**
@@ -68,7 +75,7 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
     */
   def maybeSetProperties(props: Properties, key: String, value: String) {
     if (!props.containsKey(key))
-      props.setProperty(key, value);
+      props.setProperty(key, value)
   }
 
 }

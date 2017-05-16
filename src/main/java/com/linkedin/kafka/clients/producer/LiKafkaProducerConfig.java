@@ -8,11 +8,14 @@ import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.Configurable;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.utils.Utils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -69,4 +72,22 @@ public class LiKafkaProducerConfig extends AbstractConfig {
     super(CONFIG, props, false);
   }
 
+  public <T> T getConfiguredInstance(String key, Class<T> t, Producer<byte[], byte[]> producer) {
+    Class<?> c = getClass(key);
+    if (c == null)
+      return null;
+    Object o = Utils.newInstance(c);
+    if (!t.isInstance(o))
+      throw new KafkaException(c.getName() + " is not an instance of " + t.getName());
+    if (o instanceof Configurable)
+      ((Configurable) o).configure(configsWithCurrentProducer(producer));
+    return t.cast(o);
+  }
+
+  Map<String, Object> configsWithCurrentProducer(Producer<byte[], byte[]> producer) {
+    Map<String, Object> newConfigs = new HashMap<>();
+    newConfigs.putAll(this.originals());
+    newConfigs.put(CURRENT_PRODUCER, producer);
+    return newConfigs;
+  }
 }
