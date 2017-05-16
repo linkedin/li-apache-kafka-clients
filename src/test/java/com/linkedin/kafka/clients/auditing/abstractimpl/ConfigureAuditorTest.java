@@ -5,8 +5,8 @@ import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumerImpl;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducerConfig;
+import com.linkedin.kafka.clients.producer.LiKafkaProducerImpl;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -19,13 +19,7 @@ public class ConfigureAuditorTest extends AbstractKafkaClientsIntegrationTestHar
   @BeforeMethod
   @Override
   public void setUp() {
-    super.setUp();
-  }
-
-  @AfterMethod
-  @Override
-  public void tearDown() {
-    super.tearDown();
+    brokerList_$eq("localhost:9092");
   }
 
   @Test
@@ -37,8 +31,10 @@ public class ConfigureAuditorTest extends AbstractKafkaClientsIntegrationTestHar
     assertEquals(1, TestAuditor.configureMethodInvocations.get().intValue());
     producerConfig.close();
 
-    LiKafkaConsumerImpl producerInstance = new LiKafkaConsumerImpl(getProducerProperties(new Properties()),
-        null, null, null, new TestAuditor());
+    final TestAuditor producerAuditor = new TestAuditor();
+    producerAuditor.configure(props);
+    LiKafkaProducer producerInstance = new LiKafkaProducerImpl(getProducerProperties(new Properties()),
+        null, null, null, producerAuditor);
     assertEquals(1, TestAuditor.configureMethodInvocations.get().intValue());
     producerInstance.close();
   }
@@ -52,8 +48,10 @@ public class ConfigureAuditorTest extends AbstractKafkaClientsIntegrationTestHar
     assertEquals(1, TestAuditor.configureMethodInvocations.get().intValue());
     producerConfig.close();
 
+    final TestAuditor consumerAuditor = new TestAuditor();
+    consumerAuditor.configure(props);
     LiKafkaConsumerImpl producerInstance = new LiKafkaConsumerImpl(getConsumerProperties(new Properties()),
-        null, null, null, new TestAuditor());
+        null, null, null, consumerAuditor);
     assertEquals(1, TestAuditor.configureMethodInvocations.get().intValue());
     producerInstance.close();
   }
