@@ -9,8 +9,8 @@ import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import com.linkedin.kafka.clients.utils.TestUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -869,7 +869,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         // while still have some ordinary size messages.
         int messageSize = 100 + _random.nextInt(1024);
         final String uuid = LiKafkaClientsUtils.randomUUID().toString().replace("-", "");
-        final String message = uuid + TestUtils.getRandomString(messageSize);
+        final String message = uuid + LiKafkaClientsTestUtils.getRandomString(messageSize);
 
         _producer.send(new ProducerRecord<String, String>(_topic, null, (long) i, null, message),
             new Callback() {
@@ -937,28 +937,28 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     int messageSize = MAX_SEGMENT_SIZE + MAX_SEGMENT_SIZE / 2;
     // M0, 2 segments
     UUID messageId0 = LiKafkaClientsUtils.randomUUID();
-    String message0 = TestUtils.getRandomString(messageSize);
+    String message0 = LiKafkaClientsTestUtils.getRandomString(messageSize);
     List<ProducerRecord<byte[], byte[]>> m0Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId0, message0.getBytes());
     // M1, 2 segments
     UUID messageId1 = LiKafkaClientsUtils.randomUUID();
-    String message1 = TestUtils.getRandomString(messageSize);
+    String message1 = LiKafkaClientsTestUtils.getRandomString(messageSize);
     List<ProducerRecord<byte[], byte[]>> m1Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId1, message1.getBytes());
     // M2, 1 segment
     UUID messageId2 = LiKafkaClientsUtils.randomUUID();
-    String message2 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
+    String message2 = LiKafkaClientsTestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
     List<ProducerRecord<byte[], byte[]>> m2Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId2, message2.getBytes());
     // M3, 2 segment
     UUID messageId3 = LiKafkaClientsUtils.randomUUID();
-    String message3 = TestUtils.getRandomString(messageSize);
+    String message3 = LiKafkaClientsTestUtils.getRandomString(messageSize);
     List<ProducerRecord<byte[], byte[]>> m3Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId3, message3.getBytes());
     // M4, 1 segment
     UUID messageId4 = LiKafkaClientsUtils.randomUUID();
-    String message4 = TestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
+    String message4 = LiKafkaClientsTestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
 
     List<ProducerRecord<byte[], byte[]>> m4Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId4, message4.getBytes());
     // M5, 2 segments
     UUID messageId5 = LiKafkaClientsUtils.randomUUID();
-    String message5 = TestUtils.getRandomString(messageSize);
+    String message5 = LiKafkaClientsTestUtils.getRandomString(messageSize);
     List<ProducerRecord<byte[], byte[]>> m5Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId5, message5.getBytes());
 
 

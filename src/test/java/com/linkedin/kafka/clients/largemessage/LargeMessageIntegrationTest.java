@@ -7,7 +7,7 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import com.linkedin.kafka.clients.utils.TestUtils;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -87,7 +86,7 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
     // Produce large messages.
     for (int i = 0; i < numberOfLargeMessages; i++) {
       final String messageId = LiKafkaClientsUtils.randomUUID().toString().replace("-", "");
-      String message = messageId + TestUtils.getRandomString(largeMessageSize);
+      String message = messageId + LiKafkaClientsTestUtils.getRandomString(largeMessageSize);
       messages.put(messageId, message);
       largeMessageProducer.send(new ProducerRecord<String, String>(TOPIC, message),
           new Callback() {

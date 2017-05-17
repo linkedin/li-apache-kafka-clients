@@ -6,8 +6,8 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import com.linkedin.kafka.clients.largemessage.errors.LargeMessageDroppedException;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import com.linkedin.kafka.clients.utils.TestUtils;
 import org.apache.kafka.common.TopicPartition;
 import org.testng.annotations.Test;
 
@@ -32,9 +32,9 @@ public class LargeMessageBufferPoolTest {
     UUID messageId0 = LiKafkaClientsUtils.randomUUID();
 
     long offset = 0;
-    LargeMessageSegment m0Seg0 = TestUtils.createLargeMessageSegment(messageId0, 0, 3, 25, 10);
-    LargeMessageSegment m0Seg1 = TestUtils.createLargeMessageSegment(messageId0, 1, 3, 25, 10);
-    LargeMessageSegment m0Seg2 = TestUtils.createLargeMessageSegment(messageId0, 2, 3, 25, 5);
+    LargeMessageSegment m0Seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 0, 3, 25, 10);
+    LargeMessageSegment m0Seg1 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 1, 3, 25, 10);
+    LargeMessageSegment m0Seg2 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 2, 3, 25, 5);
 
     // Step 1: insert message 0
     assertEquals(pool.tryCompleteMessage(tp, offset++, m0Seg0).serializedMessage(), null, "No message should be completed");
@@ -59,7 +59,7 @@ public class LargeMessageBufferPoolTest {
     assertNotNull(segmentAddResult.serializedMessage(), "Message 0 should be completed.");
     assertEquals(segmentAddResult.startingOffset(), 0, "Message starting offset should be 0");
 
-    TestUtils.verifyMessage(segmentAddResult.serializedMessage(), 25, 10);
+    LiKafkaClientsTestUtils.verifyMessage(segmentAddResult.serializedMessage(), 25, 10);
   }
 
   @Test
@@ -73,9 +73,9 @@ public class LargeMessageBufferPoolTest {
     UUID messageId1 = LiKafkaClientsUtils.randomUUID();
 
     long offset = 0;
-    LargeMessageSegment m0Seg0 = TestUtils.createLargeMessageSegment(messageId0, 0, 3, 50, 20);
-    LargeMessageSegment m0Seg1 = TestUtils.createLargeMessageSegment(messageId0, 1, 3, 50, 20);
-    LargeMessageSegment m1Seg0 = TestUtils.createLargeMessageSegment(messageId1, 0, 3, 25, 20);
+    LargeMessageSegment m0Seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 0, 3, 50, 20);
+    LargeMessageSegment m0Seg1 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 1, 3, 50, 20);
+    LargeMessageSegment m1Seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId1, 0, 3, 25, 20);
 
     assertEquals(pool0.tryCompleteMessage(tp, offset, m0Seg0).serializedMessage(), null, "No message should be completed");
     assertEquals(pool1.tryCompleteMessage(tp, offset++, m0Seg0).serializedMessage(), null, "No message should be completed");
@@ -110,14 +110,14 @@ public class LargeMessageBufferPoolTest {
     UUID messageId1 = LiKafkaClientsUtils.randomUUID();
     UUID messageId2 = LiKafkaClientsUtils.randomUUID();
     long offset = 0;
-    LargeMessageSegment m0Seg0 = TestUtils.createLargeMessageSegment(messageId0, 0, 3, 25, 10);
-    LargeMessageSegment m0Seg1 = TestUtils.createLargeMessageSegment(messageId0, 1, 3, 25, 10);
-    LargeMessageSegment m0Seg2 = TestUtils.createLargeMessageSegment(messageId0, 3, 3, 25, 5);
-    LargeMessageSegment m1Seg0 = TestUtils.createLargeMessageSegment(messageId1, 0, 3, 30, 10);
-    LargeMessageSegment m1Seg1 = TestUtils.createLargeMessageSegment(messageId1, 1, 3, 30, 10);
-    LargeMessageSegment m2Seg0 = TestUtils.createLargeMessageSegment(messageId2, 0, 3, 30, 10);
-    LargeMessageSegment m2Seg1 = TestUtils.createLargeMessageSegment(messageId2, 1, 3, 30, 10);
-    LargeMessageSegment m2Seg2 = TestUtils.createLargeMessageSegment(messageId2, 2, 3, 30, 10);
+    LargeMessageSegment m0Seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 0, 3, 25, 10);
+    LargeMessageSegment m0Seg1 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 1, 3, 25, 10);
+    LargeMessageSegment m0Seg2 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 3, 3, 25, 5);
+    LargeMessageSegment m1Seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId1, 0, 3, 30, 10);
+    LargeMessageSegment m1Seg1 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId1, 1, 3, 30, 10);
+    LargeMessageSegment m2Seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId2, 0, 3, 30, 10);
+    LargeMessageSegment m2Seg1 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId2, 1, 3, 30, 10);
+    LargeMessageSegment m2Seg2 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId2, 2, 3, 30, 10);
 
     // Step 1: insert message 0
     assertEquals(pool.tryCompleteMessage(tp, offset++, m0Seg0).serializedMessage(), null, "No message should be completed");
@@ -161,7 +161,7 @@ public class LargeMessageBufferPoolTest {
     assertEquals(pool.bufferUsed(), 0, "No message should be in the pool");
     assertEquals(pool.safeOffsets().size(), 0, "Safe offset map should be empty.");
 
-    TestUtils.verifyMessage(serializedMessage2, 30, 10);
+    LiKafkaClientsTestUtils.verifyMessage(serializedMessage2, 30, 10);
   }
 
   @Test
@@ -169,7 +169,7 @@ public class LargeMessageBufferPoolTest {
     UUID messageId = LiKafkaClientsUtils.randomUUID();
     TopicPartition tp = new TopicPartition("topic", 0);
     LargeMessageBufferPool pool = new LargeMessageBufferPool(30, 20, false);
-    LargeMessageSegment segment = TestUtils.createLargeMessageSegment(messageId, 3, 3, 25, 5);
+    LargeMessageSegment segment = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId, 3, 3, 25, 5);
     try {
       pool.tryCompleteMessage(tp, 0, segment);
       fail("Should throw large message exception for sequence number out of range.");
@@ -182,7 +182,7 @@ public class LargeMessageBufferPoolTest {
   public void testNullMessageId() {
     TopicPartition tp = new TopicPartition("topic", 0);
     LargeMessageBufferPool pool = new LargeMessageBufferPool(30, 20, false);
-    LargeMessageSegment segment = TestUtils.createLargeMessageSegment(null, 2, 3, 25, 5);
+    LargeMessageSegment segment = LiKafkaClientsTestUtils.createLargeMessageSegment(null, 2, 3, 25, 5);
     try {
       pool.tryCompleteMessage(tp, 0, segment);
       fail("Should throw large message exception for null message id.");
@@ -196,7 +196,7 @@ public class LargeMessageBufferPoolTest {
     UUID messageId = LiKafkaClientsUtils.randomUUID();
     TopicPartition tp = new TopicPartition("topic", 0);
     LargeMessageBufferPool pool = new LargeMessageBufferPool(30, 20, false);
-    LargeMessageSegment segment = TestUtils.createLargeMessageSegment(messageId, 2, 3, 25, 30);
+    LargeMessageSegment segment = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId, 2, 3, 25, 30);
     try {
       pool.tryCompleteMessage(tp, 0, segment);
       fail("Should throw large message exception for wrong segment size.");
@@ -210,7 +210,7 @@ public class LargeMessageBufferPoolTest {
     UUID messageId = LiKafkaClientsUtils.randomUUID();
     TopicPartition tp = new TopicPartition("topic", 0);
     LargeMessageBufferPool pool = new LargeMessageBufferPool(30, 20, false);
-    LargeMessageSegment segment = TestUtils.createLargeMessageSegment(messageId, 2, 3, 25, 10);
+    LargeMessageSegment segment = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId, 2, 3, 25, 10);
     pool.tryCompleteMessage(tp, 1, segment);
     pool.tryCompleteMessage(tp, 0, segment);
   }
@@ -225,12 +225,12 @@ public class LargeMessageBufferPoolTest {
     UUID messageId1 = LiKafkaClientsUtils.randomUUID();
 
     long offset = 0;
-    LargeMessageSegment m0Seg0 = TestUtils.createLargeMessageSegment(messageId0, 0, 3, 25, 10);
-    LargeMessageSegment m0Seg1 = TestUtils.createLargeMessageSegment(messageId0, 1, 3, 25, 10);
-    LargeMessageSegment m0Seg2 = TestUtils.createLargeMessageSegment(messageId0, 2, 3, 25, 5);
+    LargeMessageSegment m0Seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 0, 3, 25, 10);
+    LargeMessageSegment m0Seg1 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 1, 3, 25, 10);
+    LargeMessageSegment m0Seg2 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 2, 3, 25, 5);
 
-    LargeMessageSegment m1Seg0 = TestUtils.createLargeMessageSegment(messageId1, 0, 3, 25, 10);
-    LargeMessageSegment m1Seg1 = TestUtils.createLargeMessageSegment(messageId1, 1, 3, 25, 10);
+    LargeMessageSegment m1Seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId1, 0, 3, 25, 10);
+    LargeMessageSegment m1Seg1 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId1, 1, 3, 25, 10);
 
     pool.tryCompleteMessage(tp0, offset++, m0Seg0);
     pool.tryCompleteMessage(tp0, offset++, m0Seg1);

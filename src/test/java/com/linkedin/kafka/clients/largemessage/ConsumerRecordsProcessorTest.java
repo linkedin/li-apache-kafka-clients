@@ -7,7 +7,7 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import com.linkedin.kafka.clients.utils.TestUtils;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import java.util.Collections;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -57,7 +57,7 @@ public class ConsumerRecordsProcessorTest {
     // Let consumer record 1 be a large message.
     byte[] message1Bytes =
         segmentSerializer.serialize("topic",
-                                    TestUtils.createLargeMessageSegment(LiKafkaClientsUtils.randomUUID(), 0, 2, 20, 10));
+                                    LiKafkaClientsTestUtils.createLargeMessageSegment(LiKafkaClientsUtils.randomUUID(), 0, 2, 20, 10));
     ConsumerRecord<byte[], byte[]> consumerRecord1 =
         new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), message1Bytes);
 
@@ -180,7 +180,7 @@ public class ConsumerRecordsProcessorTest {
     TopicPartition tp = new TopicPartition("topic", 0);
 
     UUID largeMessageId = LiKafkaClientsUtils.randomUUID();
-    byte[] largeMessage1Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));
+    byte[] largeMessage1Bytes = stringSerializer.serialize("topic", LiKafkaClientsTestUtils.getRandomString(600));
     List<ProducerRecord<byte[], byte[]>> splitLargeMessage =
         splitter.split("topic", largeMessageId, largeMessage1Bytes);
 
@@ -294,12 +294,12 @@ public class ConsumerRecordsProcessorTest {
     MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer, new UUIDFactory.DefaultUUIDFactory<>());
 
     UUID largeMessageId1 = LiKafkaClientsUtils.randomUUID();
-    byte[] largeMessage1Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));
+    byte[] largeMessage1Bytes = stringSerializer.serialize("topic", LiKafkaClientsTestUtils.getRandomString(600));
     List<ProducerRecord<byte[], byte[]>> splitLargeMessage1 =
         splitter.split("topic", largeMessageId1, largeMessage1Bytes);
 
     UUID largeMessageId2 = LiKafkaClientsUtils.randomUUID();
-    byte[] largeMessage2Bytes = stringSerializer.serialize("topic", TestUtils.getRandomString(600));
+    byte[] largeMessage2Bytes = stringSerializer.serialize("topic", LiKafkaClientsTestUtils.getRandomString(600));
     List<ProducerRecord<byte[], byte[]>> splitLargeMessage2 =
         splitter.split("topic", largeMessageId2, largeMessage2Bytes);
 

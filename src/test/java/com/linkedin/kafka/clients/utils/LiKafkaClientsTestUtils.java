@@ -16,9 +16,9 @@ import static org.testng.Assert.assertEquals;
 /**
  * The util class for unit test.
  */
-public class TestUtils {
+public class LiKafkaClientsTestUtils {
 
-  private TestUtils() {
+  private LiKafkaClientsTestUtils() {
   }
 
   public static LargeMessageSegment createLargeMessageSegment(UUID messageId,

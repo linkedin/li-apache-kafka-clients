@@ -6,7 +6,7 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.producer.UUIDFactory;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import com.linkedin.kafka.clients.utils.TestUtils;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
@@ -28,7 +28,7 @@ public class MessageSplitterTest {
   public void testSplit() {
     TopicPartition tp = new TopicPartition("topic", 0);
     UUID id = LiKafkaClientsUtils.randomUUID();
-    String message = TestUtils.getRandomString(1000);
+    String message = LiKafkaClientsTestUtils.getRandomString(1000);
     Serializer<String> stringSerializer = new StringSerializer();
     Deserializer<String> stringDeserializer = new StringDeserializer();
     Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
