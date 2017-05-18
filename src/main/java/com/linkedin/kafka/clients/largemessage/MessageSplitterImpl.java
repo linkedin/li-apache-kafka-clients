@@ -78,7 +78,7 @@ public class MessageSplitterImpl implements MessageSplitter {
     int messageSizeInBytes = serializedRecord.length;
     ByteBuffer bytebuffer = ByteBuffer.wrap(serializedRecord);
 
-    byte[] segmentKey = key == null ? LiKafkaClientsUtils.uuidToBytes(segmentMessageId) : key;
+    byte[] segmentKey = (key == null && numberOfSegments > 1) ? LiKafkaClientsUtils.uuidToBytes(segmentMessageId) : key;
     // Sequence number starts from 0.
     for (int seq = 0; seq < numberOfSegments; seq++) {
       int segmentStart = seq * maxSegmentSize;
