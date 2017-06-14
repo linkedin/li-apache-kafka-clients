@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.consumer;
 
+import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessResult;
 import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessor;
 import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
@@ -75,6 +76,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final long _autoCommitInterval;
   private final OffsetResetStrategy _offsetResetStrategy;
   private long _lastAutoCommitMs;
+  private ConsumerRecordsProcessResult<K, V> _lastProcessedResult;
 
   public LiKafkaConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null, null, null);
@@ -117,7 +119,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     _kafkaConsumer = new KafkaConsumer<>(configs.configForVanillaConsumer(),
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
-try {
+  try {
 
     // Instantiate segment deserializer if needed.
     Deserializer segmentDeserializer = largeMessageSegmentDeserializer != null ? largeMessageSegmentDeserializer :
@@ -148,9 +150,12 @@ try {
         configs.getConfiguredInstance(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
     vDeserializer.configure(configs.originals(), false);
 
+    // Get the skip record on exception config
+    boolean skipRecordOnException = configs.getBoolean(LiKafkaConsumerConfig.SKIP_RECORD_ON_EXCEPTION_CONFIG);
+
     // Instantiate consumer record processor
     _consumerRecordsProcessor = new ConsumerRecordsProcessor<>(assembler, kDeserializer, vDeserializer,
-                                                               messageOffsetTracker, auditor);
+                                                               messageOffsetTracker, auditor, skipRecordOnException);
 
     // Instantiate consumer rebalance listener
     _consumerRebalanceListener = new LiKafkaConsumerRebalanceListener<>(_consumerRecordsProcessor,
@@ -158,6 +163,7 @@ try {
 
     // Instantiate offset commit callback.
     _offsetCommitCallback = new LiKafkaOffsetCommitCallback();
+    _lastProcessedResult = null;
     } catch (Exception e) {
       _kafkaConsumer.close();
       throw e;
@@ -221,6 +227,14 @@ try {
 
   @Override
   public ConsumerRecords<K, V> poll(long timeout) {
+    if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
+      for (Map.Entry<TopicPartition, Long> entry : _lastProcessedResult.resumeOffsets().entrySet()) {
+        _kafkaConsumer.seek(entry.getKey(), entry.getValue());
+      }
+      RuntimeException e = _lastProcessedResult.exception();
+      _lastProcessedResult = null;
+      throw e;
+    }
     long startMs = System.currentTimeMillis();
     ConsumerRecords<K, V> processedRecords;
     // We will keep polling until timeout.
@@ -261,7 +275,8 @@ try {
           }
         }
       }
-      processedRecords = _consumerRecordsProcessor.process(rawRecords);
+      _lastProcessedResult = _consumerRecordsProcessor.process(rawRecords);
+      processedRecords = _lastProcessedResult.consumerRecords();
       now = System.currentTimeMillis();
     } while (processedRecords.isEmpty() && now < startMs + timeout);
     return processedRecords;
