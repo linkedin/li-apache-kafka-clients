@@ -290,6 +290,7 @@ public class ConsumerRecordsProcessorTest {
   public void testSerializationException() {
     TopicPartition tp0 = new TopicPartition("topic", 0);
     TopicPartition tp1 = new TopicPartition("topic", 1);
+    TopicPartition tp2 = new TopicPartition("topic", 2);
     Deserializer<String> stringDeserializer = new StringDeserializer();
     Deserializer<String> errorThrowingDeserializer = new Deserializer<String>() {
       @Override
@@ -321,17 +322,24 @@ public class ConsumerRecordsProcessorTest {
 
     StringSerializer stringSerializer = new StringSerializer();
     ConsumerRecord<byte[], byte[]> consumerRecord0 = new ConsumerRecord<>("topic", 0, 0, null,
-        stringSerializer.serialize("topic", "value"));
+                                                                          stringSerializer.serialize("topic", "value"));
     ConsumerRecord<byte[], byte[]> consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, null,
-        stringSerializer.serialize("topic", "ErrorBytes"));
+                                                                          stringSerializer.serialize("topic", "ErrorBytes"));
     ConsumerRecord<byte[], byte[]> consumerRecord2 = new ConsumerRecord<>("topic", 0, 2, null,
-        stringSerializer.serialize("topic", "value"));
+                                                                          stringSerializer.serialize("topic", "value"));
+
     ConsumerRecord<byte[], byte[]> consumerRecord3 = new ConsumerRecord<>("topic", 1, 0, null,
-        stringSerializer.serialize("topic", "value"));
+                                                                          stringSerializer.serialize("topic", "ErrorBytes"));
+    ConsumerRecord<byte[], byte[]> consumerRecord4 = new ConsumerRecord<>("topic", 1, 1, null,
+                                                                          stringSerializer.serialize("topic", "value"));
+
+    ConsumerRecord<byte[], byte[]> consumerRecord5 = new ConsumerRecord<>("topic", 2, 0, null,
+                                                                          stringSerializer.serialize("topic", "value"));
 
     Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordMap = new HashMap<>();
     recordMap.put(tp0, Arrays.asList(consumerRecord0, consumerRecord1, consumerRecord2));
-    recordMap.put(tp1, Collections.singletonList(consumerRecord3));
+    recordMap.put(tp1, Arrays.asList(consumerRecord3, consumerRecord4));
+    recordMap.put(tp2, Collections.singletonList(consumerRecord5));
 
     ConsumerRecords<byte[], byte[]> consumerRecords = new ConsumerRecords<>(recordMap);
 
@@ -339,15 +347,20 @@ public class ConsumerRecordsProcessorTest {
     ConsumerRecordsProcessResult result = processor0.process(consumerRecords);
     assertEquals(result.consumerRecords().count(), 2);
     assertEquals(result.consumerRecords().records(tp0).size(), 1);
-    assertEquals(result.consumerRecords().records(tp1).size(), 1);
-    assertEquals(result.resumeOffsets().get(new TopicPartition("topic", 0)), 2L);
+    assertTrue(result.consumerRecords().records(tp1).isEmpty());
+    assertEquals(result.consumerRecords().records(tp2).size(), 1);
+    assertEquals(result.resumeOffsets().get(tp0), 2L);
+    assertEquals(result.resumeOffsets().get(tp1), 1L);
+    assertNull(result.resumeOffsets().get(tp2));
     assertNotNull(result.exception());
+    assertEquals(result.exception().recordProcessingExceptions().size(), 2);
 
     // process with skip record turned on
     result = processor1.process(consumerRecords);
-    assertEquals(result.consumerRecords().count(), 3);
+    assertEquals(result.consumerRecords().count(), 4);
     assertEquals(result.consumerRecords().records(tp0).size(), 2);
     assertEquals(result.consumerRecords().records(tp1).size(), 1);
+    assertEquals(result.consumerRecords().records(tp2).size(), 1);
     assertTrue(result.resumeOffsets().isEmpty());
     assertNull(result.exception());
   }

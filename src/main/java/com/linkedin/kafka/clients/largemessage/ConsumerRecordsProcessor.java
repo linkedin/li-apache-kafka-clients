@@ -6,19 +6,18 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import java.util.List;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static com.linkedin.kafka.clients.largemessage.MessageAssembler.AssembleResult.INCOMPLETE_RESULT;
@@ -74,10 +73,10 @@ public class ConsumerRecordsProcessor<K, V> {
         ConsumerRecord<K, V> handledRecord = handleConsumerRecord(record);
         result.addRecord(tp, handledRecord);
       } catch (RuntimeException e) {
+        LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
         if (!_skipRecordOnException) {
           result.recordException(tp, offset, e);
         }
-        LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
       }
     }
     return result;

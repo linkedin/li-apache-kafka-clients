@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.consumer;
 import com.linkedin.kafka.clients.annotations.InterfaceOrigin;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
+import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -203,6 +204,11 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * @throws org.apache.kafka.common.KafkaException                   for any other unrecoverable errors (e.g. invalid groupId or
    *                                                                  session timeout, errors deserializing key/value
    *                                                                  pairs, or any new error cases in future versions)
+   * @throws RecordProcessingException
+   *                                                                  When RecordProcessingException is thrown,
+   *                                                                  user can choose to catch it and continue to poll
+   *                                                                  if they want to skip the message that has thrown
+   *                                                                  exception.
    */
   @InterfaceOrigin.ApacheKafka
   ConsumerRecords<K, V> poll(long timeout);

@@ -1,5 +1,7 @@
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
+import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,15 +20,14 @@ import org.apache.kafka.common.TopicPartition;
  * 3. The the exception thrown by the last problematic partition. (We just need to throw an exception to the user).
  */
 public class ConsumerRecordsProcessResult<K, V> {
-  private final Map<TopicPartition, List<ConsumerRecord<K, V>>> _processedRecords;
-  // This is the offsets of the partitions that should
   private final Map<TopicPartition, Long> _resumeOffsets;
-  private RuntimeException _exception;
+  private final List<RecordProcessingException> _exceptions;
+  private Map<TopicPartition, List<ConsumerRecord<K, V>>> _processedRecords;
 
   ConsumerRecordsProcessResult() {
     _processedRecords = new HashMap<>();
     _resumeOffsets = new HashMap<>();
-    _exception = null;
+    _exceptions = new ArrayList<>();
   }
 
   void addRecord(TopicPartition tp, ConsumerRecord<K, V> record) {
@@ -38,18 +39,22 @@ public class ConsumerRecordsProcessResult<K, V> {
   }
 
   void recordException(TopicPartition tp, long offset, RuntimeException e) {
-    _exception = e;
+    _exceptions.add(new RecordProcessingException(tp, offset, e));
     // The resume offset is the error offset + 1. i.e. if user ignore the exception thrown and poll again, the resuming
     // offset should be this one.
     _resumeOffsets.putIfAbsent(tp, offset + 1);
+  }
+
+  public void clearRecords() {
+    _processedRecords = null;
   }
 
   boolean hasError(TopicPartition tp) {
     return resumeOffsets().containsKey(tp);
   }
 
-  public RuntimeException exception() {
-    return _exception;
+  public ConsumerRecordsProcessingException exception() {
+    return _exceptions.isEmpty() ? null : new ConsumerRecordsProcessingException(_exceptions);
   }
 
   public ConsumerRecords<K, V> consumerRecords() {

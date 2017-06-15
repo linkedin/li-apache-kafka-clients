@@ -9,6 +9,8 @@ import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
+import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
+import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
@@ -18,7 +20,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -783,14 +784,16 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
       while (records.isEmpty()) {
         records = consumer.poll(1000);
+        System.out.println(records.count() + ", " + records.isEmpty());
       }
       assertEquals(records.count(), 1, "Only the first message should be returned");
       assertEquals(records.iterator().next().offset(), 2L, "The offset of the first message should be 2.");
+      assertEquals(consumer.position(new TopicPartition(topic, 0)), 5L, "The position should be 5");
 
       try {
         consumer.poll(1000);
         fail("Should have thrown exception.");
-      } catch (SerializationException se) {
+      } catch (ConsumerRecordsProcessingException crpe) {
         // let it go
       }
       assertEquals(consumer.position(new TopicPartition(topic, 0)), 5L, "The position should be 5");

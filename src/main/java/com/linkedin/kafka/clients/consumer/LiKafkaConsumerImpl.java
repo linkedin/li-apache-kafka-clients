@@ -11,10 +11,11 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
+import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -228,10 +229,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   @Override
   public ConsumerRecords<K, V> poll(long timeout) {
     if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
-      for (Map.Entry<TopicPartition, Long> entry : _lastProcessedResult.resumeOffsets().entrySet()) {
-        _kafkaConsumer.seek(entry.getKey(), entry.getValue());
-      }
-      RuntimeException e = _lastProcessedResult.exception();
+      ConsumerRecordsProcessingException e = _lastProcessedResult.exception();
       _lastProcessedResult = null;
       throw e;
     }
@@ -277,6 +275,14 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
       _lastProcessedResult = _consumerRecordsProcessor.process(rawRecords);
       processedRecords = _lastProcessedResult.consumerRecords();
+      // Clear the internal reference.
+      _lastProcessedResult.clearRecords();
+      // Rewind offset if there are processing exceptions.
+      if (_lastProcessedResult.exception() != null) {
+        for (Map.Entry<TopicPartition, Long> entry : _lastProcessedResult.resumeOffsets().entrySet()) {
+          _kafkaConsumer.seek(entry.getKey(), entry.getValue());
+        }
+      }
       now = System.currentTimeMillis();
     } while (processedRecords.isEmpty() && now < startMs + timeout);
     return processedRecords;

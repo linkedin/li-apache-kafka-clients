@@ -80,10 +80,11 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
       + "the offset to the latest offset</li><li>none: throw exception to the consumer if no previous offset is found "
       + "for the consumer's group</li><li>anything else: throw exception to the consumer.</li></ul>";
 
-  private static final String SKIP_RECORD_ON_EXCEPTION_DOC = "Skip the record with processing error. This is to allow "
-      + "the users who do are willing to ignore the problematic record to continue consuming without worrying about "
-      + "the error handling. By default it is set to false and an exception will be thrown if record processing "
-      + "encounters an error. If user ignore the exception and call poll again, the error message will also be skipped.";
+  private static final String SKIP_RECORD_ON_EXCEPTION_DOC = "Skip the record with RecordProcessingException. "
+      + "This is to allow the users who do are willing to ignore the problematic record to continue consuming without "
+      + "worrying about the error handling. By default it is set to false and an exception will be thrown if record "
+      + "processing encounters an error. If user ignore the exception and call poll again, the error message will also "
+      + "be skipped.";
 
   static {
     CONFIG = new ConfigDef()
