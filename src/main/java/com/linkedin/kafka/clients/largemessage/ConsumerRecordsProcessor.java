@@ -6,7 +6,9 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import java.util.List;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -15,9 +17,7 @@ import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static com.linkedin.kafka.clients.largemessage.MessageAssembler.AssembleResult.INCOMPLETE_RESULT;
@@ -35,12 +35,14 @@ public class ConsumerRecordsProcessor<K, V> {
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
   private final Map<TopicPartition, Long> _partitionConsumerHighWatermark;
   private final Auditor<K, V> _auditor;
+  private final boolean _skipRecordOnException;
 
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
                                   Deserializer<K> keyDeserializer,
                                   Deserializer<V> valueDeserializer,
                                   DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
-                                  Auditor<K, V> auditor) {
+                                  Auditor<K, V> auditor,
+                                  boolean skipRecordOnException) {
     _messageAssembler = messageAssembler;
     _keyDeserializer = keyDeserializer;
     _valueDeserializer = valueDeserializer;
@@ -50,6 +52,7 @@ public class ConsumerRecordsProcessor<K, V> {
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
     }
+    _skipRecordOnException = skipRecordOnException;
   }
 
   /**
@@ -58,22 +61,25 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param consumerRecords The consumer records to be filtered.
    * @return filtered consumer records.
    */
-  public ConsumerRecords<K, V> process(ConsumerRecords<byte[], byte[]> consumerRecords) {
-    Map<TopicPartition, List<ConsumerRecord<K, V>>> filteredRecords = new HashMap<>();
+  public ConsumerRecordsProcessResult<K, V> process(ConsumerRecords<byte[], byte[]> consumerRecords) {
+    ConsumerRecordsProcessResult<K, V> result = new ConsumerRecordsProcessResult<>();
     for (ConsumerRecord<byte[], byte[]> record : consumerRecords) {
       TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-      ConsumerRecord<K, V> handledRecord = handleConsumerRecord(record);
-      // Only put record into map if it is not null
-      if (handledRecord != null) {
-        List<ConsumerRecord<K, V>> list = filteredRecords.get(tp);
-        if (list == null) {
-          list = new ArrayList<>();
-          filteredRecords.put(tp, list);
+      if (result.hasError(tp)) {
+        continue;
+      }
+      long offset = record.offset();
+      try {
+        ConsumerRecord<K, V> handledRecord = handleConsumerRecord(record);
+        result.addRecord(tp, handledRecord);
+      } catch (RuntimeException e) {
+        LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
+        if (!_skipRecordOnException) {
+          result.recordException(tp, offset, e);
         }
-        list.add(handledRecord);
       }
     }
-    return new ConsumerRecords<>(filteredRecords);
+    return result;
   }
 
   /**

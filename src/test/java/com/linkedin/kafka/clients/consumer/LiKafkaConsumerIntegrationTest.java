@@ -4,9 +4,13 @@
 
 package com.linkedin.kafka.clients.consumer;
 
+import com.linkedin.kafka.clients.auditing.NoOpAuditor;
+import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
+import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
+import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
@@ -35,7 +39,10 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.SerializationException;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.serialization.Deserializer;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -734,6 +741,70 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       for (Integer count : messageCount.values()) {
         assertEquals(count.intValue(), expectedCount, "Each partition should have " + expectedCount + " messages");
       }
+    }
+  }
+
+  @Test
+  public void testExceptionInProcessing() {
+    String topic = "testExceptionInProcessing";
+    produceSyntheticMessages(topic);
+    Properties props = new Properties();
+    // All the consumers should have the same group id.
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommit");
+    // Make sure we start to consume from the beginning.
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+    LiKafkaConsumer<byte[], byte[]> consumer =
+        new LiKafkaConsumerImpl<byte[], byte[]>(getConsumerProperties(props),
+                                                new ByteArrayDeserializer(),
+                                                new Deserializer<byte[]>() {
+          int numMessages = 0;
+          @Override
+          public void configure(Map<String, ?> configs, boolean isKey) {
+
+          }
+
+          @Override
+          public byte[] deserialize(String topic, byte[] data) {
+            // Throw exception when deserializing the second message.
+            numMessages++;
+            if (numMessages == 2) {
+              throw new SerializationException();
+            }
+            return data;
+          }
+
+          @Override
+          public void close() {
+
+          }
+        }, new DefaultSegmentDeserializer(), new NoOpAuditor<>());
+    try {
+      consumer.subscribe(Collections.singleton(topic));
+      ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
+      while (records.isEmpty()) {
+        records = consumer.poll(1000);
+        System.out.println(records.count() + ", " + records.isEmpty());
+      }
+      assertEquals(records.count(), 1, "Only the first message should be returned");
+      assertEquals(records.iterator().next().offset(), 2L, "The offset of the first message should be 2.");
+      assertEquals(consumer.position(new TopicPartition(topic, 0)), 5L, "The position should be 5");
+
+      try {
+        consumer.poll(1000);
+        fail("Should have thrown exception.");
+      } catch (ConsumerRecordsProcessingException crpe) {
+        // let it go
+      }
+      assertEquals(consumer.position(new TopicPartition(topic, 0)), 5L, "The position should be 5");
+      records = ConsumerRecords.empty();
+      while (records.isEmpty()) {
+        records = consumer.poll(1000);
+      }
+      assertEquals(records.count(), 4, "There should be four messages left.");
+      assertEquals(records.iterator().next().offset(), 5L, "The first offset should 5");
+    } finally {
+      consumer.close();
     }
   }
 

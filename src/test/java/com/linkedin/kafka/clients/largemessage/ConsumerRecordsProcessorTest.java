@@ -14,6 +14,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
@@ -31,10 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
+import static org.testng.Assert.*;
+
 
 /**
  * Unit test for consumer record filter.
@@ -69,7 +68,7 @@ public class ConsumerRecordsProcessorTest {
     recordsMap.put(new TopicPartition("topic", 0), recordList);
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
 
-    ConsumerRecords<String, String> filteredRecords = consumerRecordsProcessor.process(records);
+    ConsumerRecords<String, String> filteredRecords = consumerRecordsProcessor.process(records).consumerRecords();
     ConsumerRecord<String, String> consumerRecord = filteredRecords.iterator().next();
     assertEquals(filteredRecords.count(), 1, "Only one record should be there after filtering.");
     assertEquals(consumerRecord0.topic(), consumerRecord.topic(), "Topic should match");
@@ -82,7 +81,7 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testCorrectness() {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(getConsumerRecords());
+    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
     assertEquals(processedRecords.count(), 4, "There should be 4 records");
     Iterator<ConsumerRecord<String, String>> iter = processedRecords.iterator();
     assertEquals(iter.next().offset(), 0, "Message offset should b 0");
@@ -120,7 +119,7 @@ public class ConsumerRecordsProcessorTest {
     recordsMap.put(tp, recordList);
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
 
-    consumerRecordsProcessor.process(records);
+    consumerRecordsProcessor.process(records).consumerRecords();
     Map<TopicPartition, OffsetAndMetadata> safeOffsets = consumerRecordsProcessor.safeOffsetsToCommit();
     assertEquals(safeOffsets.size(), 1, "Safe offsets should contain one entry");
     assertEquals(safeOffsets.get(tp).offset(), 2, "Safe offset of topic partition 0 should be 2");
@@ -140,7 +139,7 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testSafeOffsetWithLargeMessage() throws IOException {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords());
+    consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
 
     // check safe offsets
     TopicPartition tp = new TopicPartition("topic", 0);
@@ -175,7 +174,7 @@ public class ConsumerRecordsProcessorTest {
     MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer, new UUIDFactory.DefaultUUIDFactory<>());
 
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords());
+    consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
     // The offset tracker now has 2, 4, 5 in it.
     TopicPartition tp = new TopicPartition("topic", 0);
 
@@ -204,7 +203,7 @@ public class ConsumerRecordsProcessorTest {
     Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordsMap = new HashMap<>();
     recordsMap.put(new TopicPartition("topic", 0), recordList);
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
-    consumerRecordsProcessor.process(records);
+    consumerRecordsProcessor.process(records).consumerRecords();
     // Now the offset tracker should have 4, 5, 6, 8 in side it.
     assertEquals(consumerRecordsProcessor.safeOffset(tp, 7L).longValue(), 6, "safe offset should be 6");
 
@@ -219,7 +218,7 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void verifyStartingOffset() {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords());
+    consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
 
     TopicPartition tp = new TopicPartition("topic", 0);
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 4L), 3, "Starting offset of large message 2 should be 3");
@@ -255,7 +254,7 @@ public class ConsumerRecordsProcessorTest {
     recordsMap.put(new TopicPartition("topic", 0), recordList);
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
 
-    consumerRecordsProcessor.process(records);
+    consumerRecordsProcessor.process(records).consumerRecords();
 
     TopicPartition tp = new TopicPartition("topic", 0);
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 100L), 100, "Should return 100 because there are no " +
@@ -268,7 +267,7 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testLastDelivered() {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords());
+    consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
 
     assertEquals(consumerRecordsProcessor.delivered(new TopicPartition("topic", 0)).longValue(), 5L,
                  "The last deivered message should be 5");
@@ -283,8 +282,87 @@ public class ConsumerRecordsProcessorTest {
         new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), null);
     ConsumerRecords<byte[], byte[]> consumerRecords =
         new ConsumerRecords<>(Collections.singletonMap(new TopicPartition("topic", 0), Collections.singletonList(consumerRecord)));
-    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(consumerRecords);
+    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(consumerRecords).consumerRecords();
     assertNull(processedRecords.iterator().next().value());
+  }
+
+  @Test
+  public void testSerializationException() {
+    TopicPartition tp0 = new TopicPartition("topic", 0);
+    TopicPartition tp1 = new TopicPartition("topic", 1);
+    TopicPartition tp2 = new TopicPartition("topic", 2);
+    Deserializer<String> stringDeserializer = new StringDeserializer();
+    Deserializer<String> errorThrowingDeserializer = new Deserializer<String>() {
+      @Override
+      public void configure(Map<String, ?> configs, boolean isKey) {
+
+      }
+
+      @Override
+      public String deserialize(String topic, byte[] data) {
+        String s = stringDeserializer.deserialize(topic, data);
+        if (s.equals("ErrorBytes")) {
+          throw new SerializationException();
+        }
+        return s;
+      }
+
+      @Override
+      public void close() {
+
+      }
+    };
+    Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
+    MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false, segmentDeserializer);
+    DeliveredMessageOffsetTracker deliveredMessageOffsetTracker = new DeliveredMessageOffsetTracker(4);
+    ConsumerRecordsProcessor processor0 =  new ConsumerRecordsProcessor<>(assembler, stringDeserializer, errorThrowingDeserializer,
+                                                                          deliveredMessageOffsetTracker, null, false);
+    ConsumerRecordsProcessor processor1 =  new ConsumerRecordsProcessor<>(assembler, stringDeserializer, errorThrowingDeserializer,
+                                                                          deliveredMessageOffsetTracker, null, true);
+
+    StringSerializer stringSerializer = new StringSerializer();
+    ConsumerRecord<byte[], byte[]> consumerRecord0 = new ConsumerRecord<>("topic", 0, 0, null,
+                                                                          stringSerializer.serialize("topic", "value"));
+    ConsumerRecord<byte[], byte[]> consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, null,
+                                                                          stringSerializer.serialize("topic", "ErrorBytes"));
+    ConsumerRecord<byte[], byte[]> consumerRecord2 = new ConsumerRecord<>("topic", 0, 2, null,
+                                                                          stringSerializer.serialize("topic", "value"));
+
+    ConsumerRecord<byte[], byte[]> consumerRecord3 = new ConsumerRecord<>("topic", 1, 0, null,
+                                                                          stringSerializer.serialize("topic", "ErrorBytes"));
+    ConsumerRecord<byte[], byte[]> consumerRecord4 = new ConsumerRecord<>("topic", 1, 1, null,
+                                                                          stringSerializer.serialize("topic", "value"));
+
+    ConsumerRecord<byte[], byte[]> consumerRecord5 = new ConsumerRecord<>("topic", 2, 0, null,
+                                                                          stringSerializer.serialize("topic", "value"));
+
+    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordMap = new HashMap<>();
+    recordMap.put(tp0, Arrays.asList(consumerRecord0, consumerRecord1, consumerRecord2));
+    recordMap.put(tp1, Arrays.asList(consumerRecord3, consumerRecord4));
+    recordMap.put(tp2, Collections.singletonList(consumerRecord5));
+
+    ConsumerRecords<byte[], byte[]> consumerRecords = new ConsumerRecords<>(recordMap);
+
+    // Process with skip record turned off.
+    ConsumerRecordsProcessResult result = processor0.process(consumerRecords);
+    assertEquals(result.consumerRecords().count(), 2);
+    assertEquals(result.consumerRecords().records(tp0).size(), 1);
+    assertTrue(result.consumerRecords().records(tp1).isEmpty());
+    assertEquals(result.consumerRecords().records(tp2).size(), 1);
+    assertEquals(result.resumeOffsets().get(tp0), 2L);
+    assertEquals(result.resumeOffsets().get(tp1), 1L);
+    assertNull(result.resumeOffsets().get(tp2));
+    assertNotNull(result.exception());
+    assertEquals(result.exception().recordProcessingExceptions().size(), 2);
+
+    // process with skip record turned on
+    result = processor1.process(consumerRecords);
+    assertEquals(result.consumerRecords().count(), 4);
+    assertEquals(result.consumerRecords().records(tp0).size(), 2);
+    assertEquals(result.consumerRecords().records(tp1).size(), 1);
+    assertEquals(result.consumerRecords().records(tp2).size(), 1);
+    assertTrue(result.resumeOffsets().isEmpty());
+    assertNull(result.exception());
   }
 
   private ConsumerRecords<byte[], byte[]> getConsumerRecords() {
@@ -342,7 +420,7 @@ public class ConsumerRecordsProcessorTest {
     MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false, segmentDeserializer);
     DeliveredMessageOffsetTracker deliveredMessageOffsetTracker = new DeliveredMessageOffsetTracker(4);
     return new ConsumerRecordsProcessor<>(assembler, stringDeserializer, stringDeserializer,
-                                          deliveredMessageOffsetTracker, null);
+                                          deliveredMessageOffsetTracker, null, false);
   }
 
   private byte[] wrapMessageBytes(Serializer<LargeMessageSegment> segmentSerializer, byte[] messageBytes) {
