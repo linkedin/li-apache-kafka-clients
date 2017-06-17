@@ -17,7 +17,7 @@ LinkedIn Java style.
         <property name="header" value="/\*\n Copyright 2017 LinkedIn Corp.*"/>
     </module>
 
-    <property name="severity" value="${checkstyle.severity}" default="warning"/>
+    <property name="severity" value="${checkstyle.severity}" default="error"/>
 
     <module name="TreeWalker">
         <module name="FileContentsHolder"/>

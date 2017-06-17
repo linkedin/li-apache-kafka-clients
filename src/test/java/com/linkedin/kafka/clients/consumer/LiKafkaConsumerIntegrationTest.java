@@ -10,7 +10,6 @@ import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
-import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
