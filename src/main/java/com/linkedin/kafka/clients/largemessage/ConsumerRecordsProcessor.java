@@ -6,9 +6,7 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
-import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import java.util.List;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;

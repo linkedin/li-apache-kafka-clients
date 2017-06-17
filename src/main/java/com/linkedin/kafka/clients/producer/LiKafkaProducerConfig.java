@@ -74,13 +74,19 @@ public class LiKafkaProducerConfig extends AbstractConfig {
 
   public <T> T getConfiguredInstance(String key, Class<T> t, Producer<byte[], byte[]> producer) {
     Class<?> c = getClass(key);
-    if (c == null)
+    if (c == null) {
       return null;
+    }
     Object o = Utils.newInstance(c);
-    if (!t.isInstance(o))
+
+    if (!t.isInstance(o)) {
       throw new KafkaException(c.getName() + " is not an instance of " + t.getName());
-    if (o instanceof Configurable)
+    }
+
+    if (o instanceof Configurable) {
       ((Configurable) o).configure(configsWithCurrentProducer(producer));
+    }
+
     return t.cast(o);
   }
 

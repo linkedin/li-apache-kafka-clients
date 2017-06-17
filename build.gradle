@@ -64,6 +64,8 @@ test {
     }
 }
 
+test.dependsOn('checkstyleMain', 'checkstyleTest')
+
 //code quality and inspections
 
 checkstyle {

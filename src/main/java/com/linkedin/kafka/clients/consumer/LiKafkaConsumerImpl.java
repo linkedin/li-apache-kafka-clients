@@ -12,7 +12,6 @@ import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
-import com.linkedin.kafka.clients.largemessage.errors.RecordProcessingException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Locale;

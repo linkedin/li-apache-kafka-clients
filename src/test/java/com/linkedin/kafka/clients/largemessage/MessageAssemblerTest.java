@@ -11,7 +11,6 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.testng.annotations.Test;
 
 import java.nio.ByteBuffer;
-import java.util.UUID;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
