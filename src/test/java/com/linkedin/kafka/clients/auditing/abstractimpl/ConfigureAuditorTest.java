@@ -36,7 +36,6 @@ public class ConfigureAuditorTest extends AbstractKafkaClientsIntegrationTestHar
     producerConfig.close();
 
     final TestAuditor producerAuditor = new TestAuditor();
-    producerAuditor.configure(props);
     LiKafkaProducer producerInstance = new LiKafkaProducerImpl(getProducerProperties(new Properties()),
         null, null, null, producerAuditor);
     assertEquals(1, TestAuditor.configureMethodInvocations.get().intValue());
@@ -53,7 +52,6 @@ public class ConfigureAuditorTest extends AbstractKafkaClientsIntegrationTestHar
     producerConfig.close();
 
     final TestAuditor consumerAuditor = new TestAuditor();
-    consumerAuditor.configure(props);
     LiKafkaConsumerImpl producerInstance = new LiKafkaConsumerImpl(getConsumerProperties(new Properties()),
         null, null, null, consumerAuditor);
     assertEquals(1, TestAuditor.configureMethodInvocations.get().intValue());
