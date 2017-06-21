@@ -7,6 +7,8 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import com.linkedin.kafka.clients.largemessage.errors.LargeMessageDroppedException;
 import com.linkedin.kafka.clients.utils.QueuedMap;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,6 +102,7 @@ public class LargeMessageBufferPool {
 
   public synchronized void clear() {
     _incompleteMessageMap.clear();
+    _incompleteMessageByPartition.clear();
     _offsetTracker.clear();
     _bufferUsed = 0L;
   }
@@ -128,6 +131,7 @@ public class LargeMessageBufferPool {
       throw new InvalidSegmentException("Saw single message segment size = " + freeSpaceNeeded + ", which is "
           + "larger than buffer capacity = " + _bufferCapacity);
     }
+    sanityCheck();
     // When the eldest message is the current message, the message will not be completed. This indicates the buffer
     // capacity is too small to hold even one message.
     while (bufferUsed() + freeSpaceNeeded > _bufferCapacity) {
@@ -141,6 +145,9 @@ public class LargeMessageBufferPool {
         } else {
           LOG.warn("Incomplete message buffer pool is full. Removing the eldest incomplete message." + message);
         }
+      } else {
+        throw new IllegalStateException("The buffer used is " + _bufferUsed + " even if there is no incomplete "
+                                            + "large message.");
       }
     }
   }
@@ -196,5 +203,28 @@ public class LargeMessageBufferPool {
       throw new InvalidSegmentException("Out of order segment offsets detected.");
     }
     return message;
+  }
+
+
+  // Adding the sanity check to see if the buffered messages match the buffer used.
+  private void sanityCheck() {
+    int bufferedBytes = 0;
+    for (Set<UUID> uuids : _incompleteMessageByPartition.values()) {
+      for (UUID id : uuids) {
+        bufferedBytes += _incompleteMessageMap.get(id).bufferedSizeInBytes();
+      }
+    }
+    if (bufferedBytes != _bufferUsed) {
+      List<LargeMessage> largeMessages = new ArrayList<>(_incompleteMessageMap.size());
+      for (Set<UUID> uuids : _incompleteMessageByPartition.values()) {
+        for (UUID id : uuids) {
+          largeMessages.add(_incompleteMessageMap.get(id));
+        }
+      }
+      String errorMessage = "Total number of bytes used " + bufferedBytes + ", reported bytes used " + _bufferUsed;
+      LOG.error(errorMessage);
+      LOG.error("All buffered messages {}", largeMessages);
+      throw new IllegalStateException("Total number of bytes used " + bufferedBytes + ", reported bytes used " + _bufferUsed);
+    }
   }
 }

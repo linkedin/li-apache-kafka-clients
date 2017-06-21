@@ -132,6 +132,7 @@ public class QueuedMap<K, V> {
         node.next = null;
         _tail = node;
       }
+      _size++;
     }
 
     public synchronized ListNode addKey(K key) {
