@@ -783,7 +783,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
       while (records.isEmpty()) {
         records = consumer.poll(1000);
-        System.out.println(records.count() + ", " + records.isEmpty());
       }
       assertEquals(records.count(), 1, "Only the first message should be returned");
       assertEquals(records.iterator().next().offset(), 2L, "The offset of the first message should be 2.");
@@ -1033,8 +1032,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
 
     // Add two more segment to partition SYNTHETIC_PARTITION_1 for corner case test.
-    List<ProducerRecord<byte[], byte[]>> m0SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId0, message0.getBytes());
-    List<ProducerRecord<byte[], byte[]>> m1SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, messageId1, message1.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m0SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, LiKafkaClientsUtils.randomUUID(), message0.getBytes());
+    List<ProducerRecord<byte[], byte[]>> m1SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, LiKafkaClientsUtils.randomUUID(), message1.getBytes());
 
     try {
       producer.send(m0Segs.get(0)).get();
