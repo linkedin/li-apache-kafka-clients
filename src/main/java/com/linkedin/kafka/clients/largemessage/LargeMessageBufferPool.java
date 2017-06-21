@@ -102,6 +102,7 @@ public class LargeMessageBufferPool {
 
   public synchronized void clear() {
     _incompleteMessageMap.clear();
+    _incompleteMessageByPartition.clear();
     _offsetTracker.clear();
     _bufferUsed = 0L;
   }
@@ -205,7 +206,7 @@ public class LargeMessageBufferPool {
   }
 
 
-  // Adding the sanity check to see if
+  // Adding the sanity check to see if the buffered messages match the buffer used.
   private void sanityCheck() {
     int bufferedBytes = 0;
     for (Set<UUID> uuids : _incompleteMessageByPartition.values()) {
