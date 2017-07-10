@@ -35,6 +35,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String SEGMENT_SERIALIZER_CLASS_CONFIG = "segment.serializer";
   public static final String UUID_FACTORY_CLASS_CONFIG = "uuid.factory.class";
   public static final String CURRENT_PRODUCER = "current.producer";
+  public static final String SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG = "skip.record.on.skippable.exception";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +
@@ -57,6 +58,12 @@ public class LiKafkaProducerConfig extends AbstractConfig {
 
   public static final String UUID_FACTORY_CLASS_DOC = "The UUID factory class to use for UUID generation.";
 
+  public static final String SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_DOC = "Skip the record with SkippableException. "
+      + "This is to allow the users who do are willing to ignore the problematic record to continue producing without "
+      + "worrying about the error handling. By default it is set to false and an exception will be thrown if record "
+      + "processing encounters an error. The SkippableException may be thrown from user-specified custom "
+      + "serializer/de-serializer.";
+
   static {
     CONFIG = new ConfigDef()
         .define(LARGE_MESSAGE_ENABLED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM, LARGE_MESSAGE_ENABLED_DOC)
@@ -65,7 +72,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(KEY_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, KEY_SERIALIZER_CLASS_DOC)
         .define(VALUE_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, VALUE_SERIALIZER_CLASS_DOC)
         .define(SEGMENT_SERIALIZER_CLASS_CONFIG, Type.CLASS, DefaultSegmentSerializer.class.getName(), Importance.MEDIUM, SEGMENT_SERIALIZER_CLASS_DOC)
-        .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactory.DefaultUUIDFactory.class.getName(), Importance.LOW, UUID_FACTORY_CLASS_DOC);
+        .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactory.DefaultUUIDFactory.class.getName(), Importance.LOW, UUID_FACTORY_CLASS_DOC)
+        .define(SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG, Type.BOOLEAN, "false", Importance.LOW, SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_DOC);
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {

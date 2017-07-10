@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
+import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
@@ -14,7 +15,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
@@ -287,7 +287,7 @@ public class ConsumerRecordsProcessorTest {
   }
 
   @Test
-  public void testSerializationException() {
+  public void testDeserializationException() {
     TopicPartition tp0 = new TopicPartition("topic", 0);
     TopicPartition tp1 = new TopicPartition("topic", 1);
     TopicPartition tp2 = new TopicPartition("topic", 2);
@@ -302,7 +302,7 @@ public class ConsumerRecordsProcessorTest {
       public String deserialize(String topic, byte[] data) {
         String s = stringDeserializer.deserialize(topic, data);
         if (s.equals("ErrorBytes")) {
-          throw new SerializationException();
+          throw new SkippableException();
         }
         return s;
       }
