@@ -202,6 +202,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   @Override
   public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
     _numThreadsInSend.incrementAndGet();
+    boolean failed = true;
     try {
       if (_closed) {
         throw new IllegalStateException("LiKafkaProducer has been closed.");
@@ -255,20 +256,19 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         assert (wrappedRecord.size() == 1);
         future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
       }
+      failed = false;
       return future;
     } catch (SkippableException e) {
-      _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
-                      producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       if (_skipRecordOnSkippableException) {
         LOG.warn("Exception thrown when producing message to partition {}-{}", producerRecord.topic(), producerRecord.partition());
         return null;
       }
       throw e;
-    } catch (Throwable t) {
-      _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
-                      producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
-      throw t;
     } finally {
+      if (failed) {
+        _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
+                        producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
+      }
       _numThreadsInSend.decrementAndGet();
     }
   }
