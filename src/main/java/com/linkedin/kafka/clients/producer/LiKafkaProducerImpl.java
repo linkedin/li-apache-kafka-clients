@@ -10,13 +10,13 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
+import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
@@ -124,6 +124,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final AtomicInteger _numThreadsInSend;
   private volatile boolean _closed;
 
+  private final boolean _skipRecordOnSkippableException;
+
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
   }
@@ -158,6 +160,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
 
     try {
+      _skipRecordOnSkippableException = configs.getBoolean(LiKafkaProducerConfig.SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG);
       // Instantiate the key serializer if necessary.
       _keySerializer = keySerializer != null ? keySerializer
           : configs.getConfiguredInstance(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
@@ -199,6 +202,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   @Override
   public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
     _numThreadsInSend.incrementAndGet();
+    boolean failed = true;
     try {
       if (_closed) {
         throw new IllegalStateException("LiKafkaProducer has been closed.");
@@ -226,8 +230,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       } catch (Throwable t) {
         // Audit the attempt and the failure.
         _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.ATTEMPT);
-        _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.FAILURE);
-        throw new KafkaException(t);
+        throw t;
       }
       int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
           + (serializedValue == null ? 0 : serializedValue.length);
@@ -253,12 +256,19 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         assert (wrappedRecord.size() == 1);
         future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
       }
+      failed = false;
       return future;
-    } catch (Throwable t) {
-      _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
-                      producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
-      throw new KafkaException(t);
+    } catch (SkippableException e) {
+      if (_skipRecordOnSkippableException) {
+        LOG.warn("Exception thrown when producing message to partition {}-{}", producerRecord.topic(), producerRecord.partition());
+        return null;
+      }
+      throw e;
     } finally {
+      if (failed) {
+        _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
+                        producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
+      }
       _numThreadsInSend.decrementAndGet();
     }
   }

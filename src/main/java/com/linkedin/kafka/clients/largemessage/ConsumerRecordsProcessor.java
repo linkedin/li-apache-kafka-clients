@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -33,14 +34,14 @@ public class ConsumerRecordsProcessor<K, V> {
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
   private final Map<TopicPartition, Long> _partitionConsumerHighWatermark;
   private final Auditor<K, V> _auditor;
-  private final boolean _skipRecordOnException;
+  private final boolean _skipRecordOnSkippableException;
 
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
                                   Deserializer<K> keyDeserializer,
                                   Deserializer<V> valueDeserializer,
                                   DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
                                   Auditor<K, V> auditor,
-                                  boolean skipRecordOnException) {
+                                  boolean skipRecordOnSkippableException) {
     _messageAssembler = messageAssembler;
     _keyDeserializer = keyDeserializer;
     _valueDeserializer = valueDeserializer;
@@ -50,7 +51,7 @@ public class ConsumerRecordsProcessor<K, V> {
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
     }
-    _skipRecordOnException = skipRecordOnException;
+    _skipRecordOnSkippableException = skipRecordOnSkippableException;
   }
 
   /**
@@ -70,11 +71,14 @@ public class ConsumerRecordsProcessor<K, V> {
       try {
         ConsumerRecord<K, V> handledRecord = handleConsumerRecord(record);
         result.addRecord(tp, handledRecord);
-      } catch (RuntimeException e) {
+      } catch (SkippableException e) {
         LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
-        if (!_skipRecordOnException) {
+        if (!_skipRecordOnSkippableException) {
           result.recordException(tp, offset, e);
         }
+      } catch (RuntimeException e) {
+        LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
+        result.recordException(tp, offset, e);
       }
     }
     return result;

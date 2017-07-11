@@ -156,11 +156,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     vDeserializer.configure(configs.originals(), false);
 
     // Get the skip record on exception config
-    boolean skipRecordOnException = configs.getBoolean(LiKafkaConsumerConfig.SKIP_RECORD_ON_EXCEPTION_CONFIG);
+    boolean skipRecordOnSkippableException = configs.getBoolean(LiKafkaConsumerConfig.SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG);
 
     // Instantiate consumer record processor
     _consumerRecordsProcessor = new ConsumerRecordsProcessor<>(assembler, kDeserializer, vDeserializer,
-                                                               messageOffsetTracker, auditor, skipRecordOnException);
+                                                               messageOffsetTracker, auditor, skipRecordOnSkippableException);
 
     // Instantiate consumer rebalance listener
     _consumerRebalanceListener = new LiKafkaConsumerRebalanceListener<>(_consumerRecordsProcessor,
