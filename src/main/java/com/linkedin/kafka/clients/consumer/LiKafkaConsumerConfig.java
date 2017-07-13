@@ -35,7 +35,6 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String ENABLE_AUTO_COMMIT_CONFIG = ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
-  public static final String SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG = "skip.record.on.skippable.exception";
 
   private static final String MESSAGE_ASSEMBLER_BUFFER_CAPACITY_DOC = "The maximum number of bytes the message assembler " +
       " uses to buffer the incomplete large message segments. The capacity is shared by messages from all the topics. " +
@@ -79,13 +78,6 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
       + "<ul><li>earliest: automatically reset the offset to the earliest offset<li>latest: automatically reset "
       + "the offset to the latest offset</li><li>none: throw exception to the consumer if no previous offset is found "
       + "for the consumer's group</li><li>anything else: throw exception to the consumer.</li></ul>";
-
-  private static final String SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_DOC = "Skip the record with SkippableException. "
-      + "This is to allow the users who do are willing to ignore the problematic record to continue producing without "
-      + "worrying about the error handling. By default it is set to false and an exception will be thrown if record "
-      + "processing encounters an error. The SkippableException may be thrown from user-specified custom "
-      + "serializer/de-serializer. If user ignore the exception and call poll again, the error message will also "
-      + "be skipped.";
 
 
   static {
@@ -147,12 +139,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 Type.STRING,
                 "none",
                 Importance.MEDIUM,
-                AUTO_OFFSET_RESET_DOC)
-        .define(SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG,
-                Type.BOOLEAN,
-                "false",
-                Importance.LOW,
-                SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_DOC);
+                AUTO_OFFSET_RESET_DOC);
 
   }
 

@@ -34,14 +34,12 @@ public class ConsumerRecordsProcessor<K, V> {
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
   private final Map<TopicPartition, Long> _partitionConsumerHighWatermark;
   private final Auditor<K, V> _auditor;
-  private final boolean _skipRecordOnSkippableException;
 
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
                                   Deserializer<K> keyDeserializer,
                                   Deserializer<V> valueDeserializer,
                                   DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
-                                  Auditor<K, V> auditor,
-                                  boolean skipRecordOnSkippableException) {
+                                  Auditor<K, V> auditor) {
     _messageAssembler = messageAssembler;
     _keyDeserializer = keyDeserializer;
     _valueDeserializer = valueDeserializer;
@@ -51,7 +49,6 @@ public class ConsumerRecordsProcessor<K, V> {
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
     }
-    _skipRecordOnSkippableException = skipRecordOnSkippableException;
   }
 
   /**
@@ -73,9 +70,6 @@ public class ConsumerRecordsProcessor<K, V> {
         result.addRecord(tp, handledRecord);
       } catch (SkippableException e) {
         LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
-        if (!_skipRecordOnSkippableException) {
-          result.recordException(tp, offset, e);
-        }
       } catch (RuntimeException e) {
         LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
         result.recordException(tp, offset, e);

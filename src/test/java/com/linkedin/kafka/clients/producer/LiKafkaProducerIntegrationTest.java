@@ -116,20 +116,9 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     Properties props = getProducerProperties(null);
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
-    props.setProperty(LiKafkaProducerConfig.SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG, "false");
     LiKafkaProducer<String, String> producer = new LiKafkaProducerImpl<>(props, stringSerializer, errorThrowingSerializer, null, null);
     final String tempTopic = "testTopic" + new Random().nextInt(1000000);
-    try {
-      producer.send(new ProducerRecord<>(tempTopic, "ErrorBytes"));
-      fail("Should have received SkippableException");
-    } catch (SkippableException e) {
-      // This is expected.
-    }
 
-    producer.close();
-
-    props.setProperty(LiKafkaProducerConfig.SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG, "true");
-    producer = new LiKafkaProducerImpl<>(props, stringSerializer, errorThrowingSerializer, null, null);
     producer.send(new ProducerRecord<>(tempTopic, "ErrorBytes"));
     producer.send(new ProducerRecord<>(tempTopic, "value"));
     producer.close();
