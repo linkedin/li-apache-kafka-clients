@@ -315,10 +315,8 @@ public class ConsumerRecordsProcessorTest {
     Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
     MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false, segmentDeserializer);
     DeliveredMessageOffsetTracker deliveredMessageOffsetTracker = new DeliveredMessageOffsetTracker(4);
-    ConsumerRecordsProcessor processor0 =  new ConsumerRecordsProcessor<>(assembler, stringDeserializer, errorThrowingDeserializer,
-                                                                          deliveredMessageOffsetTracker, null, false);
-    ConsumerRecordsProcessor processor1 =  new ConsumerRecordsProcessor<>(assembler, stringDeserializer, errorThrowingDeserializer,
-                                                                          deliveredMessageOffsetTracker, null, true);
+    ConsumerRecordsProcessor processor =  new ConsumerRecordsProcessor<>(assembler, stringDeserializer, errorThrowingDeserializer,
+                                                                          deliveredMessageOffsetTracker, null);
 
     StringSerializer stringSerializer = new StringSerializer();
     ConsumerRecord<byte[], byte[]> consumerRecord0 = new ConsumerRecord<>("topic", 0, 0, null,
@@ -343,20 +341,7 @@ public class ConsumerRecordsProcessorTest {
 
     ConsumerRecords<byte[], byte[]> consumerRecords = new ConsumerRecords<>(recordMap);
 
-    // Process with skip record turned off.
-    ConsumerRecordsProcessResult result = processor0.process(consumerRecords);
-    assertEquals(result.consumerRecords().count(), 2);
-    assertEquals(result.consumerRecords().records(tp0).size(), 1);
-    assertTrue(result.consumerRecords().records(tp1).isEmpty());
-    assertEquals(result.consumerRecords().records(tp2).size(), 1);
-    assertEquals(result.resumeOffsets().get(tp0), 2L);
-    assertEquals(result.resumeOffsets().get(tp1), 1L);
-    assertNull(result.resumeOffsets().get(tp2));
-    assertNotNull(result.exception());
-    assertEquals(result.exception().recordProcessingExceptions().size(), 2);
-
-    // process with skip record turned on
-    result = processor1.process(consumerRecords);
+    ConsumerRecordsProcessResult result = processor.process(consumerRecords);
     assertEquals(result.consumerRecords().count(), 4);
     assertEquals(result.consumerRecords().records(tp0).size(), 2);
     assertEquals(result.consumerRecords().records(tp1).size(), 1);
@@ -419,8 +404,7 @@ public class ConsumerRecordsProcessorTest {
     Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
     MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false, segmentDeserializer);
     DeliveredMessageOffsetTracker deliveredMessageOffsetTracker = new DeliveredMessageOffsetTracker(4);
-    return new ConsumerRecordsProcessor<>(assembler, stringDeserializer, stringDeserializer,
-                                          deliveredMessageOffsetTracker, null, false);
+    return new ConsumerRecordsProcessor<>(assembler, stringDeserializer, stringDeserializer, deliveredMessageOffsetTracker, null);
   }
 
   private byte[] wrapMessageBytes(Serializer<LargeMessageSegment> segmentSerializer, byte[] messageBytes) {

@@ -124,8 +124,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final AtomicInteger _numThreadsInSend;
   private volatile boolean _closed;
 
-  private final boolean _skipRecordOnSkippableException;
-
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
   }
@@ -160,7 +158,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
 
     try {
-      _skipRecordOnSkippableException = configs.getBoolean(LiKafkaProducerConfig.SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG);
       // Instantiate the key serializer if necessary.
       _keySerializer = keySerializer != null ? keySerializer
           : configs.getConfiguredInstance(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
@@ -259,11 +256,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       failed = false;
       return future;
     } catch (SkippableException e) {
-      if (_skipRecordOnSkippableException) {
-        LOG.warn("Exception thrown when producing message to partition {}-{}", producerRecord.topic(), producerRecord.partition());
-        return null;
-      }
-      throw e;
+      LOG.warn("Exception thrown when producing message to partition {}-{}", producerRecord.topic(), producerRecord.partition());
+      return null;
     } finally {
       if (failed) {
         _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
