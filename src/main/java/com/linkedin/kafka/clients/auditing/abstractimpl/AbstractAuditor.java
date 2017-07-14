@@ -298,7 +298,9 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     _shutdown = true;
     interrupt();
     try {
-      this.join(unit.toMillis(timeout));
+      if (timeout > 0) {
+        this.join(unit.toMillis(timeout));
+      }
     } catch (InterruptedException e) {
       LOG.warn("Auditor closure interrupted");
     }
