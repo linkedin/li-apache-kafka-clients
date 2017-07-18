@@ -1,4 +1,10 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
-
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    maven { url 'https://dl.bintray.com/ethankhall/crom/' }
+    maven { url 'https://dl.bintray.com/ethankhall/gradle-plugins/' }
+  }
+}
