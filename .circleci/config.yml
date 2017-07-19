@@ -15,8 +15,7 @@ jobs:
        - save_cache:
            key: dependency-cache-{{ checksum "build.gradle" }}
            paths:
-             - ~/.gradle/caches
-             - ~/.gradle/wrapper/dists
+             - ~/.gradle
        - run:
            command: ./gradlew clean build
        - run:
