@@ -11,13 +11,11 @@ jobs:
        - restore_cache:
            key: dependency-cache-{{ checksum "build.gradle" }}
        - run:
-           command: ./gradlew resolveDependencies
+           command: ./gradlew clean build
        - save_cache:
            key: dependency-cache-{{ checksum "build.gradle" }}
            paths:
              - ~/.gradle
-       - run:
-           command: ./gradlew clean build
        - run:
            command: mkdir ~/test-results
        - run:
