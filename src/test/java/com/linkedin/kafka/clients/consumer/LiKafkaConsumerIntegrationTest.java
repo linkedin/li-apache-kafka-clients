@@ -441,9 +441,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       };
       consumer.commitAsync(commitCallback);
       while (!offsetCommitted.get()) {
-        consumer.poll(10);
+        consumer.poll(20);
       }
-      assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
+      OffsetAndMetadata committed = consumer.committed(tp);
+      assertEquals(committed, new OffsetAndMetadata(3, ""), "The committed user offset should be 3, instead was " + committed);
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
 
       offsetCommitted.set(false);
@@ -451,9 +452,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       offsetMap.put(tp, new OffsetAndMetadata(0));
       consumer.commitAsync(offsetMap, commitCallback);
       while (!offsetCommitted.get()) {
-        consumer.poll(10);
+        consumer.poll(20);
       }
-      assertEquals(consumer.committed(tp), new OffsetAndMetadata(0, ""), "The committed user offset should be 0");
+      committed = consumer.committed(tp);
+      assertEquals(committed, new OffsetAndMetadata(0, ""), "The committed user offset should be 0, instead was " + committed);
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
     }
   }
