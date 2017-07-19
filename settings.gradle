@@ -8,5 +8,6 @@ pluginManagement {
     maven { url 'https://dl.bintray.com/ethankhall/gradle-plugins/' }
   }
 }
+rootProject.name = 'li-apache-kafka-clients'
 
 
