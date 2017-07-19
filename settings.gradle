@@ -8,3 +8,5 @@ pluginManagement {
     maven { url 'https://dl.bintray.com/ethankhall/gradle-plugins/' }
   }
 }
+
+
