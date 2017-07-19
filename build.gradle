@@ -4,10 +4,6 @@
  * See License in the project root for license information.
  */
 
-import com.linkedin.gradle.build.DistributeTask
-
-group = 'com.linkedin.kafka.clients'
-
 buildscript {
     repositories {
         jcenter()
@@ -16,6 +12,14 @@ buildscript {
         classpath "org.jfrog.buildinfo:build-info-extractor-gradle:latest.release"
     }
 }
+
+plugins {
+    id 'io.ehdev.gradle.dependency-resolve' version '0.0.24'
+}
+
+group = 'com.linkedin.kafka.clients'
+
+import com.linkedin.gradle.build.DistributeTask
 
 apply plugin: 'java'
 apply plugin: 'scala'
@@ -164,5 +168,5 @@ task distributeBuild(type: DistributeTask) {
 //wrapper generation task
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '3.3'
+    gradleVersion = '3.5'
 }
