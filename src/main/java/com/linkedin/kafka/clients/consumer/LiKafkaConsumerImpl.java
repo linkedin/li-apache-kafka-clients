@@ -68,6 +68,9 @@ import java.util.regex.Pattern;
  */
 public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerImpl.class);
+
+  private static final ByteArrayDeserializer DEFAULT_SERIALIZER = new ByteArrayDeserializer();
+
   private final Consumer<byte[], byte[]> _kafkaConsumer;
   private final ConsumerRecordsProcessor<K, V> _consumerRecordsProcessor;
   private final LiKafkaConsumerRebalanceListener<K, V> _consumerRebalanceListener;
@@ -90,10 +93,28 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     this(new LiKafkaConsumerConfig(props), keyDeserializer, valueDeserializer, largeMessageSegmentDeserializer, consumerAuditor);
   }
 
+  @SuppressWarnings("unused")
+  public LiKafkaConsumerImpl(Properties props,
+                             Deserializer<K> keyDeserializer,
+                             Deserializer<V> valueDeserializer,
+                             Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
+                             Auditor<K, V> consumerAuditor,
+                             Consumer<byte[], byte[]> consumer) {
+    this(
+      new LiKafkaConsumerConfig(props),
+      keyDeserializer,
+      valueDeserializer,
+      largeMessageSegmentDeserializer,
+      consumerAuditor,
+      consumer);
+  }
+
+  @SuppressWarnings("unused")
   public LiKafkaConsumerImpl(Map<String, Object> configs) {
     this(new LiKafkaConsumerConfig(configs), null, null, null, null);
   }
 
+  @SuppressWarnings("unused")
   public LiKafkaConsumerImpl(Map<String, Object> configs,
                              Deserializer<K> keyDeserializer,
                              Deserializer<V> valueDeserializer,
@@ -102,23 +123,44 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     this(new LiKafkaConsumerConfig(configs), keyDeserializer, valueDeserializer, largeMessageSegmentDeserializer, consumerAuditor);
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings("unused")
+  public LiKafkaConsumerImpl(Map<String, Object> configs,
+                             Deserializer<K> keyDeserializer,
+                             Deserializer<V> valueDeserializer,
+                             Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
+                             Auditor<K, V> consumerAuditor,
+                             Consumer<byte[], byte[]> consumer) {
+    this(new LiKafkaConsumerConfig(configs), keyDeserializer, valueDeserializer, largeMessageSegmentDeserializer, consumerAuditor, consumer);
+  }
+
   private LiKafkaConsumerImpl(LiKafkaConsumerConfig configs,
                               Deserializer<K> keyDeserializer,
                               Deserializer<V> valueDeserializer,
                               Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
                               Auditor<K, V> consumerAuditor) {
+    this(configs, keyDeserializer, valueDeserializer, largeMessageSegmentDeserializer, consumerAuditor,
+      new KafkaConsumer<>(
+        configs.configForVanillaConsumer(),
+        DEFAULT_SERIALIZER,
+        DEFAULT_SERIALIZER));
+  }
 
+  @SuppressWarnings("unchecked")
+  private LiKafkaConsumerImpl(LiKafkaConsumerConfig configs,
+                              Deserializer<K> keyDeserializer,
+                              Deserializer<V> valueDeserializer,
+                              Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
+                              Auditor<K, V> consumerAuditor,
+                              Consumer<byte[], byte[]> consumer) {
+    _kafkaConsumer = consumer;
+
+    // We need to set the auto commit to false in KafkaConsumer because it is not large message aware.
     _autoCommitEnabled = configs.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG);
     _autoCommitInterval = configs.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG);
     _offsetResetStrategy =
         OffsetResetStrategy.valueOf(configs.getString(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG).toUpperCase(Locale.ROOT));
     _lastAutoCommitMs = System.currentTimeMillis();
-    // We need to set the auto commit to false in KafkaConsumer because it is not large message aware.
-    ByteArrayDeserializer byteArrayDeserializer = new ByteArrayDeserializer();
-    _kafkaConsumer = new KafkaConsumer<>(configs.configForVanillaConsumer(),
-                                         byteArrayDeserializer,
-                                         byteArrayDeserializer);
+
   try {
 
     // Instantiate segment deserializer if needed.
