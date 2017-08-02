@@ -61,7 +61,10 @@ public class LargeMessageBufferPool {
     LargeMessage message = validateSegmentAndGetMessage(tp, segment, offset);
 
     int segmentSize = segment.payload.remaining();
-    maybeEvictMessagesForSpace(segmentSize);
+    if (segmentSize >= _bufferCapacity) {
+      throw new InvalidSegmentException("Saw single message segment size = " + segmentSize + ", which is "
+                                            + "larger than buffer capacity = " + _bufferCapacity);
+    }
 
     // Check if this segment completes the large message.
     UUID messageId = segment.messageId;
@@ -82,6 +85,7 @@ public class LargeMessageBufferPool {
       uuidSetForPartition.add(messageId);
       _offsetTracker.maybeTrackMessage(tp, messageId, offset);
     }
+    maybeEvictMessagesForSpace();
 
     // Expire message if necessary.
     for (UUID expiredMessageId : _offsetTracker.expireMessageUntilOffset(tp, offset - _expirationOffsetGap)) {
@@ -126,15 +130,11 @@ public class LargeMessageBufferPool {
     }
   }
 
-  private void maybeEvictMessagesForSpace(long freeSpaceNeeded) {
-    if (freeSpaceNeeded >= _bufferCapacity) {
-      throw new InvalidSegmentException("Saw single message segment size = " + freeSpaceNeeded + ", which is "
-          + "larger than buffer capacity = " + _bufferCapacity);
-    }
+  private void maybeEvictMessagesForSpace() {
     sanityCheck();
     // When the eldest message is the current message, the message will not be completed. This indicates the buffer
     // capacity is too small to hold even one message.
-    while (bufferUsed() + freeSpaceNeeded > _bufferCapacity) {
+    while (bufferUsed() > _bufferCapacity) {
       LargeMessage message = evictEldestMessage();
       if (message != null) {
         _offsetTracker.untrackMessage(message.topicPartition(), message.messageId());
