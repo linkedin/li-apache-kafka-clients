@@ -131,10 +131,9 @@ public class LargeMessageBufferPool {
   }
 
   private void maybeEvictMessagesForSpace() {
-    sanityCheck();
     // When the eldest message is the current message, the message will not be completed. This indicates the buffer
     // capacity is too small to hold even one message.
-    while (bufferUsed() > _bufferCapacity) {
+    while (_bufferUsed > _bufferCapacity) {
       LargeMessage message = evictEldestMessage();
       if (message != null) {
         _offsetTracker.untrackMessage(message.topicPartition(), message.messageId());
@@ -203,28 +202,5 @@ public class LargeMessageBufferPool {
       throw new InvalidSegmentException("Out of order segment offsets detected.");
     }
     return message;
-  }
-
-
-  // Adding the sanity check to see if the buffered messages match the buffer used.
-  private void sanityCheck() {
-    int bufferedBytes = 0;
-    for (Set<UUID> uuids : _incompleteMessageByPartition.values()) {
-      for (UUID id : uuids) {
-        bufferedBytes += _incompleteMessageMap.get(id).bufferedSizeInBytes();
-      }
-    }
-    if (bufferedBytes != _bufferUsed) {
-      List<LargeMessage> largeMessages = new ArrayList<>(_incompleteMessageMap.size());
-      for (Set<UUID> uuids : _incompleteMessageByPartition.values()) {
-        for (UUID id : uuids) {
-          largeMessages.add(_incompleteMessageMap.get(id));
-        }
-      }
-      String errorMessage = "Total number of bytes used " + bufferedBytes + ", reported bytes used " + _bufferUsed;
-      LOG.error(errorMessage);
-      LOG.error("All buffered messages {}", largeMessages);
-      throw new IllegalStateException("Total number of bytes used " + bufferedBytes + ", reported bytes used " + _bufferUsed);
-    }
   }
 }
