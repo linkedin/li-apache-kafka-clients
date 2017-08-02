@@ -7,8 +7,6 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import com.linkedin.kafka.clients.largemessage.errors.LargeMessageDroppedException;
 import com.linkedin.kafka.clients.utils.QueuedMap;
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
