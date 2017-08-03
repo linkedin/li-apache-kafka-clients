@@ -90,14 +90,33 @@ public class LargeMessageBufferPoolTest {
       fail("pool0 should throw LargeMessageException due to message dropped.");
     } catch (LargeMessageDroppedException lmde) {
       assertTrue(lmde.getMessage().startsWith("The following large Message is dropped due to buffer full"));
+      // pool0 should have m1Seg0 in the buffer and evicted m0
+      assertEquals(pool0.bufferUsed(), 20, "Buffer pool0 buffered bytes should be 20.");
     }
-    assertEquals(pool0.bufferUsed(), 0, "Buffer pool0 buffered bytes should be 0.");
-    // Now pool0 should have enough space to process  message1 again.
-    pool0.tryCompleteMessage(tp, offset, m1Seg0);
-    pool1.tryCompleteMessage(tp, offset, m1Seg0);
 
-    assertEquals(pool0.bufferUsed(), 20, "Buffer pool0 buffered bytes should be 20.");
+    pool1.tryCompleteMessage(tp, offset, m1Seg0);
     assertEquals(pool1.bufferUsed(), 20, "Buffer pool1 buffered bytes should be 20.");
+  }
+
+  @Test
+  public void testEvictTheOnlyMessage() {
+    LargeMessageBufferPool pool = new LargeMessageBufferPool(35, 20, true);
+
+    TopicPartition tp = new TopicPartition("topic", 0);
+    UUID messageId0 = LiKafkaClientsUtils.randomUUID();
+    LargeMessageSegment seg0 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 0, 3, 50, 20);
+    LargeMessageSegment seg1 = LiKafkaClientsTestUtils.createLargeMessageSegment(messageId0, 1, 3, 50, 20);
+
+    pool.tryCompleteMessage(tp, 0, seg0);
+    assertEquals(20, pool.bufferUsed(), "Should have used 20 bytes of the buffer");
+    try {
+      pool.tryCompleteMessage(tp, 1, seg1);
+    } catch (LargeMessageDroppedException lmde) {
+      assertTrue(lmde.getMessage().startsWith("The following large Message is dropped due to buffer full"));
+      // pool0 should have m1Seg0 in the buffer and evicted m0
+      assertEquals(pool.bufferUsed(), 0, "Buffer pool buffered bytes should be 0 because the "
+          + "only message should have been evicted.");
+    }
   }
 
   @Test
