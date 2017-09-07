@@ -38,7 +38,7 @@ jobs:
        - run:
            command: ./gradlew assemble testJar
        - run:
-           command: ./.circleci/publishOnCommitMsg.sh
+           command: ./.circleci/publish.sh
 
 workflows:
   version: 2
@@ -50,4 +50,6 @@ workflows:
             - build
           filters:
             branches:
-              only: master
+              ignore: /.*/
+            tags:
+              only: /^RELEASE.*/
