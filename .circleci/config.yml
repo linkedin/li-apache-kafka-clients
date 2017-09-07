@@ -52,4 +52,4 @@ workflows:
             branches:
               ignore: /.*/
             tags:
-              only: /^RELEASE.*/
+              only: /^[0-9]+\.[0-9]+\.[0-9]+$/
