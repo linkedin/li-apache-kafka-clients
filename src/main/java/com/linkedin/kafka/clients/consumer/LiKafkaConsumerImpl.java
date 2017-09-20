@@ -15,6 +15,7 @@ import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingE
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -532,6 +533,15 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       commitSync();
     }
     _kafkaConsumer.close();
+    _consumerRecordsProcessor.close();
+  }
+
+  @Override
+  public void close(long timeout, TimeUnit unit) {
+    if (_autoCommitEnabled) {
+      commitSync();
+    }
+    _kafkaConsumer.close(timeout, unit);
     _consumerRecordsProcessor.close();
   }
 
