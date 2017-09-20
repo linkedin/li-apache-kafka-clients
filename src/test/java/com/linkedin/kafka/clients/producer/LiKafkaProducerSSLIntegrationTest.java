@@ -8,7 +8,6 @@ import java.io.File;
 import java.io.IOException;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.testng.Assert;
-import scala.Option;
 
 
 public class LiKafkaProducerSSLIntegrationTest extends LiKafkaProducerIntegrationTest {
@@ -25,8 +24,8 @@ public class LiKafkaProducerSSLIntegrationTest extends LiKafkaProducerIntegratio
   }
 
   @Override
-  public Option<File> trustStoreFile() {
-    return Option.apply(_trustStoreFile);
+  public File trustStoreFile() {
+    return _trustStoreFile;
   }
 
   @Override

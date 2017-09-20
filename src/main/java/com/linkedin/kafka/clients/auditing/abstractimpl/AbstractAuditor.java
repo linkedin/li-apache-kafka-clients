@@ -173,28 +173,28 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
 
   // protected methods
   /**
-   * Get the current audit stats.
+   * @return the current audit stats.
    */
   protected AuditStats currentStats() {
     return _currentStats;
   }
 
   /**
-   * Get the next audit stats.
+   * @return the next audit stats.
    */
   protected AuditStats nextStats() {
     return _nextStats;
   }
 
   /**
-   * Get the time when the next tick will occur.
+   * @return the time when the next tick will occur.
    */
   protected long nextTick() {
     return _nextTick;
   }
 
   /**
-   * Get the total number of ticks occurred so far.
+   * @return the total number of ticks occurred so far.
    */
   protected long ticks() {
     return _ticks;
@@ -202,6 +202,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
 
   /**
    * Manually tick the abstract auditor and get the AuditStats of the last reporting interval.
+   * @return stats for the previous interval
    */
   protected AuditStats tickAndGetStats() {
     // We only allow one thread to tick.
@@ -262,6 +263,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   /**
    * Create a new AuditStats. This method will be called when the abstract auditor rolls out a new AuditStat for a new
    * reporting interval.
+   * @return new stats
    */
   protected abstract AuditStats createAuditStats();
 
@@ -276,6 +278,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    * @param timestamp the timestamp of the record being audited.
    * @param messageCount the number of records being audited.
    * @param bytesCount the number of bytes being audited.
+   * @param auditType type of activity to report
    *
    * @return An object that can be served as an key in a {@link java.util.HashMap}. Returning null means skipping the
    * auditing.

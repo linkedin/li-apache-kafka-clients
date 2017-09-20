@@ -23,7 +23,7 @@ public class ConfigureAuditorTest extends AbstractKafkaClientsIntegrationTestHar
   @BeforeMethod
   @Override
   public void setUp() {
-    brokerList_$eq("localhost:9092");
+    super.setUp();
   }
 
   @Test

@@ -327,7 +327,6 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * partition. With the internal state, the consumer guarantees the messages after the offset sought to will
    * be redelivered. To reduce memory footprint, the consumer only tracks a configurable number of messages.
    * <p>
-   * <p>
    * When this method is invoked, the behavior of this method is following:
    * <ul>
    * <li> If no message has ever been consumed from the partition, the consumer will seek to the user passed in
@@ -500,7 +499,6 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * <p>
    * The safe offset of a message <b>M</b> is the largest offset that guarantees all the messages after <b>M</b> will
    * be consumed if user starts to consume from that offset.
-   * <p>
    * <p>
    * For example, consider the following message/segment sequence:
    * <ul>

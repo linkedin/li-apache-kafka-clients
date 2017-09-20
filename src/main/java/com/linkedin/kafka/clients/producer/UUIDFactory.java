@@ -17,12 +17,13 @@ import org.apache.kafka.common.Configurable;
 public interface UUIDFactory<K, V> extends Configurable {
 
   /**
-   * Get a random UUID.
+   * @return a random UUID
    */
   UUID createUuid();
 
   /**
-   * Get the UUID based on the producer record.
+   * @param record a producer record to get the UUID from/by
+   * @return a UUID based on the producer record.
    */
   UUID getUuid(ProducerRecord<K, V> record);
 
