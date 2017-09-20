@@ -7,7 +7,12 @@ package com.linkedin.kafka.clients.producer;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
+import java.io.IOException;
+import java.util.BitSet;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Random;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -18,12 +23,6 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import java.io.IOException;
-import java.util.BitSet;
-import java.util.Collections;
-import java.util.Properties;
-import java.util.Random;
 
 import static org.testng.AssertJUnit.*;
 

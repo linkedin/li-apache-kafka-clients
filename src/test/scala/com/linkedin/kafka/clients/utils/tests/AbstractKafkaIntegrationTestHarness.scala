@@ -16,7 +16,15 @@ import kafka.server.KafkaConfig
 abstract class AbstractKafkaIntegrationTestHarness extends AbstractKafkaServerTestHarness {
 
   def generateConfigs() =
-    TestUtils.createBrokerConfigs(clusterSize(), zkConnect, enableControlledShutdown = false).map(KafkaConfig.fromProps(_, overridingProps()))
+    TestUtils.createBrokerConfigs(
+      clusterSize(),
+      zkConnect,
+      enableControlledShutdown = false,
+      interBrokerSecurityProtocol = Some(securityProtocol),
+      trustStoreFile = trustStoreFile,
+      enablePlaintext = trustStoreFile.isEmpty, /* enable one port or the other */
+      enableSsl = trustStoreFile.isDefined
+    ).map(KafkaConfig.fromProps(_, overridingProps()))
 
   /**
    * User can override this method to return the number of brokers they want.
