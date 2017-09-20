@@ -9,10 +9,9 @@ import java.nio.file.Files
 import java.util.{Properties, Random}
 
 import kafka.server.{KafkaConfig, KafkaServer}
-import kafka.utils.{SystemTime, Time}
-import org.apache.kafka.common.network.Mode
+import org.apache.kafka.common.network.{ListenerName, Mode}
 import org.apache.kafka.common.protocol.SecurityProtocol
-import org.apache.kafka.common.utils.Utils
+import org.apache.kafka.common.utils.{Time, Utils}
 import org.apache.kafka.common.utils.Utils.formatAddress
 
 import scala.collection.JavaConversions._
@@ -34,14 +33,14 @@ object TestUtils {
    *
    * @param config The configuration of the server
    */
-  def createServer(config: KafkaConfig, time: Time = SystemTime): KafkaServer = {
+  def createServer(config: KafkaConfig, time: Time = Time.SYSTEM): KafkaServer = {
     val server = new KafkaServer(config, time)
     server.startup()
     server
   }
 
   def getBrokerListStrFromServers(servers: Seq[KafkaServer], protocol: SecurityProtocol = SecurityProtocol.PLAINTEXT): String = {
-    servers.map(s => formatAddress(s.config.hostName, s.boundPort(protocol))).mkString(",")
+    servers.map(s => formatAddress(s.config.hostName, s.boundPort(ListenerName.forSecurityProtocol(protocol)))).mkString(",")
   }
 
   /**

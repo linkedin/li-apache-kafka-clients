@@ -276,6 +276,11 @@ public class AbstractAuditorTest {
     }
 
     @Override
+    public long hiResClockMs() {
+      return milliseconds();
+    }
+
+    @Override
     public long nanoseconds() {
       // Not used.
       return 0;
