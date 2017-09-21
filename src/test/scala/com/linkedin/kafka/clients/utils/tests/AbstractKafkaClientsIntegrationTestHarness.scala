@@ -9,14 +9,19 @@ import java.util.Properties
 import com.linkedin.kafka.clients.consumer.{LiKafkaConsumer, LiKafkaConsumerConfig, LiKafkaConsumerImpl}
 import com.linkedin.kafka.clients.largemessage.{DefaultSegmentDeserializer, DefaultSegmentSerializer}
 import com.linkedin.kafka.clients.producer.{LiKafkaProducer, LiKafkaProducerConfig, LiKafkaProducerImpl}
+import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.ConsumerConfig
-import org.apache.kafka.clients.producer.ProducerConfig
-import org.apache.kafka.common.serialization.{StringDeserializer, StringSerializer}
+import org.apache.kafka.clients.producer.{KafkaProducer, Producer, ProducerConfig}
+import org.apache.kafka.common.network.Mode
+import org.apache.kafka.common.protocol.SecurityProtocol
+import org.apache.kafka.common.serialization.{ByteArraySerializer, StringDeserializer, StringSerializer}
 
 /**
  * Integration test harness for likafka-clients
  */
 abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaIntegrationTestHarness {
+
+  lazy val usingSSL: Boolean = securityProtocol == SecurityProtocol.SSL
 
   /**
    * Generate a new LiKafkaProducer which has all the settings configured to produce data.
@@ -27,6 +32,14 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
     new LiKafkaProducerImpl[String, String](getProducerProperties(props))
   }
 
+  def createKafkaProducer(): Producer[Array[Byte], Array[Byte]] = {
+    val props = new Properties()
+    props.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer].getName)
+    props.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer].getName)
+    val finalProducerProps = getProducerProperties(props)
+    new KafkaProducer(finalProducerProps)
+  }
+
   /**
     * Get the default producer properties.
     * @param props the properties that users want to specify
@@ -34,6 +47,10 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
     */
   def getProducerProperties(props: Properties = null): Properties = {
     val producerProps = Option(props).getOrElse(new Properties())
+    if (usingSSL) {
+      producerProps.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SSL.name)
+      producerProps.putAll(TestUtils.sslConfigs(Mode.CLIENT, clientCert = true, trustStoreFile, "producer"))
+    }
     maybeSetProperties(producerProps, ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapUrl)
     maybeSetProperties(producerProps, LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG, "200")
     maybeSetProperties(producerProps, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
@@ -58,6 +75,10 @@ abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaI
    */
   def getConsumerProperties(props: Properties = null): Properties = {
     val consumerProps = Option(props).getOrElse(new Properties())
+    if (usingSSL) {
+      consumerProps.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SSL.name)
+      consumerProps.putAll(TestUtils.sslConfigs(Mode.CLIENT, clientCert = true, trustStoreFile, "consumer"))
+    }
     maybeSetProperties(consumerProps, ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapUrl)
     maybeSetProperties(consumerProps, ConsumerConfig.GROUP_ID_CONFIG, "testingConsumer")
     maybeSetProperties(consumerProps, LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG, "300000")
