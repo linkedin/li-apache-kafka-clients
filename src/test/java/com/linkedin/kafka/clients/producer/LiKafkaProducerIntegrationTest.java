@@ -52,37 +52,55 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
    */
   @Test
   public void testSend() throws IOException, InterruptedException {
-
     Properties props = new Properties();
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
-    LiKafkaProducer<String, String> producer = createProducer(props);
     final String tempTopic = "testTopic" + new Random().nextInt(1000000);
-
-    for (int i = 0; i < RECORD_COUNT; ++i) {
-      String value = Integer.toString(i);
-      producer.send(new ProducerRecord<>(tempTopic, value));
+    try (LiKafkaProducer<String, String> producer = createProducer(props)) {
+      for (int i = 0; i < RECORD_COUNT; ++i) {
+        String value = Integer.toString(i);
+        producer.send(new ProducerRecord<>(tempTopic, value));
+      }
     }
-
-    // Drain the send queues
-    producer.close();
 
     Properties consumerProps = new Properties();
     consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-    LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps);
-    consumer.subscribe(Collections.singleton(tempTopic));
     int messageCount = 0;
-    BitSet counts = new BitSet(RECORD_COUNT);
-    long startMs = System.currentTimeMillis();
-    while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
-      ConsumerRecords<String, String> records = consumer.poll(100);
-      for (ConsumerRecord<String, String> record : records) {
-        int index = Integer.parseInt(record.value());
-        counts.set(index);
-        messageCount++;
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps)) {
+      consumer.subscribe(Collections.singleton(tempTopic));
+      BitSet counts = new BitSet(RECORD_COUNT);
+      long startMs = System.currentTimeMillis();
+      while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
+        ConsumerRecords<String, String> records = consumer.poll(100);
+        for (ConsumerRecord<String, String> record : records) {
+          int index = Integer.parseInt(record.value());
+          counts.set(index);
+          messageCount++;
+        }
       }
     }
-    consumer.close();
     assertEquals(RECORD_COUNT, messageCount);
+  }
+
+  @Test
+  public void testNullValue() {
+    try (LiKafkaProducer<String, String> producer = createProducer(null)) {
+      producer.send(new ProducerRecord<>("testNullValue", "key", null));
+    }
+    Properties consumerProps = new Properties();
+    consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps)) {
+      consumer.subscribe(Collections.singleton("testNullValue"));
+      long startMs = System.currentTimeMillis();
+      ConsumerRecords<String, String> records = ConsumerRecords.empty();
+      while (records.isEmpty() && System.currentTimeMillis() < startMs + 30000) {
+        records = consumer.poll(100);
+      }
+      assertEquals(1, records.count());
+      ConsumerRecord<String, String> record = records.iterator().next();
+      assertEquals("key", record.key());
+      assertNull(record.value());
+    }
   }
 
   /**
@@ -115,27 +133,28 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     Properties props = getProducerProperties(null);
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
-    LiKafkaProducer<String, String> producer = new LiKafkaProducerImpl<>(props, stringSerializer, errorThrowingSerializer, null, null);
     final String tempTopic = "testTopic" + new Random().nextInt(1000000);
-
-    producer.send(new ProducerRecord<>(tempTopic, "ErrorBytes"));
-    producer.send(new ProducerRecord<>(tempTopic, "value"));
-    producer.close();
+    try (LiKafkaProducer<String, String> producer =
+        new LiKafkaProducerImpl<>(props, stringSerializer, errorThrowingSerializer, null, null)) {
+      producer.send(new ProducerRecord<>(tempTopic, "ErrorBytes"));
+      producer.send(new ProducerRecord<>(tempTopic, "value"));
+      producer.close();
+    }
 
     Properties consumerProps = new Properties();
     consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-    LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps);
-    consumer.subscribe(Collections.singleton(tempTopic));
     int messageCount = 0;
-    long startMs = System.currentTimeMillis();
-    while (messageCount < 1 && System.currentTimeMillis() < startMs + 30000) {
-      ConsumerRecords<String, String> records = consumer.poll(100);
-      for (ConsumerRecord<String, String> record : records) {
-        assertEquals("value", record.value());
-        messageCount++;
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps)) {
+      consumer.subscribe(Collections.singleton(tempTopic));
+      long startMs = System.currentTimeMillis();
+      while (messageCount < 1 && System.currentTimeMillis() < startMs + 30000) {
+        ConsumerRecords<String, String> records = consumer.poll(100);
+        for (ConsumerRecord<String, String> record : records) {
+          assertEquals("value", record.value());
+          messageCount++;
+        }
       }
     }
-    consumer.close();
     assertEquals(1, messageCount);
   }
 

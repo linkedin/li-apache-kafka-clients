@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
+import java.util.Collections;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.Serializer;
 
@@ -65,9 +66,11 @@ public class MessageSplitterImpl implements MessageSplitter {
                                                     byte[] key,
                                                     byte[] serializedRecord,
                                                     int maxSegmentSize) {
-
     if (topic == null) {
       throw new IllegalArgumentException("Topic cannot be empty for LiKafkaGenericMessageSplitter.");
+    }
+    if (serializedRecord == null) {
+      return Collections.singletonList(new ProducerRecord<>(topic, partition, timestamp, key, null));
     }
     // We allow message id to be null, but it is strongly recommended to pass in a message id.
     UUID segmentMessageId = messageId == null ? _uuidFactory.createUuid() : messageId;
