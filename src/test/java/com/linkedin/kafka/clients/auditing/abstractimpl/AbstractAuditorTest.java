@@ -245,7 +245,7 @@ public class AbstractAuditorTest {
     }
 
     @Override
-    public void onClosed(AuditStats currentStats, AuditStats nextStats) {
+    public void onClosed(AuditStats currentStats, AuditStats nextStats, long timeout) {
 
     }
 

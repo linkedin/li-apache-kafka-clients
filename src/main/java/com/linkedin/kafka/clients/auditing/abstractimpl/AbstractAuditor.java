@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
  * To use this class, users need to implement the following methods:
  * <pre>
  *   {@link #onTick(AuditStats)}
- *   {@link #onClosed(AuditStats, AuditStats)}
+ *   {@link #onClosed(AuditStats, AuditStats, long)}
  *   {@link #createAuditStats()}
  *   {@link #getAuditKey(Object, String, Long, Long, Long, AuditType)}
  *   {@link #auditToken(Object, Object)}
@@ -86,8 +86,11 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   private volatile long _ticks;
 
   // The shutdown flag and latches.
-  protected final AtomicBoolean _started = new AtomicBoolean(false);
-  protected final AtomicBoolean _shutdown = new AtomicBoolean(false);
+  private final AtomicBoolean _started = new AtomicBoolean(false);
+  private final Object _shutdownLock = new Object();
+  private volatile boolean _shutdown;
+  // The shutdown flag and deadline.
+  private volatile long _shutdownDeadline;
 
   /**
    * Construct the abstract auditor.
@@ -124,6 +127,8 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     _nextTick = _enableAutoTick ?
         (_time.milliseconds() / _reportingIntervalMs) * _reportingIntervalMs + _reportingIntervalMs : Long.MAX_VALUE;
     _ticks = 0;
+    _shutdown = false;
+    _shutdownDeadline = -1L;
   }
 
   @Override
@@ -131,17 +136,13 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     if (_enableAutoTick) {
       LOG.info("Starting auditor...");
       try {
-        while (!_shutdown.get()) {
+        while (!_shutdown) {
           try {
             long now = _time.milliseconds();
             if (now >= _nextTick + _reportingDelayMs) {
               tick();
             }
-            try {
-              Thread.sleep(Math.max(0, _nextTick + _reportingDelayMs - now));
-            } catch (InterruptedException ie) {
-              // Let it go.
-            }
+            waitForNextTick(now);
           } catch (Exception e) {
             // We catch all the exceptions from the user's onTick() call but not exit.
             LOG.error("Auditor encounter exception.", e);
@@ -150,14 +151,25 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
       } finally {
         _currentStats.close();
         _nextStats.close();
-        _shutdown.set(true);
-        onClosed(_currentStats, _nextStats);
+        _shutdown = true;
+        onClosed(_currentStats, _nextStats, Math.min(0, _shutdownDeadline - System.currentTimeMillis()));
       }
     } else {
       LOG.info("Auto auditing is set to false. Automatic ticking is disabled.");
     }
   }
 
+  private void waitForNextTick(long now) {
+    try {
+      synchronized (_shutdownLock) {
+        if (!_shutdown) {
+          _shutdownLock.wait(Math.max(0, _nextTick + _reportingDelayMs - now));
+        }
+      }
+    } catch (InterruptedException ie) {
+      // Let it go.
+    }
+  }
 
   // protected methods
   /**
@@ -215,9 +227,22 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   }
 
   /**
+   * Check if the auditor is shutting down.
+   *
+   * @return true if the auditor is shutting down, false otherwise.
+   */
+  protected boolean isShuttingDown() {
+    return _shutdown;
+  }
+
+  /**
    * This method is called when a reporting interval is reached and the abstract auditor rolls out a new AuditStats.
    * The old AuditStats will be closed and passed to this method as the argument. The subclass must implement this
    * method to handle the AuditStats for the previous reporting interval.
+   * <p>
+   *   Note that the implementation should expect to be interrupted when the auditor is shutdown and the shutdown
+   *   timeout has passed.
+   * </p>
    *
    * @param lastStats The AuditStats of the previous reporting interval.
    */
@@ -229,8 +254,10 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    *
    * @param currentStats The stats for the current reporting period.
    * @param nextStats The stats for the next reporting period.
+   * @param timeout The timeout to close the auditor. The onClosed() call will be interrupted if it did not return
+   *                before timeout.
    */
-  public abstract void onClosed(AuditStats currentStats, AuditStats nextStats);
+  public abstract void onClosed(AuditStats currentStats, AuditStats nextStats, long timeout);
 
   /**
    * Create a new AuditStats. This method will be called when the abstract auditor rolls out a new AuditStat for a new
@@ -292,22 +319,32 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
       } catch (IllegalStateException ise) {
         // Ignore this exception and retry because we might be ticking.
       }
-    } while (!done && !_shutdown.get());
+    } while (!done && !_shutdown);
   }
 
   @Override
   public void close(long timeout, TimeUnit unit) {
     LOG.info("Closing auditor with timeout {} {}", timeout, unit);
-    if (_shutdown.compareAndSet(false, true)) {
-      interrupt();
+    long timeoutMillis = unit.toMillis(timeout);
+    long now = _time.milliseconds();
+    // Set shutdown flag
+    synchronized (_shutdownLock) {
+      if (!_shutdown) {
+        // Handle long overflow
+        _shutdownDeadline = Long.min(Long.MAX_VALUE - now, timeoutMillis) + now;
+        _shutdown = true;
+        _shutdownLock.notify();
+      }
     }
     try {
       if (timeout > 0) {
-        this.join(unit.toMillis(timeout));
+        this.join(timeoutMillis);
       }
     } catch (InterruptedException e) {
       LOG.warn("Auditor closure interrupted");
     }
+    // Interrupt after timeout.
+    interrupt();
   }
 
   @Override

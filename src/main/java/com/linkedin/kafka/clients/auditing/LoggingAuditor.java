@@ -60,7 +60,7 @@ public class LoggingAuditor<K, V> extends AbstractAuditor<K, V> {
   }
 
   @Override
-  public void onClosed(AuditStats currentStats, AuditStats nextStats) {
+  public void onClosed(AuditStats currentStats, AuditStats nextStats, long timeout) {
     AUDIT_LOG.info("Logging auditing stats on closure...");
     printSummary(currentStats);
     printSummary(nextStats);
