@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.auditing.abstractimpl;
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.auditing.LoggingAuditor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.common.utils.SystemTime;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
@@ -85,7 +86,8 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   private volatile long _ticks;
 
   // The shutdown flag and latches.
-  protected volatile boolean _shutdown;
+  protected final AtomicBoolean _started = new AtomicBoolean(false);
+  protected final AtomicBoolean _shutdown = new AtomicBoolean(false);
 
   /**
    * Construct the abstract auditor.
@@ -122,7 +124,6 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     _nextTick = _enableAutoTick ?
         (_time.milliseconds() / _reportingIntervalMs) * _reportingIntervalMs + _reportingIntervalMs : Long.MAX_VALUE;
     _ticks = 0;
-    _shutdown = false;
   }
 
   @Override
@@ -130,7 +131,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
     if (_enableAutoTick) {
       LOG.info("Starting auditor...");
       try {
-        while (!_shutdown) {
+        while (!_shutdown.get()) {
           try {
             long now = _time.milliseconds();
             if (now >= _nextTick + _reportingDelayMs) {
@@ -149,7 +150,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
       } finally {
         _currentStats.close();
         _nextStats.close();
-        _shutdown = true;
+        _shutdown.set(true);
         onClosed(_currentStats, _nextStats);
       }
     } else {
@@ -264,10 +265,12 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
 
   @Override
   public void start() {
-    // Initialize the stats before starting auditor.
-    _currentStats = createAuditStats();
-    _nextStats = createAuditStats();
-    super.start();
+    if (_started.compareAndSet(false, true)) {
+      // Initialize the stats before starting auditor.
+      _currentStats = createAuditStats();
+      _nextStats = createAuditStats();
+      super.start();
+    }
   }
 
   @Override
@@ -289,14 +292,15 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
       } catch (IllegalStateException ise) {
         // Ignore this exception and retry because we might be ticking.
       }
-    } while (!done && !_shutdown);
+    } while (!done && !_shutdown.get());
   }
 
   @Override
   public void close(long timeout, TimeUnit unit) {
     LOG.info("Closing auditor with timeout {} {}", timeout, unit);
-    _shutdown = true;
-    interrupt();
+    if (_shutdown.compareAndSet(false, true)) {
+      interrupt();
+    }
     try {
       if (timeout > 0) {
         this.join(unit.toMillis(timeout));

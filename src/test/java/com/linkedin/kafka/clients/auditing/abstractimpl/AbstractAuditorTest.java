@@ -96,7 +96,11 @@ public class AbstractAuditorTest {
     config.put(AbstractAuditor.REPORTING_INTERVAL_MS, "60000");
     auditor.configure(config);
     auditor.start();
+    // calling start twice should have no impact.
+    auditor.start();
 
+    auditor.close();
+    // Calling close twice should have no impact.
     auditor.close();
 
     assertEquals(auditor.getState(), Thread.State.TERMINATED, "The auditor thread should have exited.");
