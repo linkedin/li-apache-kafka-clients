@@ -5,18 +5,22 @@
 package com.linkedin.kafka.clients.utils.tests;
 
 public abstract class AbstractZookeeperTestHarness {
-  protected EmbeddedZookeeper zookeeper = null;
+  protected EmbeddedZookeeper _zookeeper = null;
 
   public void setUp() {
-    if (zookeeper == null) {
-      zookeeper = new EmbeddedZookeeper();
+    if (_zookeeper == null) {
+      _zookeeper = new EmbeddedZookeeper();
     }
   }
 
   public void tearDown() {
-    if (zookeeper != null) {
-      KafkaTestUtils.quietly(() -> zookeeper.close());
-      zookeeper = null;
+    if (_zookeeper != null) {
+      KafkaTestUtils.quietly(() -> _zookeeper.close());
+      _zookeeper = null;
     }
+  }
+
+  protected EmbeddedZookeeper zookeeper() {
+    return _zookeeper;
   }
 }

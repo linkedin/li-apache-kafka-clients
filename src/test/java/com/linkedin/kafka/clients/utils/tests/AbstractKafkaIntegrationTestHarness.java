@@ -16,43 +16,43 @@ import org.testng.Assert;
 
 
 public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookeeperTestHarness {
-  protected Map<String, EmbeddedBroker> brokers = null;
-  protected String bootstrapUrl;
+  protected Map<String, EmbeddedBroker> _brokers = null;
+  protected String _bootstrapUrl;
 
   @Override
   public void setUp() {
     super.setUp();
-    if (brokers != null) {
+    if (_brokers != null) {
       return;
     }
 
-    brokers = new LinkedHashMap<>();
+    _brokers = new LinkedHashMap<>();
     List<Map<Object, Object>> brokerConfigs = buildBrokerConfigs();
     Assert.assertNotNull(brokerConfigs);
     Assert.assertFalse(brokerConfigs.isEmpty());
     for (Map<Object, Object> brokerConfig : brokerConfigs) {
       EmbeddedBroker broker = new EmbeddedBroker(brokerConfig);
       String id = broker.getId();
-      if (brokers.putIfAbsent(id, broker) != null) {
+      if (_brokers.putIfAbsent(id, broker) != null) {
         KafkaTestUtils.quietly(broker::close); //wont be picked up by teardown
         throw new IllegalStateException("multiple brokers defined with id " + id);
       }
     }
 
     StringJoiner joiner = new StringJoiner(",");
-    brokers.values().forEach(broker -> joiner.add(broker.getAddr(securityProtocol())));
-    bootstrapUrl = joiner.toString();
+    _brokers.values().forEach(broker -> joiner.add(broker.getAddr(securityProtocol())));
+    _bootstrapUrl = joiner.toString();
   }
 
   @Override
   public void tearDown() {
     try {
-      if (brokers != null) {
-        for (EmbeddedBroker broker : brokers.values()) {
+      if (_brokers != null) {
+        for (EmbeddedBroker broker : _brokers.values()) {
           KafkaTestUtils.quietly(broker::close);
         }
-        brokers.clear();
-        brokers = null;
+        _brokers.clear();
+        _brokers = null;
       }
     } finally {
       super.tearDown();
@@ -64,7 +64,7 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
   }
 
   protected EmbeddedBroker broker(String id) {
-    EmbeddedBroker broker = brokers.get(id);
+    EmbeddedBroker broker = _brokers.get(id);
     if (broker == null) {
       throw new IllegalArgumentException("Invalid server id " + id);
     }
@@ -72,15 +72,19 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
   }
 
   public String bootstrapServers() {
-    return bootstrapUrl;
+    return _bootstrapUrl;
   }
 
-
+  /**
+   * returns the list of broker configs for all brokers created by this test
+   * (as determined by clusterSize()
+   * @return list of broker configs, one config map per broker to be created
+   */
   protected List<Map<Object, Object>> buildBrokerConfigs() {
     List<Map<Object, Object>> configs = new ArrayList<>();
     for (int i = 0; i < clusterSize(); i++) {
       EmbeddedBrokerBuilder builder = new EmbeddedBrokerBuilder();
-      builder.zkConnect(zookeeper);
+      builder.zkConnect(zookeeper());
       builder.nodeId(i);
       builder.enable(securityProtocol());
       if (securityProtocol() == SecurityProtocol.SSL) {

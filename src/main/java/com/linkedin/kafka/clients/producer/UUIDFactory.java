@@ -17,7 +17,7 @@ import org.apache.kafka.common.Configurable;
 public interface UUIDFactory<K, V> extends Configurable {
 
   /**
-   * @return a random UUID
+   * @return a non-null UUID
    */
   UUID createUuid();
 

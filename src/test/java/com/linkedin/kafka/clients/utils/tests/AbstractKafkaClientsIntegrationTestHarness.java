@@ -30,15 +30,6 @@ public abstract class AbstractKafkaClientsIntegrationTestHarness extends Abstrac
     super.setUp();
   }
 
-  @Override
-  public void tearDown() {
-    try {
-      //TODO - something here ?
-    } finally {
-      super.tearDown();
-    }
-  }
-
   protected LiKafkaProducer<String, String> createProducer(Properties overrides) {
     Properties props = getProducerProperties(overrides);
     return new LiKafkaProducerImpl<>(props);
@@ -48,7 +39,7 @@ public abstract class AbstractKafkaClientsIntegrationTestHarness extends Abstrac
     Properties result = new Properties();
 
     //populate defaults
-    result.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapUrl);
+    result.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
     result.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getCanonicalName());
     result.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getCanonicalName());
 
@@ -59,7 +50,7 @@ public abstract class AbstractKafkaClientsIntegrationTestHarness extends Abstrac
 
     //apply overrides
     if (overrides != null) {
-      overrides.forEach(result::put);
+      result.putAll(overrides);
     }
 
     return result;
@@ -89,7 +80,7 @@ public abstract class AbstractKafkaClientsIntegrationTestHarness extends Abstrac
 
     //apply overrides
     if (overrides != null) {
-      overrides.forEach(result::put);
+      result.putAll(overrides);
     }
 
     return result;
