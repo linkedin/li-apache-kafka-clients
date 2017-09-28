@@ -9,7 +9,6 @@ import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
-import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -34,8 +33,6 @@ import static org.testng.Assert.assertFalse;
 
 /**
  * The integration test for large message.
- * This class has to be in scala source directory because it depends on the scala classes which will only be
- * compiled after java classes are compiled.
  */
 public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegrationTestHarness {
   private static final String TOPIC = "TestLargeMessage";
@@ -50,7 +47,7 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
   @Override
   public Properties overridingProps() {
     Properties props = new Properties();
-    props.setProperty(KafkaConfig.NumPartitionsProp(), Integer.toString(NUM_PARTITIONS));
+    props.setProperty("num.partitions", Integer.toString(NUM_PARTITIONS));
     return props;
   }
 

@@ -18,26 +18,11 @@ group = 'com.linkedin.kafka.clients'
 import com.linkedin.gradle.build.DistributeTask
 
 apply plugin: 'java'
-apply plugin: 'scala'
 apply plugin: 'eclipse'
 apply plugin: 'idea'
 apply plugin: 'checkstyle'
 apply plugin: 'maven-publish'
 apply plugin: 'com.jfrog.artifactory'
-
-//project layout
-
-sourceSets {
-    test {
-        java {
-            srcDirs = []
-        }
-        //needed because our java tests depend on scala classes, so must be compiled by scala
-        scala {
-            srcDirs = ['src/test/java', 'src/test/scala']
-        }
-    }
-}
 
 //project dependencies
 
@@ -48,10 +33,12 @@ repositories {
 dependencies {
     compile 'org.apache.kafka:kafka-clients:0.10.2.1'
 
-    testCompile 'org.apache.kafka:kafka_2.10:0.10.2.1:test'
-    testCompile 'org.apache.kafka:kafka_2.10:0.10.2.1'
     testCompile 'org.bouncycastle:bcpkix-jdk15on:1.54'
+    testCompile 'commons-io:commons-io:2.5'
+    testCompile 'com.101tec:zkclient:0.7'
     testCompile 'org.testng:testng:6.11'
+
+    testRuntime 'org.apache.kafka:kafka_2.10:0.10.2.1'
 }
 
 //test configurations
