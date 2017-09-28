@@ -165,19 +165,13 @@ public class EmbeddedBrokerBuilder {
   }
 
   private void applyDefaults() {
-    if (plaintextPort == 0) {
-      plaintextPort = KafkaTestUtils.getAvailableTcpPort();
-    }
-    if (sslPort == 0) {
-      sslPort = KafkaTestUtils.getAvailableTcpPort();
-    }
     if (logDirectory == null) {
       logDirectory = KafkaTestUtils.newTempDir();
     }
   }
 
   private void validate() throws IllegalArgumentException {
-    if (plaintextPort <= 0 && sslPort <= 0) {
+    if (plaintextPort < 0 && sslPort < 0) {
       throw new IllegalArgumentException("at least one protocol must be used");
     }
     if (logDirectory == null) {
@@ -195,10 +189,10 @@ public class EmbeddedBrokerBuilder {
     Map<Object, Object> props = new HashMap<>();
 
     StringJoiner csvJoiner = new StringJoiner(",");
-    if (plaintextPort > 0) {
+    if (plaintextPort >= 0) {
       csvJoiner.add(SecurityProtocol.PLAINTEXT.name + "://localhost:" + plaintextPort);
     }
-    if (sslPort > 0) {
+    if (sslPort >= 0) {
       csvJoiner.add(SecurityProtocol.SSL.name + "://localhost:" + sslPort);
     }
     props.put("broker.id", Integer.toString(nodeId));

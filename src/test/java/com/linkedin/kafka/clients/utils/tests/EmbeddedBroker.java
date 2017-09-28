@@ -7,10 +7,11 @@ package com.linkedin.kafka.clients.utils.tests;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.net.URI;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.apache.commons.io.FileUtils;
+import org.apache.kafka.common.network.ListenerName;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.kafka.common.utils.Time;
 
@@ -28,7 +29,7 @@ public class EmbeddedBroker implements AutoCloseable {
   private final static Method SHUTDOWN_METHOD;
   private final static Method AWAIT_SHUTDOWN_METHOD;
   private final static Object EMPTY_OPTION;
-  private final static Pattern LISTENER_PATTERN = Pattern.compile("\\s*(\\w+)://([\\w\\d]+):(\\d+)\\s*");
+  private final static Method BOUND_PORT_METHOD;
 
   static {
     try {
@@ -43,6 +44,7 @@ public class EmbeddedBroker implements AutoCloseable {
       STARTUP_METHOD = KAFKA_SERVER_CLASS.getMethod("startup");
       SHUTDOWN_METHOD = KAFKA_SERVER_CLASS.getMethod("shutdown");
       AWAIT_SHUTDOWN_METHOD = KAFKA_SERVER_CLASS.getMethod("awaitShutdown");
+      BOUND_PORT_METHOD = KAFKA_SERVER_CLASS.getMethod("boundPort", ListenerName.class);
       Method emptyOptionMethod = SCALA_OPTION_CLASS.getMethod("empty");
       EMPTY_OPTION = emptyOptionMethod.invoke(null);
     } catch (Exception e) {
@@ -52,10 +54,8 @@ public class EmbeddedBroker implements AutoCloseable {
 
   private String id;
   private File logDir;
-  private String plaintextHost = null;
-  private int plaintextPort = -1;
-  private String sslHost = null;
-  private int sslPort = -1;
+  private Map<SecurityProtocol, Integer> ports = new HashMap<>();
+  private Map<SecurityProtocol, String> hosts = new HashMap<>();
   private Object serverInstance;
 
   public EmbeddedBroker(Map<Object, Object> config) {
@@ -65,6 +65,13 @@ public class EmbeddedBroker implements AutoCloseable {
       Object emptyArrayBuffer = ARR_BUF_CTR.newInstance();
       serverInstance = SERVER_CTR.newInstance(configInstance, Time.SYSTEM, EMPTY_OPTION, emptyArrayBuffer);
       STARTUP_METHOD.invoke(serverInstance);
+      ports.replaceAll((securityProtocol, port) -> {
+        try {
+          return (Integer) BOUND_PORT_METHOD.invoke(serverInstance, ListenerName.forSecurityProtocol(securityProtocol));
+        } catch (Exception e) {
+          throw new IllegalStateException(e);
+        }
+      });
     } catch (Exception e) {
       throw new IllegalStateException(e);
     }
@@ -77,24 +84,13 @@ public class EmbeddedBroker implements AutoCloseable {
     //bind addresses
     String listenersString = (String) config.get("listeners");
     for (String protocolAddr : listenersString.split("\\s*,\\s*")) {
-      Matcher m = LISTENER_PATTERN.matcher(protocolAddr);
-      if (!m.matches()) {
-        throw new IllegalStateException();
-      }
-      SecurityProtocol protocol = SecurityProtocol.forName(m.group(1));
-      String host = m.group(2);
-      int port = Integer.parseInt(m.group(3));
-      switch (protocol) {
-        case PLAINTEXT:
-          plaintextHost = host;
-          plaintextPort = port;
-          break;
-        case SSL:
-          sslHost = host;
-          sslPort = port;
-          break;
-        default:
-          throw new IllegalStateException("unhandled: " + protocol + " in " + protocolAddr);
+      try {
+        URI uri = new URI(protocolAddr.trim());
+        SecurityProtocol protocol = SecurityProtocol.forName(uri.getScheme());
+        hosts.put(protocol, uri.getHost());
+        ports.put(protocol, null); //we get the value after boot
+      } catch (Exception e) {
+        throw new IllegalStateException(e);
       }
     }
   }
@@ -104,28 +100,18 @@ public class EmbeddedBroker implements AutoCloseable {
   }
 
   public String getAddr(SecurityProtocol protocol) {
-    switch (protocol) {
-      case PLAINTEXT:
-        return getPlaintextAddr();
-      case SSL:
-        return getSslAddr();
-      default:
-        throw new IllegalStateException("unhandled: " + protocol);
+    if (!hosts.containsKey(protocol)) {
+      return null;
     }
+    return hosts.get(protocol) + ":" + ports.get(protocol);
   }
 
   public String getPlaintextAddr() {
-    if (plaintextHost == null) {
-      return null;
-    }
-    return plaintextHost + ":" + plaintextPort;
+    return getAddr(SecurityProtocol.PLAINTEXT);
   }
 
   public String getSslAddr() {
-    if (sslHost == null) {
-      return null;
-    }
-    return sslHost + ":" + sslPort;
+    return getAddr(SecurityProtocol.SSL);
   }
 
   public void shutdown() throws Exception {

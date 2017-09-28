@@ -6,7 +6,6 @@ package com.linkedin.kafka.clients.utils.tests;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,6 +24,7 @@ public class KafkaTestUtils {
 
   static {
     SHUTDOWN_HOOK = new Thread(() -> {
+      Exception firstIssue = null;
       for (File toCleanUp : FILES_TO_CLEAN_UP) {
         if (!toCleanUp.exists()) {
           continue;
@@ -32,8 +32,17 @@ public class KafkaTestUtils {
         try {
           FileUtils.forceDelete(toCleanUp);
         } catch (IOException issue) {
-          issue.printStackTrace(System.err);
+          if (firstIssue == null) {
+            firstIssue = issue;
+          } else {
+            firstIssue.addSuppressed(issue);
+          }
         }
+      }
+      if (firstIssue != null) {
+        System.err.println("unable to delete one or more files");
+        firstIssue.printStackTrace(System.err);
+        throw new IllegalStateException(firstIssue);
       }
     }, "KafkaTestUtils cleanup hook");
     SHUTDOWN_HOOK.setUncaughtExceptionHandler((t, e) -> {
@@ -81,16 +90,6 @@ public class KafkaTestUtils {
     KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
 
     return consumer;
-  }
-
-  public static int getAvailableTcpPort() {
-    //TODO - figure out why this cannot reuse sockets when bind interface is specified
-    try (ServerSocket socket = new ServerSocket(0)) {
-      socket.setReuseAddress(true);
-      return socket.getLocalPort();
-    } catch (Exception e) {
-      throw new IllegalStateException(e);
-    }
   }
 
   public static File newTempDir() {

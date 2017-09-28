@@ -93,7 +93,7 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
         }
       } else {
         if (trustStoreFile() != null) {
-          throw new AssertionError("security protocol not yet yet trust store file provided");
+          throw new AssertionError("security protocol not set yet trust store file provided");
         }
       }
       Map<Object, Object> config = builder.buildConfig();

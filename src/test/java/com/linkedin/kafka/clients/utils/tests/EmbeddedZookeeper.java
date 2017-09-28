@@ -26,7 +26,6 @@ public class EmbeddedZookeeper implements AutoCloseable {
       snapshotDir = KafkaTestUtils.newTempDir();
       logDir = KafkaTestUtils.newTempDir();
       tickTime = 500;
-      port = KafkaTestUtils.getAvailableTcpPort();
       zk = new ZooKeeperServer(snapshotDir, logDir, tickTime);
       cnxnFactory = new NIOServerCnxnFactory();
       InetAddress localHost = InetAddress.getLocalHost();
@@ -34,6 +33,7 @@ public class EmbeddedZookeeper implements AutoCloseable {
       InetSocketAddress bindAddress = new InetSocketAddress(localHost, port);
       cnxnFactory.configure(bindAddress, 0);
       cnxnFactory.startup(zk);
+      port = zk.getClientPort();
     } catch (Exception e) {
       throw new IllegalStateException(e);
     }
