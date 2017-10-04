@@ -16,7 +16,7 @@ import org.testng.Assert;
 
 
 public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookeeperTestHarness {
-  protected Map<String, EmbeddedBroker> _brokers = null;
+  protected Map<Integer, EmbeddedBroker> _brokers = null;
   protected String _bootstrapUrl;
 
   @Override
@@ -32,7 +32,7 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
     Assert.assertFalse(brokerConfigs.isEmpty());
     for (Map<Object, Object> brokerConfig : brokerConfigs) {
       EmbeddedBroker broker = new EmbeddedBroker(brokerConfig);
-      String id = broker.getId();
+      int id = broker.getId();
       if (_brokers.putIfAbsent(id, broker) != null) {
         KafkaTestUtils.quietly(broker::close); //wont be picked up by teardown
         throw new IllegalStateException("multiple brokers defined with id " + id);
