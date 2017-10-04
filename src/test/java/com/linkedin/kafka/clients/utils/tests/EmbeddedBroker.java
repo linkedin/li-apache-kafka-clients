@@ -52,7 +52,7 @@ public class EmbeddedBroker implements AutoCloseable {
     }
   }
 
-  private String id;
+  private int id;
   private File logDir;
   private Map<SecurityProtocol, Integer> ports = new HashMap<>();
   private Map<SecurityProtocol, String> hosts = new HashMap<>();
@@ -64,7 +64,7 @@ public class EmbeddedBroker implements AutoCloseable {
       parseConfigs(config);
       Object emptyArrayBuffer = ARR_BUF_CTR.newInstance();
       serverInstance = SERVER_CTR.newInstance(configInstance, Time.SYSTEM, EMPTY_OPTION, emptyArrayBuffer);
-      STARTUP_METHOD.invoke(serverInstance);
+      startup();
       ports.replaceAll((securityProtocol, port) -> {
         try {
           return (Integer) BOUND_PORT_METHOD.invoke(serverInstance, ListenerName.forSecurityProtocol(securityProtocol));
@@ -78,7 +78,7 @@ public class EmbeddedBroker implements AutoCloseable {
   }
 
   private void parseConfigs(Map<Object, Object> config) {
-    id = (String) config.get("broker.id");
+    id = Integer.parseInt((String) config.get("broker.id"));
     logDir = new File((String) config.get("log.dir"));
 
     //bind addresses
@@ -95,7 +95,7 @@ public class EmbeddedBroker implements AutoCloseable {
     }
   }
 
-  public String getId() {
+  public int getId() {
     return id;
   }
 
@@ -114,14 +114,22 @@ public class EmbeddedBroker implements AutoCloseable {
     return getAddr(SecurityProtocol.SSL);
   }
 
+  public void startup() throws Exception {
+    STARTUP_METHOD.invoke(serverInstance);
+  }
+
   public void shutdown() throws Exception {
     SHUTDOWN_METHOD.invoke(serverInstance);
   }
 
+  public void awaitShutdown() throws Exception {
+    AWAIT_SHUTDOWN_METHOD.invoke(serverInstance);
+  }
+
   @Override
   public void close() throws Exception {
-    KafkaTestUtils.quietly(() -> SHUTDOWN_METHOD.invoke(serverInstance));
-    KafkaTestUtils.quietly(() -> AWAIT_SHUTDOWN_METHOD.invoke(serverInstance));
+    KafkaTestUtils.quietly(this::shutdown);
+    KafkaTestUtils.quietly(this::awaitShutdown);
     KafkaTestUtils.quietly(() -> FileUtils.forceDelete(logDir));
   }
 
