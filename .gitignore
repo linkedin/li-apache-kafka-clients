@@ -12,4 +12,5 @@ out/
 bin/
 .reviewboardrc
 *~
+.DS_Store
 

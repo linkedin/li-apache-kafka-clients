@@ -116,6 +116,20 @@ publishing {
                     }
                 }
             }
+            pom.withXml {
+                asNode().children().get(4).children().remove(0) //clear dependencies
+                asNode().children().get(4).appendNode("dependency")
+                .appendNode("groupId", "org.apache.kafka").parent()
+                .appendNode("artifactId", "kafka-clients").parent()
+                .appendNode("version", "0.10.2.1").parent()
+                .appendNode("scope", "compile").parent()
+                .parent()
+                .appendNode("dependency")
+                .appendNode("groupId", "commons-io").parent()
+                .appendNode("artifactId", "commons-io").parent()
+                .appendNode("version", "2.5").parent()
+                .appendNode("scope", "test").parent()
+            }
         }
     }
 }
