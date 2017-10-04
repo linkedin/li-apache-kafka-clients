@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 import org.apache.kafka.common.protocol.SecurityProtocol;
-import org.testng.Assert;
 
 
 public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookeeperTestHarness {
@@ -28,8 +27,9 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
 
     _brokers = new LinkedHashMap<>();
     List<Map<Object, Object>> brokerConfigs = buildBrokerConfigs();
-    Assert.assertNotNull(brokerConfigs);
-    Assert.assertFalse(brokerConfigs.isEmpty());
+    if (brokerConfigs == null || brokerConfigs.isEmpty()) {
+      throw new AssertionError("Broker configs " + brokerConfigs + " should not be null or empty");
+    }
     for (Map<Object, Object> brokerConfig : brokerConfigs) {
       EmbeddedBroker broker = new EmbeddedBroker(brokerConfig);
       int id = broker.getId();
