@@ -152,7 +152,8 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
         _currentStats.close();
         _nextStats.close();
         _shutdown = true;
-        onClosed(_currentStats, _nextStats, Math.min(0, _shutdownDeadline - System.currentTimeMillis()));
+        long shutdownBudgetRemaining = _shutdownDeadline - System.currentTimeMillis();
+        onClosed(_currentStats, _nextStats, Math.max(0, shutdownBudgetRemaining));
       }
     } else {
       LOG.info("Auto auditing is set to false. Automatic ticking is disabled.");
