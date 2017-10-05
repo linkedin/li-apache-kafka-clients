@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.annotations.InterfaceOrigin;
+import java.util.Set;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -52,6 +53,8 @@ public interface LiKafkaProducer<K, V> extends Producer<K, V> {
    */
   @InterfaceOrigin.ApacheKafka
   List<PartitionInfo> partitionsFor(String topic);
+
+  Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics);
 
   /**
    * Return a map of metrics maintained by the producer
