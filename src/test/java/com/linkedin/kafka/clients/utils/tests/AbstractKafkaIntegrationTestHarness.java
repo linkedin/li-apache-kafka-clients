@@ -60,10 +60,10 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
   }
 
   protected EmbeddedBroker serverForId(int id) {
-    return broker(Integer.toString(id));
+    return broker(id);
   }
 
-  protected EmbeddedBroker broker(String id) {
+  protected EmbeddedBroker broker(int id) {
     EmbeddedBroker broker = _brokers.get(id);
     if (broker == null) {
       throw new IllegalArgumentException("Invalid server id " + id);
