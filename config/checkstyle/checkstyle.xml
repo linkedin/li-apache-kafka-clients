@@ -20,7 +20,6 @@ LinkedIn Java style.
     <property name="severity" value="${checkstyle.severity}" default="error"/>
 
     <module name="TreeWalker">
-        <module name="FileContentsHolder"/>
 
         <!-- ANNOTATIONS -->
 
