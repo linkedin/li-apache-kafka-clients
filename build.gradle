@@ -13,6 +13,10 @@ buildscript {
     }
 }
 
+plugins {
+    id "org.sonarqube" version "2.5"
+}
+
 group = 'com.linkedin.kafka.clients'
 
 import com.linkedin.gradle.build.DistributeTask
@@ -21,8 +25,10 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'idea'
 apply plugin: 'checkstyle'
+apply plugin: 'maven'
 apply plugin: 'maven-publish'
 apply plugin: 'com.jfrog.artifactory'
+apply plugin: 'jacoco'
 
 //project dependencies
 
@@ -56,7 +62,11 @@ test.dependsOn('checkstyleMain', 'checkstyleTest')
 //code quality and inspections
 
 checkstyle {
-    toolVersion = '8.0'
+    toolVersion = '8.2'
+}
+
+jacoco {
+    toolVersion = "0.7.9"
 }
 
 //build artifacts
@@ -77,6 +87,8 @@ task testJar(type: Jar, dependsOn: testClasses) {
 }
 
 build.dependsOn 'testJar'
+jacocoTestReport.dependsOn test
+project.tasks["sonarqube"].dependsOn jacocoTestReport
 
 configurations {
     testArtifacts.extendsFrom testRuntime
@@ -164,5 +176,5 @@ task distributeBuild(type: DistributeTask) {
 //wrapper generation task
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '3.5'
+    gradleVersion = '4.2.1'
 }

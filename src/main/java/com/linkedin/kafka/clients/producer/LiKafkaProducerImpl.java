@@ -11,6 +11,7 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
+import java.util.Set;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -115,7 +116,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private Serializer<V> _valueSerializer;
 
   // raw byte producer
-  private final Producer<byte[], byte[]> _producer;
+  protected final Producer<byte[], byte[]> _producer;
   /*package private for testing*/ Auditor<K, V> _auditor;
   private final UUIDFactory<K, V> _uuidFactory;
 
@@ -278,6 +279,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   @Override
   public List<PartitionInfo> partitionsFor(String topic) {
     return _producer.partitionsFor(topic);
+  }
+
+  public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
+    //TODO come back here when upstream API settles
+    throw new UnsupportedOperationException("not implemented");
   }
 
   @Override
