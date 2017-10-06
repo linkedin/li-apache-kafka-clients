@@ -23,4 +23,8 @@ public abstract class AbstractZookeeperTestHarness {
   protected EmbeddedZookeeper zookeeper() {
     return _zookeeper;
   }
+
+  protected String zkConnect() {
+    return zookeeper().getConnectionString();
+  }
 }
