@@ -11,7 +11,7 @@ Responsible Disclosure of Security Vulnerabilities
 ==================================================
 
 Please do not file reports on Github for security issues.
-Please review the guidelines on at https://www.linkedin.com/help/linkedin/answer/62924/security-vulnerabilities?lang=en
+Please review the guidelines at https://www.linkedin.com/help/linkedin/answer/62924/security-vulnerabilities?lang=en
 
 Tips for Getting Your Pull Request Accepted
 ===========================================
