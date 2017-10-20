@@ -25,6 +25,7 @@ import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
@@ -567,6 +568,40 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       }
     } finally {
       consumer.close();
+    }
+  }
+
+  @Test
+  public void testPosition() {
+    String topic = "testSeek";
+    TopicPartition tp = new TopicPartition(topic, 0);
+    produceSyntheticMessages(topic);
+
+    // Reset to earliest
+    Properties props = new Properties();
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testPosition1");
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      consumer.assign(Collections.singleton(tp));
+      assertEquals(0, consumer.position(tp));
+    }
+
+    // Reset to latest
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testPosition2");
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      consumer.assign(Collections.singleton(tp));
+      assertEquals(consumer.position(tp), 10);
+    }
+
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testPosition3");
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      consumer.assign(Collections.singleton(tp));
+      consumer.position(tp);
+      fail("Should have thrown NoOffsetForPartitionException");
+    } catch (NoOffsetForPartitionException nofpe) {
+      // let it go.
     }
   }
 
