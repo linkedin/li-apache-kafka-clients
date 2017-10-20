@@ -430,7 +430,22 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   @Override
   public long position(TopicPartition partition) {
     // Not handling large message here. The position will be actual position.
-    return _kafkaConsumer.position(partition);
+    try {
+      return _kafkaConsumer.position(partition);
+    } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
+      switch (_offsetResetStrategy) {
+        case EARLIEST:
+          oe.partitions().forEach(_consumerRecordsProcessor::clear);
+          _kafkaConsumer.seekToBeginning(oe.partitions());
+          return _kafkaConsumer.position(partition);
+        case LATEST:
+          oe.partitions().forEach(_consumerRecordsProcessor::clear);
+          _kafkaConsumer.seekToEnd(oe.partitions());
+          return _kafkaConsumer.position(partition);
+        default:
+          throw oe;
+      }
+    }
   }
 
   @Override
