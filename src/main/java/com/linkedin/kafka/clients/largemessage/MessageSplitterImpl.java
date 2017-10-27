@@ -67,10 +67,10 @@ public class MessageSplitterImpl implements MessageSplitter {
                                                     byte[] serializedRecord,
                                                     int maxSegmentSize) {
     if (topic == null) {
-      throw new IllegalArgumentException("Topic cannot be empty for LiKafkaGenericMessageSplitter.");
+      throw new IllegalArgumentException("Topic cannot be empty.");
     }
-    if (serializedRecord == null) {
-      return Collections.singletonList(new ProducerRecord<>(topic, partition, timestamp, key, null));
+    if (serializedRecord == null || serializedRecord.length == 0) {
+      return Collections.singletonList(new ProducerRecord<>(topic, partition, timestamp, key, serializedRecord));
     }
     // We allow message id to be null, but it is strongly recommended to pass in a message id.
     UUID segmentMessageId = messageId == null ? _uuidFactory.createUuid() : messageId;

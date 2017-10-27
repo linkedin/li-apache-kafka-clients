@@ -18,6 +18,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.testng.annotations.AfterMethod;
@@ -100,6 +102,32 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
       ConsumerRecord<String, String> record = records.iterator().next();
       assertEquals("key", record.key());
       assertNull(record.value());
+    }
+  }
+
+  @Test
+  public void testZeroLengthValue() throws Exception {
+    Properties producerPropertyOverrides = new Properties();
+    producerPropertyOverrides.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
+
+    try (LiKafkaProducer producer =  createProducer(producerPropertyOverrides)) {
+      producer.send(new ProducerRecord<>("testZeroLengthValue", "key", new byte[0])).get();
+    }
+    Properties consumerProps = new Properties();
+    consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    consumerProps.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+
+    try (LiKafkaConsumer consumer = createConsumer(consumerProps)) {
+      consumer.subscribe(Collections.singleton("testZeroLengthValue"));
+      long startMs = System.currentTimeMillis();
+      ConsumerRecords records = ConsumerRecords.empty();
+      while (records.isEmpty() && System.currentTimeMillis() < startMs + 30000) {
+        records = consumer.poll(100);
+      }
+      assertEquals(1, records.count());
+      ConsumerRecord record = (ConsumerRecord) records.iterator().next();
+      assertEquals("key", record.key());
+      assertEquals(((byte[]) record.value()).length, 0);
     }
   }
 
