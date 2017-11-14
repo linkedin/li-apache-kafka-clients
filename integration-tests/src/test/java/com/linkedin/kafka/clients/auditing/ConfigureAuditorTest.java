@@ -2,9 +2,8 @@
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
-package com.linkedin.kafka.clients.auditing.abstractimpl;
+package com.linkedin.kafka.clients.auditing;
 
-import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumerImpl;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;

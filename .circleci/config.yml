@@ -36,9 +36,7 @@ jobs:
        - restore_cache:
            key: dependency-cache-{{ checksum "build.gradle" }}
        - run:
-           command: ./gradlew assemble testJar
-       - run:
-           command: ./.circleci/publish.sh
+           command: ./gradlew distributeBuild
 
 workflows:
   version: 2

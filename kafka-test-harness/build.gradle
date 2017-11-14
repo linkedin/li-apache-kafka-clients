@@ -1,0 +1,40 @@
+/*
+ * Copyright 2017 LinkedIn Corp.
+ * Licensed under the BSD 2-Clause License (the "License"). 
+ * See License in the project root for license information.
+ */
+plugins {
+  id "java-library"
+  id "maven-publish"
+  id "com.jfrog.artifactory"
+  id "idea"
+}
+
+dependencies {
+  compile project(':li-apache-kafka-clients')
+  compile "org.apache.kafka:kafka-clients:${rootProject.ext.kafkaVersion}"
+  compile 'org.apache.zookeeper:zookeeper:3.4.9' //matches kafka server dependency
+  compile 'com.101tec:zkclient:0.10'
+  compile 'commons-io:commons-io:2.6'
+  compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
+  runtime "org.apache.kafka:kafka_2.10:${rootProject.ext.kafkaVersion}"
+}
+
+publishing {
+  publications {
+    java(MavenPublication) {
+      from components.java
+      artifact sourcesJar
+      artifact javadocJar
+      pom.withXml {
+        def root = asNode()
+        root.appendNode('name', 'kafka-test-harness')
+        root.appendNode('description', 'a test harness for kafka-related integration tests')
+        root.children().last() + rootProject.ext.pomConfig
+      }
+    }
+  }
+}
+
+artifactoryPublish.dependsOn assemble
+artifactoryPublish.dependsOn publishToMavenLocal
