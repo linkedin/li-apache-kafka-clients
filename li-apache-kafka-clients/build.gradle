@@ -1,0 +1,36 @@
+/*
+ * Copyright 2017 LinkedIn Corp.
+ * Licensed under the BSD 2-Clause License (the "License"). 
+ * See License in the project root for license information.
+ */
+import com.linkedin.gradle.build.DistributeTask
+
+plugins {
+    id "java-library"
+    id "maven-publish"
+    id "com.jfrog.artifactory"
+    id "idea"
+}
+
+dependencies {
+    compile "org.apache.kafka:kafka-clients:${rootProject.ext.kafkaVersion}"
+}
+
+publishing {
+    publications {
+        java(MavenPublication) {
+            from components.java
+            artifact sourcesJar
+            artifact javadocJar
+            pom.withXml {
+                def root = asNode()
+                root.appendNode('name', 'li-apache-kafka-clients')
+                root.appendNode('description', 'extended kafka clients')
+                root.children().last() + rootProject.ext.pomConfig
+            }
+        }
+    }
+}
+
+artifactoryPublish.dependsOn assemble
+artifactoryPublish.dependsOn publishToMavenLocal

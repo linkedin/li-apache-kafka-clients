@@ -1,6 +1,20 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
+buildscript {
+  repositories {
+    maven {
+      url 'https://plugins.gradle.org/m2/'
+    }
+  }
+  dependencies {
+    classpath 'gradle.plugin.net.vivin:gradle-semantic-build-versioning:4.0.0'
+  }
+}
+
+apply plugin: 'net.vivin.gradle-semantic-build-versioning'
+
+//otherwise it defaults to the folder name
 rootProject.name = 'li-apache-kafka-clients'
 
-
+include 'li-apache-kafka-clients', 'kafka-test-harness', 'integration-tests'

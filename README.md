@@ -32,11 +32,12 @@ repositories {
 }
 
 dependencies {
-  compile 'com.linkedin.kafka.clients:li-apache-kafka-clients:0.0.4'
+  compile 'com.linkedin.kafka.clients:li-apache-kafka-clients:0.0.15'
+  testCompile 'com.linkedin.kafka.clients:kafka-test-harness:0.0.15' //if you want to use the test harness 
 }
 ```
 
-### Build a jar and run all the unit tests ###
+### Build jars and run all the unit tests ###
 `./gradlew build`
 
 ### Handle large messages with li-apache-kafka-clients ###

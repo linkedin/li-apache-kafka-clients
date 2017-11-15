@@ -5,8 +5,11 @@
 package com.linkedin.kafka.clients.utils.tests;
 
 import java.io.File;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.concurrent.CountDownLatch;
 import org.apache.zookeeper.server.NIOServerCnxnFactory;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.ZooKeeperServer;
@@ -20,6 +23,7 @@ public class EmbeddedZookeeper implements AutoCloseable {
   private int port;
   private ZooKeeperServer zk;
   private ServerCnxnFactory cnxnFactory;
+  private CountDownLatch shutdownLatch = null;
 
   public EmbeddedZookeeper() {
     try {
@@ -27,6 +31,7 @@ public class EmbeddedZookeeper implements AutoCloseable {
       logDir = KafkaTestUtils.newTempDir();
       tickTime = 500;
       zk = new ZooKeeperServer(snapshotDir, logDir, tickTime);
+      registerShutdownHandler(zk);
       cnxnFactory = new NIOServerCnxnFactory();
       InetAddress localHost = InetAddress.getLocalHost();
       hostAddress = localHost.getHostAddress();
@@ -59,5 +64,34 @@ public class EmbeddedZookeeper implements AutoCloseable {
   public void close() throws Exception {
     KafkaTestUtils.quietly(() -> zk.shutdown());
     KafkaTestUtils.quietly(() -> cnxnFactory.shutdown());
+    if (shutdownLatch != null) {
+      KafkaTestUtils.quietly(() -> shutdownLatch.await());
+    }
+  }
+
+  /**
+   * starting with ZK 3.4.9 there's a shutdown handler.
+   * if one isnt registered ZK will spew errors at shutdown time, even though
+   * both the handler interface and the method of registering one are not public API.
+   * see https://issues.apache.org/jira/browse/ZOOKEEPER-2795
+   * such craftsmanship. much wow.
+   * @param zk a ZK server instance
+   * @throws Exception if anything goes wrong
+   */
+  private void registerShutdownHandler(ZooKeeperServer zk) throws Exception {
+    Class<?> handlerClass;
+    try {
+      handlerClass = Class.forName("org.apache.zookeeper.server.ZooKeeperServerShutdownHandler");
+    } catch (ClassNotFoundException e) {
+      //older ZK. forget about it
+      return;
+    }
+    Method registerMethod = ZooKeeperServer.class.getDeclaredMethod("registerServerShutdownHandler", handlerClass);
+    Constructor<?> ctr = handlerClass.getDeclaredConstructor(CountDownLatch.class);
+    ctr.setAccessible(true);
+    shutdownLatch = new CountDownLatch(1);
+    Object handlerInstance = ctr.newInstance(shutdownLatch);
+    registerMethod.setAccessible(true);
+    registerMethod.invoke(zk, handlerInstance);
   }
 }
