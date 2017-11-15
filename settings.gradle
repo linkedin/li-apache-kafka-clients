@@ -17,8 +17,4 @@ apply plugin: 'net.vivin.gradle-semantic-build-versioning'
 //otherwise it defaults to the folder name
 rootProject.name = 'li-apache-kafka-clients'
 
-include 'li-apache-kafka-clients'
-include 'kafka-test-harness'
-include 'integration-tests'
-
-
+include 'li-apache-kafka-clients', 'kafka-test-harness', 'integration-tests'

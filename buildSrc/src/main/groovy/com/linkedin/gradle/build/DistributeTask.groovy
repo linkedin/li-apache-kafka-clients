@@ -17,10 +17,8 @@ class DistributeTask extends DefaultTask {
     def context = convention.clientConfig.publisher.contextUrl
     def password = convention.clientConfig.publisher.password
 
-//    buildName = "li-apache-kafka-clients"
-
     if (password == null || password.equals("")) {
-      throw new IllegalArgumentException("password not set");
+      throw new IllegalArgumentException("password not set")
     }
 
     def body = [
@@ -40,7 +38,7 @@ class DistributeTask extends DefaultTask {
         .bodyString(bodyString, ContentType.APPLICATION_JSON)
         .addHeader("X-JFrog-Art-Api", password)
         .execute()
-        .returnResponse();
+        .returnResponse()
 
     def bout = new ByteArrayOutputStream()
     response.getEntity().writeTo(bout);
