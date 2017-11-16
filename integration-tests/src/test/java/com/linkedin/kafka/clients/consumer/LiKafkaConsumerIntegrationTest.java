@@ -19,6 +19,8 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -42,6 +44,7 @@ import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Deserializer;
+import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -59,10 +62,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.fail;
+import static org.testng.Assert.*;
 
 
 /**
@@ -395,7 +395,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     try {
       TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
       consumer.assign(Collections.singleton(tp));
-      assertEquals(consumer.poll(5000).count(), 1, "Should have consumed 1 message"); // M2
+      ConsumerRecords<String, String> records = waitForData(consumer, 30000); //M2
+      assertEquals(records.count(), 1, "Should have consumed 1 message");
       consumer.commitSync();
       assertEquals(consumer.committed(tp), new OffsetAndMetadata(3, ""), "The committed user offset should be 3");
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
@@ -407,7 +408,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.seek(tp, consumer.committed(tp).offset());
       assertEquals(consumer.position(tp), 0, "The committed safe offset should be 0");
 
-      ConsumerRecords<String, String> records = consumer.poll(5000); // M1
+      records = waitForData(consumer, 30000); // M1
 
       assertEquals(records.count(), 1, "There should be only one record.");
       assertEquals(records.iterator().next().offset(), 4, "The message offset should be 4");
@@ -417,8 +418,21 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
 
+  private ConsumerRecords<String, String> waitForData(LiKafkaConsumer<String, String> consumer, long timeout) {
+    long now = System.currentTimeMillis();
+    long deadline = now + timeout;
+    while (System.currentTimeMillis() < deadline) {
+      ConsumerRecords<String, String> records = consumer.poll(1000);
+      if (records != null && records.count() > 0) {
+        return records;
+      }
+    }
+    Assert.fail("failed to read any records within time limit");
+    return null;
+  }
+
   @Test
-  public void testOffsetCommitCallback() {
+  public void testOffsetCommitCallback() throws Exception {
     String topic = "testOffsetCommitCallback";
     produceSyntheticMessages(topic);
     Properties props = new Properties();
@@ -426,38 +440,61 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testOffsetCommitCallback");
     // Make sure we start to consume from the beginning.
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
       TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
       consumer.assign(Collections.singleton(tp));
-      consumer.poll(5000); // M2
-      final AtomicBoolean offsetCommitted = new AtomicBoolean(false);
-      OffsetCommitCallback commitCallback = new OffsetCommitCallback() {
-        @Override
-        public void onComplete(Map<TopicPartition, OffsetAndMetadata> topicPartitionOffsetAndMetadataMap, Exception e) {
-          offsetCommitted.set(true);
-        }
-      };
-      consumer.commitAsync(commitCallback);
-      while (!offsetCommitted.get()) {
-        consumer.poll(20);
-      }
-      OffsetAndMetadata committed = consumer.committed(tp);
+      waitForData(consumer, 30000); // M2
+      OffsetAndMetadata committed = commitAndRetrieveOffsets(consumer, tp, null);
       assertEquals(committed, new OffsetAndMetadata(3, ""), "The committed user offset should be 3, instead was " + committed);
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
-
-      offsetCommitted.set(false);
       Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
       offsetMap.put(tp, new OffsetAndMetadata(0));
-      consumer.commitAsync(offsetMap, commitCallback);
-      while (!offsetCommitted.get()) {
-        consumer.poll(20);
-      }
-      committed = consumer.committed(tp);
+      committed = commitAndRetrieveOffsets(consumer, tp, offsetMap);
       assertEquals(committed, new OffsetAndMetadata(0, ""), "The committed user offset should be 0, instead was " + committed);
       assertEquals(consumer.committedSafeOffset(tp).longValue(), 0, "The committed actual offset should be 0");
     }
+  }
+
+  private OffsetAndMetadata commitAndRetrieveOffsets(
+      LiKafkaConsumer<String, String> consumer,
+      TopicPartition tp, Map<TopicPartition,
+      OffsetAndMetadata> offsetMap) throws Exception {
+    final AtomicBoolean callbackFired = new AtomicBoolean(false);
+    final AtomicReference<Exception> offsetCommitIssue = new AtomicReference<>(null);
+    OffsetAndMetadata committed = null;
+    long now = System.currentTimeMillis();
+    long deadline = now + TimeUnit.MINUTES.toMillis(1);
+    while (System.currentTimeMillis() < deadline) {
+      //call commitAsync, wait for a NON-NULL return value (see https://issues.apache.org/jira/browse/KAFKA-6183)
+      OffsetCommitCallback commitCallback = new OffsetCommitCallback() {
+        @Override
+        public void onComplete(Map<TopicPartition, OffsetAndMetadata> topicPartitionOffsetAndMetadataMap, Exception e) {
+          if (e != null) {
+            offsetCommitIssue.set(e);
+          }
+          callbackFired.set(true);
+        }
+      };
+      if (offsetMap != null) {
+        consumer.commitAsync(offsetMap, commitCallback);
+      } else {
+        consumer.commitAsync(commitCallback);
+      }
+      while (!callbackFired.get()) {
+        consumer.poll(20);
+      }
+      Assert.assertNull(offsetCommitIssue.get(), "offset commit failed");
+      committed = consumer.committed(tp);
+      if (committed != null) {
+        break;
+      }
+      Thread.sleep(100);
+    }
+    assertNotNull(committed, "unable to retrieve committed offsets within timeout");
+    return committed;
   }
 
   @Test
