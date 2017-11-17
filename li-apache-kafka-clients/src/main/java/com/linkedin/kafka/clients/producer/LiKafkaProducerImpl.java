@@ -293,18 +293,24 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   @Override
   public void close() {
-    LOG.info("Shutting down LiKafkaProducer...");
+    LOG.info("Shutting down ...");
+    long start = System.currentTimeMillis();
     prepClose();
     _auditor.close();
     _producer.close();
+    LOG.info("Shutdown complete in {} millis", (System.currentTimeMillis() - start));
   }
 
   @Override
   public void close(long timeout, TimeUnit timeUnit) {
-    long startMs = System.currentTimeMillis();
-    LOG.info("Shutting down LiKafkaProducer...");
-    _auditor.close(timeout, timeUnit);
-    _producer.close(Math.max(0, startMs + timeout - System.currentTimeMillis()), timeUnit);
+    LOG.info("Shutting down in {} {}...", timeout, timeUnit);
+    long start = System.currentTimeMillis();
+    long budget = timeUnit.toMillis(timeout);
+    long deadline = start + budget;
+    _auditor.close(budget, TimeUnit.MILLISECONDS);
+    long remaining = System.currentTimeMillis() - deadline; //could be negative
+    _producer.close(Math.max(0, remaining), TimeUnit.MILLISECONDS);
+    LOG.info("Shutdown complete in {} millis", (System.currentTimeMillis() - start));
   }
 
   private void prepClose() {

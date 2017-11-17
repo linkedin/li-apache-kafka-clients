@@ -544,20 +544,30 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void close() {
+    LOG.info("Shutting down ...");
+    long start = System.currentTimeMillis();
     if (_autoCommitEnabled) {
       commitSync();
     }
     _kafkaConsumer.close();
     _consumerRecordsProcessor.close();
+    LOG.info("Shutdown complete in {} millis", (System.currentTimeMillis() - start));
   }
 
   @Override
-  public void close(long timeout, TimeUnit unit) {
+  public void close(long timeout, TimeUnit timeUnit) {
+    LOG.info("Shutting down in {} {}...", timeout, timeUnit);
+    long start = System.currentTimeMillis();
+    long budget = timeUnit.toMillis(timeout);
+    long deadline = start + budget;
     if (_autoCommitEnabled) {
-      commitSync();
+      commitSync(); //TODO - find a way around this
     }
-    _kafkaConsumer.close(timeout, unit);
-    _consumerRecordsProcessor.close();
+    long remaining = System.currentTimeMillis() - deadline; //could be negative
+    _kafkaConsumer.close(Math.max(0, remaining), TimeUnit.MILLISECONDS);
+    remaining = System.currentTimeMillis() - deadline; //could be negative
+    _consumerRecordsProcessor.close(Math.max(0, remaining), TimeUnit.MILLISECONDS);
+    LOG.info("Shutdown complete in {} millis", (System.currentTimeMillis() - start));
   }
 
   @Override

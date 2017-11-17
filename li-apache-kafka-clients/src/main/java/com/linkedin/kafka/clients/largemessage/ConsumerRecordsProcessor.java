@@ -8,6 +8,7 @@ import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -309,6 +310,11 @@ public class ConsumerRecordsProcessor<K, V> {
   public void close() {
     _messageAssembler.close();
     _auditor.close();
+  }
+
+  public void close(long timeout, TimeUnit timeUnit) {
+    _messageAssembler.close();
+    _auditor.close(timeout, timeUnit);
   }
 
   private ConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
