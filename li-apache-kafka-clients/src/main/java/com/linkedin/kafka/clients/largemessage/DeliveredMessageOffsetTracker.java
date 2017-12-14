@@ -175,7 +175,7 @@ public class DeliveredMessageOffsetTracker {
   }
 
   private boolean hasDeliveredMessages(PartitionOffsetTracker offsetTracker) {
-    return offsetTracker != null && offsetTracker.delivered() > 0;
+    return offsetTracker != null && offsetTracker.delivered() >= 0;
   }
 
   private class PartitionOffsetTracker extends LinkedHashMap<Long, MessageStartingAndSafeOffset> {
