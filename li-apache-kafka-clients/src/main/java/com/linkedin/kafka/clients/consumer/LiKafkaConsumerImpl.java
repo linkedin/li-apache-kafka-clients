@@ -437,11 +437,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         case EARLIEST:
           oe.partitions().forEach(_consumerRecordsProcessor::clear);
           _kafkaConsumer.seekToBeginning(oe.partitions());
-          return _kafkaConsumer.position(partition);
+          return position(partition);
         case LATEST:
           oe.partitions().forEach(_consumerRecordsProcessor::clear);
           _kafkaConsumer.seekToEnd(oe.partitions());
-          return _kafkaConsumer.position(partition);
+          return position(partition);
         default:
           throw oe;
       }
