@@ -612,6 +612,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   public void testPosition() {
     String topic = "testSeek";
     TopicPartition tp = new TopicPartition(topic, 0);
+    TopicPartition tp1 = new TopicPartition(topic, 1);
     produceSyntheticMessages(topic);
 
     // Reset to earliest
@@ -619,7 +620,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testPosition1");
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      consumer.assign(Collections.singleton(tp));
+      consumer.assign(Arrays.asList(tp, tp1));
       assertEquals(0, consumer.position(tp));
     }
 
@@ -627,14 +628,14 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testPosition2");
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      consumer.assign(Collections.singleton(tp));
+      consumer.assign(Arrays.asList(tp, tp1));
       assertEquals(consumer.position(tp), 10);
     }
 
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testPosition3");
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      consumer.assign(Collections.singleton(tp));
+      consumer.assign(Arrays.asList(tp, tp1));
       consumer.position(tp);
       fail("Should have thrown NoOffsetForPartitionException");
     } catch (NoOffsetForPartitionException nofpe) {
