@@ -250,10 +250,14 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         switch (_offsetResetStrategy) {
           case EARLIEST:
+            LOG.warn("Invalid positions of {} due to {}. Resetting position to the earliest.",
+                     oe.partitions(), oe.getClass().getSimpleName());
             oe.partitions().forEach(_consumerRecordsProcessor::clear);
             _kafkaConsumer.seekToBeginning(oe.partitions());
             break;
           case LATEST:
+            LOG.warn("Invalid positions of {} due to {}. Resetting position to the latest.",
+                oe.partitions(), oe.getClass().getSimpleName());
             oe.partitions().forEach(_consumerRecordsProcessor::clear);
             _kafkaConsumer.seekToEnd(oe.partitions());
             break;
