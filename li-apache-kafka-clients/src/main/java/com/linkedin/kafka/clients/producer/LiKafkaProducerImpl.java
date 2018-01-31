@@ -18,9 +18,12 @@ import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
@@ -363,5 +366,32 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       }
     }
   }
+
+  @Override
+  public void initTransactions() {
+    _producer.initTransactions();
+  }
+
+  @Override
+  public void beginTransaction() throws ProducerFencedException {
+    _producer.beginTransaction();
+  }
+
+  @Override
+  public void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets,
+                                       String consumerGroupId) throws ProducerFencedException {
+    _producer.sendOffsetsToTransaction(offsets, consumerGroupId);
+  }
+
+  @Override
+  public void commitTransaction() throws ProducerFencedException {
+    _producer.commitTransaction();
+  }
+
+  @Override
+  public void abortTransaction() throws ProducerFencedException {
+    _producer.abortTransaction();
+  }
+
 
 }

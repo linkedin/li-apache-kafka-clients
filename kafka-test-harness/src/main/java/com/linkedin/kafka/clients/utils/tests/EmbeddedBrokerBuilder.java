@@ -206,6 +206,7 @@ public class EmbeddedBrokerBuilder {
     props.put("controlled.shutdown.retry.backoff.ms", Long.toString(controlledShutdownRetryBackoff));
     props.put("log.cleaner.dedupe.buffer.size", Long.toString(logCleanerDedupBufferSize));
     props.put("log.cleaner.enable", Boolean.toString(enableLogCleaner));
+    props.put("offsets.topic.replication.factor", "1");
     if (rack != null) {
       props.put("broker.rack", rack);
     }

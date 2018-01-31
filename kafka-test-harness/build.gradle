@@ -17,7 +17,7 @@ dependencies {
   compile 'com.101tec:zkclient:0.10'
   compile 'commons-io:commons-io:2.6'
   compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
-  runtime "org.apache.kafka:kafka_2.10:${rootProject.ext.kafkaVersion}"
+  runtime "org.apache.kafka:kafka_2.11:${rootProject.ext.kafkaVersion}"
 }
 
 publishing {
