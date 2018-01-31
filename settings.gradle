@@ -18,3 +18,9 @@ apply plugin: 'net.vivin.gradle-semantic-build-versioning'
 rootProject.name = 'li-apache-kafka-clients'
 
 include 'li-apache-kafka-clients', 'kafka-test-harness', 'integration-tests'
+
+def gradleVer = GradleVersion.current()
+if (gradleVer < GradleVersion.version("4.3.1")) {
+  throw new GradleScriptException("this build cannot be run with gradle < 4.3.1. current detection version is "
+      + gradleVer + ". use newer gradle or (better yet) use the wrapper", null)
+}
