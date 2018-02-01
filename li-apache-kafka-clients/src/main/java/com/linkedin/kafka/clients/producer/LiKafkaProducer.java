@@ -31,30 +31,27 @@ import org.apache.kafka.common.errors.ProducerFencedException;
  * @see LiKafkaProducerImpl
  */
 public interface LiKafkaProducer<K, V> extends Producer<K, V> {
+
   /**
-   * Send the given record asynchronously and return a future which will eventually contain the response information.
-   *
-   * @param record The record to send
-   * @return A future which will eventually contain the response information
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   Future<RecordMetadata> send(ProducerRecord<K, V> record);
 
   /**
-   * Send a record and invoke the given callback when the record has been acknowledged by the server
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   Future<RecordMetadata> send(ProducerRecord<K, V> record, Callback callback);
 
   /**
-   * Flush any accumulated records from the producer. Blocks until all sends are complete.
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   void flush();
 
   /**
-   * Get a list of partitions for the given topic for custom partition assignment. The partition metadata will change
-   * over time so this list should not be cached.
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   List<PartitionInfo> partitionsFor(String topic);
@@ -62,64 +59,49 @@ public interface LiKafkaProducer<K, V> extends Producer<K, V> {
   Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics);
 
   /**
-   * Return a map of metrics maintained by the producer
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   Map<MetricName, ? extends Metric> metrics();
 
   /**
-   * Close this producer
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   void close();
 
   /**
-   * Tries to close the producer cleanly within the specified timeout. If the close does not complete within the
-   * timeout, fail any pending send requests and force close the producer.
-   *
-   * Notice that if an auditor is used, depending on how the auditor is implemented, closing a producer with
-   * timeout may cause inaccurate auditing result.
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   void close(long timeout, TimeUnit unit);
 
   /**
-   * Needs to be called before any other methods when the transactional.id is set in the configuration.
-   *
-   * See {@link KafkaProducer#initTransactions()}
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   void initTransactions();
 
   /**
-   * Should be called before the start of each new transaction. Note that prior to the first invocation
-   * of this method, you must invoke {@link #initTransactions()} exactly one time.
-   *
-   * See {@link KafkaProducer#beginTransaction()}
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   void beginTransaction() throws ProducerFencedException;
 
   /**
-   * Sends a list of consumed offsets to the consumer group coordinator, and also marks
-   * those offsets as part of the current transaction. These offsets will be considered
-   * consumed only if the transaction is committed successfully.
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets, String consumerGroupId) throws ProducerFencedException;
 
   /**
-   * Commits the ongoing transaction. This method will flush any unsent records before actually committing the transaction.
-   *
-   * See {@link KafkaProducer#commitTransaction()}
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   void commitTransaction() throws ProducerFencedException;
 
   /**
-   * Aborts the ongoing transaction. Any unflushed produce messages will be aborted when this call is made.
-   *
-   * See {@link KafkaProducer#abortTransaction()}
+   * {@inheritDoc}
    */
   @InterfaceOrigin.ApacheKafka
   void abortTransaction() throws ProducerFencedException;
