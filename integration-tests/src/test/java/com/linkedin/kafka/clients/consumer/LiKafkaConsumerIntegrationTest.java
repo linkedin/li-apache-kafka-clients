@@ -666,6 +666,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, "10");
     // Enable auto offset commit so the offsets will be committed during rebalance.
     props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
+    props.setProperty(LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG, "8000");
 
     props.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "consumer0");
     LiKafkaConsumer<String, String> consumer0 = createConsumer(props);
