@@ -175,7 +175,9 @@ public class ConsumerRecordsProcessor<K, V> {
         if (previousDeliveredOffset != null) {
           safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp, previousDeliveredOffset);
         } else {
-          safeOffsetToCommit = earliestTrackedOffset;
+          //In this case nothing has been delivered to the consumer (this this partition) either because we never
+          // reached the highwatermark or because we were waiting to assemble some message
+          safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp);
         }
       }
       // We need to combine the metadata with the high watermark. High watermark should never rewind.
