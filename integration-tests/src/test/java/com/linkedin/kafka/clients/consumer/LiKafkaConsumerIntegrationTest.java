@@ -39,6 +39,7 @@ import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -103,6 +104,49 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   @Override
   public void tearDown() {
     super.tearDown();
+  }
+
+  @Test
+  public void advanceOffsetsWhenMessagesNotDelivered() {
+    String topic = "testUle";
+    produceSyntheticMessages(topic);
+
+    // Commit offset with very large high watermark
+    Properties openSourceConsumerProperties = getConsumerProperties(new Properties());
+    openSourceConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testUleGroup");
+    openSourceConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    try (KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<String, String>(openSourceConsumerProperties)) {
+      List<PartitionInfo> partitionsForTopic = kafkaConsumer.partitionsFor(topic);
+      List<TopicPartition> tps = new ArrayList<>();
+      for (int i = 0; i < partitionsForTopic.size(); i++) {
+        tps.add(new TopicPartition(topic, i));
+      }
+      Map<TopicPartition, Long> endOffsets = kafkaConsumer.endOffsets(tps);
+      Map<TopicPartition, OffsetAndMetadata> badOffsetMap = new HashMap<>();
+      for (Map.Entry<TopicPartition, Long> endOffsetEntry : endOffsets.entrySet()) {
+        if (endOffsetEntry.getValue() == null || endOffsetEntry.getValue() == -1) {
+          continue;
+        }
+        long badOffset = endOffsetEntry.getValue() + 4_000;
+        OffsetAndMetadata om = new OffsetAndMetadata(0, badOffset + ",");
+        badOffsetMap.put(endOffsetEntry.getKey(), om);
+      }
+      kafkaConsumer.commitSync(badOffsetMap);
+    }
+
+    // Consume messages before committed highwatermark
+    Properties props = new Properties();
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testUleGroup");
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      consumer.assign(Collections.singleton(tp));
+
+      ConsumerRecords<String, String> consumerRecords = consumer.poll(4_000);
+      Assert.assertEquals(consumerRecords.count(), 0);
+
+      consumer.commitSync();
+    }
   }
 
   @Test
