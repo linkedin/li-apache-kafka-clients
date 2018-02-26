@@ -420,11 +420,12 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   @Override
   public long position(TopicPartition partition) {
     // Not handling large message here. The position will be actual position.
-    try {
-      return _kafkaConsumer.position(partition);
-    } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
-      handleInvalidOffsetException(oe);
-      return position(partition);
+    while (true) { // In kafka 0.10.x we can get an unbounded number of invalid offset exception
+      try {
+        return _kafkaConsumer.position(partition);
+      } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
+        handleInvalidOffsetException(oe);
+      }
     }
   }
 
