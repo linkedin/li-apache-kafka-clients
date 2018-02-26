@@ -20,6 +20,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.InvalidOffsetException;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -248,20 +249,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       try {
          rawRecords = _kafkaConsumer.poll(expireMs - now);
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
-        switch (_offsetResetStrategy) {
-          case EARLIEST:
-            LOG.warn("Invalid positions of {} due to {}. Resetting position to the earliest.",
-                     oe.partitions(), oe.getClass().getSimpleName());
-            seekToBeginning(oe.partitions());
-            break;
-          case LATEST:
-            LOG.warn("Invalid positions of {} due to {}. Resetting position to the latest.",
-                oe.partitions(), oe.getClass().getSimpleName());
-            seekToEnd(oe.partitions());
-            break;
-          default:
-            throw oe;
-        }
+        handleInvalidOffsetException(oe);
       }
       // Check if we have enough high watermark for a partition. The high watermark is cleared during rebalance.
       // We make this check so that after rebalance we do not deliver duplicate messages to the user.
@@ -432,21 +420,31 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   @Override
   public long position(TopicPartition partition) {
     // Not handling large message here. The position will be actual position.
-    try {
-      return _kafkaConsumer.position(partition);
-    } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
-      switch (_offsetResetStrategy) {
-        case EARLIEST:
-          oe.partitions().forEach(_consumerRecordsProcessor::clear);
-          _kafkaConsumer.seekToBeginning(oe.partitions());
-          return position(partition);
-        case LATEST:
-          oe.partitions().forEach(_consumerRecordsProcessor::clear);
-          _kafkaConsumer.seekToEnd(oe.partitions());
-          return position(partition);
-        default:
-          throw oe;
+    while (true) { // In kafka 0.10.x we can get an unbounded number of invalid offset exception
+      try {
+        return _kafkaConsumer.position(partition);
+      } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
+        handleInvalidOffsetException(oe);
       }
+    }
+  }
+
+  /**
+   * We don't let the underlying open source consumer reset offsets so we need to do that here.
+   */
+  private void handleInvalidOffsetException(InvalidOffsetException oe) throws InvalidOffsetException {
+    switch (_offsetResetStrategy) {
+      case EARLIEST:
+        LOG.warn("Invalid positions of {} due to {}. Resetting position to the earliest.", oe.partitions(),
+            oe.getClass().getSimpleName());
+        seekToBeginning(oe.partitions());
+        break;
+      case LATEST:
+        LOG.warn("Invalid positions of {} due to {}. Resetting position to the latest.", oe.partitions(), oe.getClass().getSimpleName());
+        seekToEnd(oe.partitions());
+        break;
+      default:
+        throw oe;
     }
   }
 
@@ -641,7 +639,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
             }
           }
           // Case 2, some message was consumed. Use the earliest tracked offset to avoid losing messages.
-          offsetAndMetadataMap.put(tp, new OffsetAndMetadata(_kafkaConsumer.position(tp), ""));
+          offsetAndMetadataMap.put(tp, new OffsetAndMetadata(position(tp), ""));
         } else {
           // No message was consumed.
           if (hw == null) {
@@ -650,7 +648,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
             // is unnecessary work.
           } else {
             // Case 4, user called seek(), we use the current position to commit.
-            offsetAndMetadataMap.put(tp, new OffsetAndMetadata(_kafkaConsumer.position(tp), ""));
+            offsetAndMetadataMap.put(tp, new OffsetAndMetadata(position(tp), ""));
           }
         }
       }
