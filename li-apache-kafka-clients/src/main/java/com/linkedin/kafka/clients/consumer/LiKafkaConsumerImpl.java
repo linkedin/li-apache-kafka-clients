@@ -230,24 +230,23 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public ConsumerRecords<K, V> poll(long timeout) {
-    if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
-      ConsumerRecordsProcessingException e = _lastProcessedResult.exception();
-      _lastProcessedResult = null;
-      throw e;
-    }
-    long startMs = System.currentTimeMillis();
     ConsumerRecords<K, V> processedRecords;
     // We will keep polling until timeout.
-    long now = startMs;
-    long expireMs = startMs + timeout;
+    long now = System.currentTimeMillis();
+    long deadline = now + timeout;
     do {
+      if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
+        ConsumerRecordsProcessingException e = _lastProcessedResult.exception();
+        _lastProcessedResult = null;
+        throw e;
+      }
       if (_autoCommitEnabled && now > _lastAutoCommitMs + _autoCommitInterval) {
         commitAsync();
         _lastAutoCommitMs = now;
       }
       ConsumerRecords<byte[], byte[]> rawRecords = ConsumerRecords.empty();
       try {
-         rawRecords = _kafkaConsumer.poll(expireMs - now);
+         rawRecords = _kafkaConsumer.poll(deadline - now);
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
       }
@@ -271,11 +270,13 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       // Rewind offset if there are processing exceptions.
       if (_lastProcessedResult.exception() != null) {
         for (Map.Entry<TopicPartition, Long> entry : _lastProcessedResult.resumeOffsets().entrySet()) {
-          _kafkaConsumer.seek(entry.getKey(), entry.getValue());
+          TopicPartition tp = entry.getKey();
+          Long offset = entry.getValue();
+          _kafkaConsumer.seek(tp, offset);
         }
       }
       now = System.currentTimeMillis();
-    } while (processedRecords.isEmpty() && now < startMs + timeout);
+    } while (processedRecords.isEmpty() && now < deadline);
     return processedRecords;
   }
 
