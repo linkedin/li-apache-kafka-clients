@@ -8,6 +8,7 @@ import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -172,12 +173,19 @@ public class ConsumerRecordsProcessor<K, V> {
       if (earliestTrackedOffset != null && origOffset > earliestTrackedOffset) {
         // We need to find the previous delivered offset from this partition and use its safe offset.
         Long previousDeliveredOffset = _deliveredMessageOffsetTracker.closestDeliveredUpTo(tp, origOffset - 1);
-        if (previousDeliveredOffset != null) {
-          safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp, previousDeliveredOffset);
+        Long latestDelivered = _deliveredMessageOffsetTracker.delivered(tp); //latest ever delivered for this partition
+
+        if (Objects.equals(previousDeliveredOffset, latestDelivered)) {
+          //user is attempting to commit "current location" (as opposed to arbitrary seek shenanigans)
+          //in this case we must also take into account the earliest offset for which we still have
+          //any hope of delivering a large message (maybe we dropped a lot of them due to low memory)
+          safeOffsetToCommit = _messageAssembler.safeOffset(tp);
         } else {
-          //In this case nothing has been delivered to the consumer (this this partition) either because we never
-          // reached the highwatermark or because we were waiting to assemble some message
-          safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp);
+          if (previousDeliveredOffset != null) {
+            safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp, previousDeliveredOffset);
+          } else {
+            safeOffsetToCommit = _messageAssembler.safeOffset(tp);
+          }
         }
       }
       // We need to combine the metadata with the high watermark. High watermark should never rewind.

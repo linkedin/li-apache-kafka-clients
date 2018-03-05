@@ -17,6 +17,7 @@ import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTes
 import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
@@ -78,7 +79,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   private final int NUM_PRODUCER = 2;
   private final int THREADS_PER_PRODUCER = 2;
   private final int NUM_PARTITIONS = 4;
-  private final int MAX_SEGMENT_SIZE = 200;
+  private final int MAX_SEGMENT_SIZE = 200; //must match value in AbstractKafkaClientsIntegrationTestHarness.getProducerProperties()
   private final int SYNTHETIC_PARTITION_0 = 0;
   private final int SYNTHETIC_PARTITION_1 = 1;
   private ConcurrentMap<String, String> _messages;
@@ -930,6 +931,163 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     for (OffsetResetStrategy strategy : OffsetResetStrategy.values()) {
       testOffsetOutOfRangeForStrategy(strategy);
     }
+  }
+
+  @Test
+  public void testGiganticLargeMessages() throws Exception {
+    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE,
+        new DefaultSegmentSerializer(),
+        new UUIDFactory.DefaultUUIDFactory<>());
+
+    String topic = "testGiganticLargeMessages";
+    TopicPartition tp = new TopicPartition(topic, 0);
+    Collection<TopicPartition> tps = new ArrayList<>(Collections.singletonList(tp));
+
+    //send 2 interleaved gigantic msgs
+
+    Producer<byte[], byte[]> producer = createKafkaProducer();
+    // M0, 20 segments
+    UUID messageId0 = LiKafkaClientsUtils.randomUUID();
+    String message0 = KafkaTestUtils.getRandomString(20 * MAX_SEGMENT_SIZE);
+    List<ProducerRecord<byte[], byte[]>> m0Segs = splitter.split(topic, 0, messageId0, message0.getBytes());
+    // M1, 30 segments
+    UUID messageId1 = LiKafkaClientsUtils.randomUUID();
+    String message1 = KafkaTestUtils.getRandomString(30 * MAX_SEGMENT_SIZE);
+    List<ProducerRecord<byte[], byte[]>> m1Segs = splitter.split(topic, 0, messageId1, message1.getBytes());
+
+    List<ProducerRecord<byte[], byte[]>> interleaved = interleave(m0Segs, m1Segs);
+    for (ProducerRecord<byte[], byte[]> rec : interleaved) {
+      producer.send(rec).get();
+    }
+
+    //create a consumer with not enough memory to assemble either
+
+    Properties props = new Properties();
+    String groupId = "testGiganticLargeMessages-" + UUID.randomUUID();
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+    // Make sure we start to consume from the beginning.
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    // Only fetch one record at a time.
+    props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
+    // No auto commmit
+    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    // Not enough memory to assemble anything
+    props.setProperty(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG, "" + (MAX_SEGMENT_SIZE + 1));
+    props.setProperty(LiKafkaConsumerConfig.EXCEPTION_ON_MESSAGE_DROPPED_CONFIG, "false");
+
+    LiKafkaConsumer<String, String> tempConsumer = createConsumer(props);
+    tempConsumer.assign(tps);
+
+    //traverse entire partition
+
+    int topicSize = interleaved.size();
+    long timeout = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(120);
+    int msgsDelivered = 0;
+    while (true) {
+      ConsumerRecords<String, String> records = tempConsumer.poll(1000);
+      msgsDelivered += records.count();
+      long position = tempConsumer.position(tp);
+      if (position >= topicSize) {
+        break;
+      }
+      if (System.currentTimeMillis() > timeout) {
+        throw new IllegalStateException("unable to consume to  the end of the topic within timeout."
+            + " position=" + position + ". end=" + topicSize);
+      }
+    }
+
+    Assert.assertTrue(msgsDelivered == 0, "no msgs were expected to be delivered. instead got " + msgsDelivered);
+
+    //make sure offsets committed reflect the msgs we've given up on
+
+    tempConsumer.commitSync();
+    OffsetAndMetadata committed = tempConsumer.committed(tp);
+    Assert.assertEquals(committed.offset(), topicSize); //li consumer would claim to be at end
+
+    Properties vanillaProps = getConsumerProperties(props);
+    KafkaConsumer<String, String> vanillaConsumer = new KafkaConsumer<>(vanillaProps);
+    vanillaConsumer.assign(tps);
+    OffsetAndMetadata vanillaCommitted = vanillaConsumer.committed(tp);
+    Assert.assertEquals(vanillaCommitted.offset(), topicSize - 1); //vanilla offset is one before (1 fragment in buffer)
+  }
+
+  @Test
+  public void testExceptionOnLargeMsgDropped() throws Exception {
+    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE,
+        new DefaultSegmentSerializer(),
+        new UUIDFactory.DefaultUUIDFactory<>());
+
+    String topic = "testExceptionOnLargeMsgDropped";
+    TopicPartition tp = new TopicPartition(topic, 0);
+    Collection<TopicPartition> tps = new ArrayList<>(Collections.singletonList(tp));
+
+    //send a gigantic msg
+
+    Producer<byte[], byte[]> producer = createKafkaProducer();
+    // M0, 20 segments
+    UUID messageId0 = LiKafkaClientsUtils.randomUUID();
+    String message0 = KafkaTestUtils.getRandomString(20 * MAX_SEGMENT_SIZE);
+    List<ProducerRecord<byte[], byte[]>> m0Segs = splitter.split(topic, 0, messageId0, message0.getBytes());
+
+    for (ProducerRecord<byte[], byte[]> rec : m0Segs) {
+      producer.send(rec).get();
+    }
+
+    //consumer has no hope of assembling the msg
+
+    Properties props = new Properties();
+    String groupId = "testExceptionOnLargeMsgDropped-" + UUID.randomUUID();
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+    // Make sure we start to consume from the beginning.
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    // Only fetch one record at a time.
+    props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
+    // No auto commmit
+    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    // Not enough memory to assemble anything
+    props.setProperty(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG, "" + (MAX_SEGMENT_SIZE + 1));
+    props.setProperty(LiKafkaConsumerConfig.EXCEPTION_ON_MESSAGE_DROPPED_CONFIG, "true");
+
+    LiKafkaConsumer<String, String> tempConsumer = createConsumer(props);
+    tempConsumer.assign(tps);
+
+    int topicSize = m0Segs.size();
+    long timeout = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(120);
+    int msgsDelivered = 0;
+    while (true) {
+      ConsumerRecords<String, String> records;
+      try {
+        records = tempConsumer.poll(1000);
+      } catch (ConsumerRecordsProcessingException expected) {
+        Assert.assertEquals(msgsDelivered, 0);
+        break;
+      }
+      msgsDelivered += records.count();
+      long position = tempConsumer.position(tp);
+      if (System.currentTimeMillis() > timeout) {
+        throw new IllegalStateException("unable to consume to  the end of the topic within timeout."
+            + " position=" + position + ". end=" + topicSize);
+      }
+    }
+  }
+
+  public static <T> List<T> interleave(
+      final List<T> list1,
+      final List<T> list2
+  ) {
+    List<T> result = new ArrayList<T>(list1.size() + list2.size());
+
+    Iterator<T> it1 = list1.iterator();
+    Iterator<T> it2 = list2.iterator();
+    while (it1.hasNext() || it2.hasNext()) {
+      if (it1.hasNext()) {
+        result.add(it1.next());
+      }
+      if (it2.hasNext()) {
+        result.add(it2.next());
+      }
+    }
+    return result;
   }
 
   private void testOffsetOutOfRangeForStrategy(OffsetResetStrategy strategy) {
