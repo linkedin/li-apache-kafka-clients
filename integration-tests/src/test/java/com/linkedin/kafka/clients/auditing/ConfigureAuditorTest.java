@@ -10,6 +10,7 @@ import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducerConfig;
 import com.linkedin.kafka.clients.producer.LiKafkaProducerImpl;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
+import java.util.concurrent.TimeUnit;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -69,5 +70,11 @@ public class ConfigureAuditorTest extends AbstractKafkaClientsIntegrationTestHar
     public void close() {
       configureMethodInvocations.set(0);
     }
+
+    @Override
+    public void close(long timeout, TimeUnit unit) {
+      configureMethodInvocations.set(0);
+    }
+
   }
 }
