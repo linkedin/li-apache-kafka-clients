@@ -267,7 +267,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
                         producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       }
-      _numThreadsInSend.decrementAndGet();
+      if (_numThreadsInSend.decrementAndGet() == 0 && _closed) {
+        synchronized (_numThreadsInSend) {
+          _numThreadsInSend.notifyAll();
+        }
+      }
     }
   }
 
@@ -309,7 +313,9 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _closed = true;
     while (_numThreadsInSend.get() > 0 && System.currentTimeMillis() < deadlineTimeMs) {
       try {
-        Thread.sleep(1);
+        synchronized (_numThreadsInSend) {
+          _numThreadsInSend.wait(deadlineTimeMs - System.currentTimeMillis());
+        }
       } catch (InterruptedException e) {
         LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.get());
         break;
