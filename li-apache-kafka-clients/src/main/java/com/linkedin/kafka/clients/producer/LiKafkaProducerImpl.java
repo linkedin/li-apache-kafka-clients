@@ -268,6 +268,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
                         producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       }
       _numThreadsInSend.decrementAndGet();
+      if (_closed) {
+        synchronized (_numThreadsInSend) {
+          _numThreadsInSend.notifyAll();
+        }
+      }
     }
   }
 
@@ -296,32 +301,33 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   @Override
   public void close() {
-    LOG.info("Shutting down ...");
-    long start = System.currentTimeMillis();
-    prepClose();
-    _auditor.close();
-    _producer.close();
-    LOG.info("Shutdown complete in {} millis", (System.currentTimeMillis() - start));
+    close(Integer.MAX_VALUE, TimeUnit.MILLISECONDS);
   }
 
   @Override
   public void close(long timeout, TimeUnit timeUnit) {
-    LOG.info("Shutting down in {} {}...", timeout, timeUnit);
-    long start = System.currentTimeMillis();
-    long budget = timeUnit.toMillis(timeout);
-    long deadline = start + budget;
-    _auditor.close(budget, TimeUnit.MILLISECONDS);
-    long remaining = System.currentTimeMillis() - deadline; //could be negative
-    _producer.close(Math.max(0, remaining), TimeUnit.MILLISECONDS);
-    LOG.info("Shutdown complete in {} millis", (System.currentTimeMillis() - start));
-  }
+    LOG.info("Shutting down LiKafkaProducer in {} {}...", timeout, timeUnit);
+    long startTimeMs = System.currentTimeMillis();
+    long budgetMs = timeUnit.toMillis(timeout);
+    long deadlineTimeMs = startTimeMs + budgetMs;
 
-  private void prepClose() {
     _closed = true;
-    // We flush first to avoid the tight loop when buffer is full.
-    _producer.flush();
-    while (_numThreadsInSend.get() > 0) { }
-    _producer.flush();
+    synchronized (_numThreadsInSend) {
+      long remainingMs = deadlineTimeMs - System.currentTimeMillis();
+      while (_numThreadsInSend.get() > 0 && remainingMs > 0) {
+        try {
+          _numThreadsInSend.wait(remainingMs);
+        } catch (InterruptedException e) {
+          LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.get());
+          break;
+        }
+        remainingMs = deadlineTimeMs - System.currentTimeMillis();
+      }
+    }
+
+    _auditor.close(Math.max(0, deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+    _producer.close(Math.max(0, deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+    LOG.info("LiKafkaProducer shutdown complete in {} millis", (System.currentTimeMillis() - startTimeMs));
   }
 
   private static class ErrorLoggingCallback<K, V> implements Callback {
