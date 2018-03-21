@@ -313,13 +313,15 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
     _closed = true;
     synchronized (_numThreadsInSend) {
-      while (_numThreadsInSend.get() > 0 && System.currentTimeMillis() < deadlineTimeMs) {
+      long remainingMs = deadlineTimeMs - System.currentTimeMillis();
+      while (_numThreadsInSend.get() > 0 && remainingMs > 0) {
         try {
-          _numThreadsInSend.wait(Math.max(0, deadlineTimeMs - System.currentTimeMillis()));
+          _numThreadsInSend.wait(remainingMs);
         } catch (InterruptedException e) {
           LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.get());
           break;
         }
+        remainingMs = deadlineTimeMs - System.currentTimeMillis();
       }
     }
 
