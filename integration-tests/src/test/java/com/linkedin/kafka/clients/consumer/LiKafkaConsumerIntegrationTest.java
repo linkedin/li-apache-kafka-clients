@@ -1145,6 +1145,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * @param messages will contain both large message and ordinary messages.
    */
   private void produceMessages(ConcurrentMap<String, String> messages, String topic) throws InterruptedException {
+    int sizeBefore = messages.size();
+
     Properties props = new Properties();
     // Enable large messages.
     props.setProperty("large.message.enabled", "true");
@@ -1178,6 +1180,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     for (LiKafkaProducer<String, String> producer : producers) {
       producer.close();
     }
+    
+    int sizeAfter = messages.size();
+    int produced = sizeAfter - sizeBefore;
+    Assert.assertEquals(produced, NUM_PRODUCER * THREADS_PER_PRODUCER * MESSAGE_COUNT);
   }
 
   private static final class MessageIdComparator implements Comparator<String> {
@@ -1351,6 +1357,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     private final int _id;
     private final Map<String, String> _messageUnseen;
     private final TestRebalanceListener _listener;
+    private final long quietMillis = 120000;
 
     RebalanceTestConsumerThread(LiKafkaConsumer<String, String> consumer,
                                 Map<String, String> messageUnseen,
@@ -1376,11 +1383,14 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     public void run() {
       try {
         _consumer.subscribe(Arrays.asList(TOPIC1, TOPIC2), _listener);
-        long startMs = System.currentTimeMillis();
-        while (!_messageUnseen.isEmpty() && System.currentTimeMillis() - startMs < 60000) {
+        long noActivityDeadline = System.currentTimeMillis() + quietMillis;
+        while (!_messageUnseen.isEmpty() && System.currentTimeMillis() < noActivityDeadline) {
           int numConsumed = 0;
-          while (numConsumed < 150 && !_messageUnseen.isEmpty() && System.currentTimeMillis() - startMs < 60000) {
+          while (numConsumed < 150 && !_messageUnseen.isEmpty() && System.currentTimeMillis() < noActivityDeadline) {
             ConsumerRecords<String, String> records = _consumer.poll(10);
+            if (records.count() > 0) {
+              noActivityDeadline = System.currentTimeMillis() + quietMillis;
+            }
             numConsumed += records.count();
             processConsumedRecord(records);
           }
@@ -1401,7 +1411,11 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           }
           _listener.done = false;
           while (!_messageUnseen.isEmpty() && !_listener.done) {
-            processConsumedRecord(_consumer.poll(10));
+            ConsumerRecords<String, String> records = _consumer.poll(10);
+            if (records.count() > 0) {
+              noActivityDeadline = System.currentTimeMillis() + quietMillis;
+            }
+            processConsumedRecord(records);
           }
         }
       } catch (Throwable t) {
@@ -1410,7 +1424,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
 
     private class TestRebalanceListener implements ConsumerRebalanceListener {
-      public boolean done = false;
+      public volatile boolean done = false;
 
       @Override
       public void onPartitionsRevoked(Collection<TopicPartition> topicPartitions) {
