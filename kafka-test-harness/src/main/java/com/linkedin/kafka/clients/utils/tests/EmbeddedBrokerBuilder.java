@@ -21,6 +21,7 @@ public class EmbeddedBrokerBuilder {
   private String zkConnect;
   //storage config
   private File logDirectory;
+  private long logRetentionMs = -1;
   //networking config
   private int plaintextPort = -1;
   private int sslPort = -1;
@@ -62,6 +63,11 @@ public class EmbeddedBrokerBuilder {
     return this;
   }
 
+  public EmbeddedBrokerBuilder logRetention(long millis) {
+    this.logRetentionMs = millis;
+    return this;
+  }
+  
   public EmbeddedBrokerBuilder enable(SecurityProtocol protocol) {
     switch (protocol) {
       case PLAINTEXT:
@@ -198,6 +204,7 @@ public class EmbeddedBrokerBuilder {
     props.put("broker.id", Integer.toString(nodeId));
     props.put("listeners", csvJoiner.toString());
     props.put("log.dir", logDirectory.getAbsolutePath());
+    props.put("log.retention.ms", Long.toString(logRetentionMs));
     props.put("zookeeper.connect", zkConnect);
     props.put("replica.socket.timeout.ms", Long.toString(socketTimeout));
     props.put("controller.socket.timeout.ms", Long.toString(socketTimeout));
