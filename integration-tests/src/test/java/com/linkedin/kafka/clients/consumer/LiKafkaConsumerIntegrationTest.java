@@ -719,11 +719,13 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "consumer1");
     LiKafkaConsumer<String, String> consumer1 = createConsumer(props);
 
+    int numSent = _messages.size();
     final Map<String, String> messageUnseen = new ConcurrentSkipListMap<>(_messages);
 
     Thread thread0 = new RebalanceTestConsumerThread(consumer0, messageUnseen, 0);
     Thread thread1 = new RebalanceTestConsumerThread(consumer1, messageUnseen, 1);
 
+    long threadsStart = System.currentTimeMillis();
     thread0.start();
     thread1.start();
 
@@ -736,7 +738,11 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer0.close();
       consumer1.close();
     }
-    assertEquals(messageUnseen.size(), 0, "Messages unseen: " + messageUnseen.keySet());
+    long threadsRuntime = System.currentTimeMillis() - threadsStart;
+    int numUnseen = messageUnseen.size();
+    String err = "Messages send: " + numSent + " Messages unseen after " + threadsRuntime + " ms: " + numUnseen + " ("
+        + messageUnseen.keySet() + ")";
+    assertEquals(numUnseen, 0, err);
   }
 
   /**
@@ -1371,9 +1377,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       try {
         _consumer.subscribe(Arrays.asList(TOPIC1, TOPIC2), _listener);
         long startMs = System.currentTimeMillis();
-        while (!_messageUnseen.isEmpty() && System.currentTimeMillis() - startMs < 30000) {
+        while (!_messageUnseen.isEmpty() && System.currentTimeMillis() - startMs < 60000) {
           int numConsumed = 0;
-          while (numConsumed < 150 && !_messageUnseen.isEmpty() && System.currentTimeMillis() - startMs < 30000) {
+          while (numConsumed < 150 && !_messageUnseen.isEmpty() && System.currentTimeMillis() - startMs < 60000) {
             ConsumerRecords<String, String> records = _consumer.poll(10);
             numConsumed += records.count();
             processConsumedRecord(records);
