@@ -4,7 +4,6 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
-import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.utils.QueuedMap;
 import org.apache.kafka.common.TopicPartition;
 
@@ -59,7 +58,7 @@ public class LargeMessageOffsetTracker {
     if (offsetMapForPartition != null) {
       offsetMapForPartition.remove(messageId);
     } else {
-      throw new OffsetNotTrackedException("Could not find message " + messageId + " in partition " + tp
+      throw new IllegalStateException("Could not find message " + messageId + " in partition " + tp
           + ". This should not happen because a completed large message must have been tracked by offset "
           + "tracker!");
     }

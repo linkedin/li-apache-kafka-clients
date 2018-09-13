@@ -94,7 +94,7 @@ public class DeliveredMessageOffsetTracker {
       return null;
     } else if (!offsetTracker.isTrackedMessageOffset(messageOffset)) {
       // Message offset has been evicted.
-      throw new OffsetNotTrackedException("Offset " + messageOffset + " for partition " + tp
+      throw new OffsetNotTrackedException(tp, messageOffset, "Offset " + messageOffset + " for partition " + tp
                                               + " is either invalid or has been evicted. Tracked Offset Range: ["
                                               + offsetTracker.earliestTrackedDeliveredOffset()
                                               + ", " + offsetTracker.delivered() + "], SafeOffset = "
@@ -118,7 +118,7 @@ public class DeliveredMessageOffsetTracker {
       return messageOffset;
     } else if (!offsetTracker.isTrackedMessageOffset(messageOffset)) {
       // Message offset has been evicted.
-      throw new OffsetNotTrackedException("Offset " + messageOffset + " for partition " + tp
+      throw new OffsetNotTrackedException(tp, messageOffset, "Offset " + messageOffset + " for partition " + tp
                                               + " is either invalid or has been evicted. Tracked Offset Range: ["
                                               + offsetTracker.earliestTrackedDeliveredOffset()
                                               + ", " + offsetTracker.delivered() + "], SafeOffset = "
@@ -133,8 +133,8 @@ public class DeliveredMessageOffsetTracker {
       return null;
     } else if (!offsetTracker.isOffsetInTrackedRange(upToMessageOffset)) {
       // Message offset has been evicted.
-      throw new OffsetNotTrackedException("Most recently delivered message for partition " + tp + " before offset "
-                                              + upToMessageOffset + " has been evicted. Tracked Offset Range: ["
+      throw new OffsetNotTrackedException(tp, upToMessageOffset, "Most recently delivered message for partition " + tp
+                                              + " before offset " + upToMessageOffset + " has been evicted. Tracked Offset Range: ["
                                               + offsetTracker.earliestTrackedDeliveredOffset()
                                               + ", " + offsetTracker.delivered() + "]");
     }
