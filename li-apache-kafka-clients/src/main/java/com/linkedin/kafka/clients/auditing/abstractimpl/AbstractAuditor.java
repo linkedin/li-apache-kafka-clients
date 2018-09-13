@@ -98,6 +98,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
   public AbstractAuditor() {
     super();
     this.setUncaughtExceptionHandler((t, e) -> LOG.error("Auditor encounter exception.", e));
+    this.setDaemon(true);
     _time = new SystemTime();
   }
 
