@@ -12,16 +12,30 @@ import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -33,7 +47,6 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
-import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -49,20 +62,8 @@ import org.apache.kafka.common.serialization.Deserializer;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.testng.Assert.*;
 
@@ -87,7 +88,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   @Override
   public Properties overridingProps() {
     Properties props = new Properties();
-    props.setProperty("num.partitions", Integer.toString(NUM_PARTITIONS));
+    props.setProperty(KafkaConfig.NumPartitionsProp(), Integer.toString(NUM_PARTITIONS));
+    props.setProperty(KafkaConfig.LogRetentionTimeMillisProp(), "" + TimeUnit.DAYS.toMillis(1));
     return props;
   }
 
@@ -108,6 +110,65 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
+  public void advanceOffsetsWhenLargeMessageCanNotBeAssembled() throws Exception {
+    String topic = "testOffsetDeliveryIssue";
+    produceSyntheticMessages(topic);
+
+    // Bury under a bunch of non-large messages, some of the internal trimming logic is only triggered when
+    // we get large message segments and so getting normal messages won't trigger it.
+    MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE,
+        new DefaultSegmentSerializer(),
+        new UUIDFactory.DefaultUUIDFactory<>());
+
+    int buriedMessageCount = 1_000;
+    int syntheticMessageCount = 10;
+    int totalMessageCount = buriedMessageCount + syntheticMessageCount;
+    Producer<byte[], byte[]> extraMessagesProducer = createKafkaProducer();
+    for (int i = 0; i < buriedMessageCount; i++) {
+      UUID messageId = LiKafkaClientsUtils.randomUUID();
+      String message = LiKafkaClientsTestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
+      List<ProducerRecord<byte[], byte[]>> split =
+          splitter.split(topic, SYNTHETIC_PARTITION_0, messageId, message.getBytes());
+      assertEquals(split.size(), 1);
+      extraMessagesProducer.send(split.get(0)).get();
+    }
+    extraMessagesProducer.flush();
+
+    // Commit offset so that M0 can not be reassembled
+    Properties openSourceConsumerProperties = getConsumerProperties(new Properties());
+    openSourceConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testBadAssemblyAdvance");
+    openSourceConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    seedBadOffset(topic, openSourceConsumerProperties, 1, -(totalMessageCount - 1));
+
+    try (KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<String, String>(openSourceConsumerProperties)) {
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      OffsetAndMetadata offsetAndMetadata = kafkaConsumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), 1);
+    }
+
+    // Consume messages until we reach the end.
+    Properties props = new Properties();
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, openSourceConsumerProperties.getProperty(ConsumerConfig.GROUP_ID_CONFIG));
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    props.setProperty(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_EXPIRATION_OFFSET_GAP_CONFIG, buriedMessageCount + "");
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      consumer.assign(Collections.singleton(tp));
+      long deadline = System.currentTimeMillis() + 4_000;
+      while (System.currentTimeMillis() < deadline && consumer.position(tp) != totalMessageCount) {
+        consumer.poll(1_000);
+      }
+      consumer.commitSync();
+    }
+
+    try (KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<String, String>(openSourceConsumerProperties)) {
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      OffsetAndMetadata offsetAndMetadata = kafkaConsumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), totalMessageCount);
+    }
+  }
+
+  @Test
   public void advanceOffsetsWhenMessagesNotDelivered() {
     String topic = "testUle";
     produceSyntheticMessages(topic);
@@ -116,6 +177,28 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     Properties openSourceConsumerProperties = getConsumerProperties(new Properties());
     openSourceConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testUleGroup");
     openSourceConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    seedBadOffset(topic, openSourceConsumerProperties, 0, 4_000);
+
+    // Consume messages before committed highwatermark
+    Properties props = new Properties();
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testUleGroup");
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      consumer.assign(Collections.singleton(tp));
+      ConsumerRecords<String, String> consumerRecords = consumer.poll(4_000);
+      Assert.assertEquals(consumerRecords.count(), 0);
+      consumer.commitSync();
+    }
+
+    try (KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<String, String>(openSourceConsumerProperties)) {
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      OffsetAndMetadata offsetAndMetadata = kafkaConsumer.committed(tp);
+      assertEquals(offsetAndMetadata.offset(), 10);
+    }
+  }
+
+  private void seedBadOffset(String topic, Properties openSourceConsumerProperties, long offset, long diffFromEnd) {
     try (KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<String, String>(openSourceConsumerProperties)) {
       List<PartitionInfo> partitionsForTopic = kafkaConsumer.partitionsFor(topic);
       List<TopicPartition> tps = new ArrayList<>();
@@ -128,28 +211,13 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         if (endOffsetEntry.getValue() == null || endOffsetEntry.getValue() == -1) {
           continue;
         }
-        long badOffset = endOffsetEntry.getValue() + 4_000;
-        OffsetAndMetadata om = new OffsetAndMetadata(0, badOffset + ",");
+        long badOffset = endOffsetEntry.getValue() + diffFromEnd;
+        OffsetAndMetadata om = new OffsetAndMetadata(offset, badOffset + ",");
         badOffsetMap.put(endOffsetEntry.getKey(), om);
       }
       kafkaConsumer.commitSync(badOffsetMap);
     }
-
-    // Consume messages before committed highwatermark
-    Properties props = new Properties();
-    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testUleGroup");
-    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
-      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
-      consumer.assign(Collections.singleton(tp));
-
-      ConsumerRecords<String, String> consumerRecords = consumer.poll(4_000);
-      Assert.assertEquals(consumerRecords.count(), 0);
-
-      consumer.commitSync();
-    }
   }
-
   @Test
   public void testSeek() {
     String topic = "testSeek";
@@ -212,7 +280,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   private void verifyMessagesAfterSeek(LiKafkaConsumer<String, String> consumer,
-                                       List<Long> expectedOffsets) {
+      List<Long> expectedOffsets) {
     ConsumerRecords<String, String> records;
     for (long expectedOffset : expectedOffsets) {
       records = null;
@@ -393,7 +461,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     Properties producerProps = new Properties();
     producerProps.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props);
-         LiKafkaProducer<String, String> producer = createProducer(producerProps)) {
+        LiKafkaProducer<String, String> producer = createProducer(producerProps)) {
       consumer.assign(Collections.singleton(tp));
       // Seek to beginning, the follow up poll() should ignore the committed high watermark.
       consumer.seekToBeginning(Collections.singleton(tp));
@@ -696,8 +764,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * The test makes sure that all the messages are consumed exactly once.
    */
   @Test
-  public void testRebalance() {
-    produceRecordsWithKafkaProducer();
+  public void testRebalance() throws Throwable {
+    produceRecordsWithKafkaProducer(true);
     Properties props = new Properties();
     // All the consumers should have the same group id.
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testRebalance");
@@ -721,9 +789,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     int numSent = _messages.size();
     final Map<String, String> messageUnseen = new ConcurrentSkipListMap<>(_messages);
-
-    Thread thread0 = new RebalanceTestConsumerThread(consumer0, messageUnseen, 0);
-    Thread thread1 = new RebalanceTestConsumerThread(consumer1, messageUnseen, 1);
+    final AtomicReference<Throwable> error = new AtomicReference<>();
+    Thread thread0 = new RebalanceTestConsumerThread(consumer0, messageUnseen, 0, error);
+    Thread thread1 = new RebalanceTestConsumerThread(consumer1, messageUnseen, 1, error);
 
     long threadsStart = System.currentTimeMillis();
     thread0.start();
@@ -737,6 +805,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     } finally {
       consumer0.close();
       consumer1.close();
+    }
+
+    if (error.get() != null) {
+      throw error.get();
     }
     long threadsRuntime = System.currentTimeMillis() - threadsStart;
     int numUnseen = messageUnseen.size();
@@ -790,15 +862,15 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       int numCommitAndResume = 0;
       Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
       ConsumerRecords<String, String> records;
-      while (!messagesUnseen.isEmpty() && startTime + 30000 > System.currentTimeMillis()) {
-        records = consumer.poll(100);
+      long deadline = startTime + TimeUnit.MINUTES.toMillis(5);
+      while (!messagesUnseen.isEmpty() && System.currentTimeMillis() < deadline) {
+        records = consumer.poll(500);
 
         for (ConsumerRecord<String, String> record : records) {
           String messageId = messageId(record.topic(), record.partition(), record.offset());
           // We should not see any duplicate message.
-          String origMessage = messagesUnseen.get(messageId);
+          String origMessage = messagesUnseen.remove(messageId);
           assertEquals(record.value(), origMessage, "Message with id \"" + messageId + "\" should be the same.");
-          messagesUnseen.remove(messageId);
           offsetMap.put(new TopicPartition(record.topic(), record.partition()), new OffsetAndMetadata(record.offset() + 1));
           numMessagesConsumed++;
           // We try to stop and recreate a consumer every MESSAGE_COUNT messages and at most stop and resume 4 times.
@@ -881,29 +953,29 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     LiKafkaConsumer<byte[], byte[]> consumer =
         new LiKafkaConsumerImpl<byte[], byte[]>(getConsumerProperties(props),
-                                                new ByteArrayDeserializer(),
-                                                new Deserializer<byte[]>() {
-          int numMessages = 0;
-          @Override
-          public void configure(Map<String, ?> configs, boolean isKey) {
+            new ByteArrayDeserializer(),
+            new Deserializer<byte[]>() {
+              int numMessages = 0;
+              @Override
+              public void configure(Map<String, ?> configs, boolean isKey) {
 
-          }
+              }
 
-          @Override
-          public byte[] deserialize(String topic, byte[] data) {
-            // Throw exception when deserializing the second message.
-            numMessages++;
-            if (numMessages == 2) {
-              throw new SerializationException();
-            }
-            return data;
-          }
+              @Override
+              public byte[] deserialize(String topic, byte[] data) {
+                // Throw exception when deserializing the second message.
+                numMessages++;
+                if (numMessages == 2) {
+                  throw new SerializationException();
+                }
+                return data;
+              }
 
-          @Override
-          public void close() {
+              @Override
+              public void close() {
 
-          }
-        }, new DefaultSegmentDeserializer(), new NoOpAuditor<>());
+              }
+            }, new DefaultSegmentDeserializer(), new NoOpAuditor<>());
     try {
       consumer.subscribe(Collections.singleton(topic));
       ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
@@ -929,13 +1001,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       assertEquals(records.iterator().next().offset(), 5L, "The first offset should 5");
     } finally {
       consumer.close();
-    }
-  }
-
-  @Test
-  public void testOffsetOutOfRange() {
-    for (OffsetResetStrategy strategy : OffsetResetStrategy.values()) {
-      testOffsetOutOfRangeForStrategy(strategy);
     }
   }
 
@@ -1096,17 +1161,25 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     return result;
   }
 
-  private void testOffsetOutOfRangeForStrategy(OffsetResetStrategy strategy) {
+  @DataProvider(name = "offsetResetStrategies")
+  public static Object[][] offsetResetStrategies() {
+    return new Object[][] {
+        { LiOffsetResetStrategy.EARLIEST },
+        { LiOffsetResetStrategy.LATEST},
+        { LiOffsetResetStrategy.LICLOSEST },
+        { LiOffsetResetStrategy.NONE }
+    };
+  }
+
+  @Test(dataProvider = "offsetResetStrategies")
+  public void testOffsetOutOfRangeForStrategy(LiOffsetResetStrategy strategy) {
     produceRecordsWithKafkaProducer();
     Properties props = new Properties();
-    // Make sure we start to consume from the beginning.
     props.setProperty("auto.offset.reset", strategy.name());
-    // All the consumers should have the same group id.
     props.setProperty("group.id", "testOffsetOutOfRange");
 
-    LiKafkaConsumer<String, String> consumer = createConsumer(props);
     TopicPartition tp = new TopicPartition(TOPIC1, 0);
-    try {
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
       consumer.assign(Collections.singleton(tp));
       ConsumerRecords<String, String> consumerRecords = ConsumerRecords.empty();
       consumer.seek(tp, 0);
@@ -1115,28 +1188,125 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       }
       consumer.seek(tp, 100000L);
       assertEquals(consumer.position(tp), 100000L);
-      if (strategy == OffsetResetStrategy.EARLIEST) {
-        long expectedOffset = consumerRecords.iterator().next().offset();
-        consumerRecords = ConsumerRecords.empty();
-        while (consumerRecords.isEmpty()) {
-          consumerRecords = consumer.poll(1000);
-        }
-        assertEquals(consumerRecords.iterator().next().offset(), expectedOffset,
-                     "The offset should have been reset to the earliest offset");
-      } else if (strategy == OffsetResetStrategy.LATEST) {
-        consumer.poll(1000);
-        long expectedOffset = consumer.endOffsets(Collections.singleton(tp)).get(tp);
-        assertEquals(consumer.position(tp), expectedOffset, "The offset should have been reset to the latest offset");
-      } else {
-        consumer.poll(1000);
-        fail("OffsetOutOfRangeException should have been thrown.");
+      switch (strategy) {
+        case EARLIEST:
+          long expectedEarliestOffset = consumerRecords.iterator().next().offset();
+          consumerRecords = ConsumerRecords.empty();
+          while (consumerRecords.isEmpty()) {
+            consumerRecords = consumer.poll(1000);
+          }
+          assertEquals(consumerRecords.iterator().next().offset(), expectedEarliestOffset,
+              "The offset should have been reset to the earliest offset");
+          break;
+        case LATEST:
+          consumer.poll(1000);
+          long expectedLatestOffset = consumer.endOffsets(Collections.singleton(tp)).get(tp);
+          assertEquals(consumer.position(tp), expectedLatestOffset,
+              "The offset should have been reset to the latest offset");
+          break;
+        case LICLOSEST:
+          long expectedEndOffset = consumer.endOffsets(Collections.singleton(tp)).get(tp);
+          consumer.poll(1000);
+          long currentPosition = consumer.position(tp);
+          assertTrue(currentPosition == expectedEndOffset);
+          break;
+        case NONE:
+          try {
+            consumer.poll(1000);
+            fail("OffsetOutOfRangeException should have been thrown.");
+          } catch (OffsetOutOfRangeException oore) {
+            // Expected
+          }
+          break;
+        default:
+          fail("Unknown reset strategy " + strategy);
+          break;
       }
-    } catch (OffsetOutOfRangeException ooore) {
-      if (strategy != OffsetResetStrategy.NONE) {
-        fail("Should not have thrown OffsetOutOfRangeException.");
+    }
+  }
+
+  /*
+   * This tests verifies that the consumer (with LICLOSEST policy) resets to earliest record in the log when
+   * there committed offset is not available. This can happen when a new consumer group is created (bootstrap) or
+   * if the committed consumer offset expired. This test reproduces the former case (bootstrap) to assert the behavior.
+   */
+  @Test
+  public void testBootstrapWithLiClosest() {
+    produceRecordsWithKafkaProducer();
+    Properties props = new Properties();
+    props.setProperty("auto.offset.reset", LiOffsetResetStrategy.LICLOSEST.name());
+    props.setProperty("group.id", "testBootstrapLICLOSEST");
+
+    LiKafkaConsumer<String, String> consumer = createConsumer(props);
+    TopicPartition tp = new TopicPartition(TOPIC1, 0);
+    try {
+      consumer.assign(Collections.singleton(tp));
+      ConsumerRecords<String, String> consumerRecords = ConsumerRecords.empty();
+      while (consumerRecords.isEmpty()) {
+        consumerRecords = consumer.poll(1000);
       }
+      long bootstrappedReset = consumerRecords.iterator().next().offset();
+      consumer.seekToBeginning(Collections.singleton(tp));
+      consumerRecords = ConsumerRecords.empty();
+      while (consumerRecords.isEmpty()) {
+        consumerRecords = consumer.poll(1000);
+      }
+      assertEquals(bootstrappedReset, consumerRecords.iterator().next().offset()); // because we seek to beginning above
     } finally {
       consumer.close();
+    }
+  }
+
+  /*
+   * In order to test consumer fetching from an offset < LSO:
+   * - consumer commits initial LSO
+   * - waits until log truncation happens by continuously checking for beginningOffsets
+   * - Start a new consumer instance and consume from committed offset (which is less than the current LSO)
+   * - Verify that the offset reset returns the earliest available record
+   */
+  @Test
+  public void testFallOffStartWithLiClosest() throws InterruptedException {
+    produceRecordsWithKafkaProducer();
+    Properties props = new Properties();
+    props.setProperty("auto.offset.reset", LiOffsetResetStrategy.LICLOSEST.name());
+    props.setProperty("group.id", "testFallOffStart");
+    // Disable auto-commit for controlled testing
+    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+
+    long truncatedStartOffset;
+    TopicPartition tp = new TopicPartition(TOPIC1, 0);
+    Set<TopicPartition> tpAsCollection = Collections.singleton(tp);
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      consumer.assign(tpAsCollection);
+      long initialLso = consumer.beginningOffsets(tpAsCollection).get(tp); //very likely 0, but not guaranteed
+      long currentLso = initialLso;
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(initialLso, String.valueOf(consumer.safeOffset(tp)))));
+      //wait for broker to truncate data that we have not read (we never called poll())
+      long giveUp = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
+      while (currentLso == initialLso && System.currentTimeMillis() < giveUp) {
+        Thread.sleep(5000);
+        currentLso = consumer.beginningOffsets(tpAsCollection).get(tp);
+        produceRecordsWithKafkaProducer();
+      }
+      if (currentLso == initialLso) {
+        throw new IllegalStateException("nothing was truncated broker-side within timeout");
+      }
+      truncatedStartOffset = currentLso;
+    }
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      ConsumerRecords<String, String> consumerRecords = ConsumerRecords.empty();
+      consumer.assign(tpAsCollection);
+      long giveUp = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
+      while (consumerRecords.isEmpty() && System.currentTimeMillis() < giveUp) {
+        consumerRecords = consumer.poll(1000);
+      }
+      if (consumerRecords.isEmpty()) {
+        throw new IllegalStateException("failed to consume any records within timeout");
+      }
+      long actualResetOffset = consumerRecords.iterator().next().offset();
+      // Record offset may be greater than the earliest log offset if the first record is a large-message
+      assertTrue(actualResetOffset >= truncatedStartOffset);
+      assertTrue(actualResetOffset < consumer.endOffsets(Collections.singleton(tp)).get(tp));
     }
   }
 
@@ -1144,7 +1314,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * This method produce a bunch of messages in an interleaved way.
    * @param messages will contain both large message and ordinary messages.
    */
-  private void produceMessages(ConcurrentMap<String, String> messages, String topic) throws InterruptedException {
+  private void produceMessages(ConcurrentMap<String, String> messages, String topic, boolean useWallClock) throws InterruptedException {
     int sizeBefore = messages.size();
 
     Properties props = new Properties();
@@ -1165,7 +1335,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     List<Thread> threads = new ArrayList<>();
     for (int i = 0; i < NUM_PRODUCER; i++) {
       for (int j = 0; j < THREADS_PER_PRODUCER; j++) {
-        threads.add(new ProducerThread(producers.get(i), messages, topic));
+        threads.add(new ProducerThread(producers.get(i), messages, topic, useWallClock));
       }
     }
     // Start user threads.
@@ -1180,7 +1350,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     for (LiKafkaProducer<String, String> producer : producers) {
       producer.close();
     }
-    
+
     int sizeAfter = messages.size();
     int produced = sizeAfter - sizeBefore;
     Assert.assertEquals(produced, NUM_PRODUCER * THREADS_PER_PRODUCER * MESSAGE_COUNT);
@@ -1210,13 +1380,14 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     private final LiKafkaProducer<String, String> _producer;
     private final ConcurrentMap<String, String> _messages;
     private final String _topic;
+    private final boolean _useWallClock;
 
-    public ProducerThread(LiKafkaProducer<String, String> producer,
-                          ConcurrentMap<String, String> messages,
-                          String topic) {
+    public ProducerThread(LiKafkaProducer<String, String> producer, ConcurrentMap<String, String> messages,
+      String topic, boolean useWallClock) {
       _producer = producer;
       _messages = messages;
       _topic = topic;
+      _useWallClock = useWallClock;
     }
 
     @Override
@@ -1229,7 +1400,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         final String uuid = LiKafkaClientsUtils.randomUUID().toString().replace("-", "");
         final String message = uuid + KafkaTestUtils.getRandomString(messageSize);
 
-        _producer.send(new ProducerRecord<String, String>(_topic, null, (long) i, null, message),
+        long timestamp = _useWallClock ? System.currentTimeMillis() : i;
+        _producer.send(new ProducerRecord<String, String>(_topic, null, timestamp, null, message),
             new Callback() {
               @Override
               public void onCompletion(RecordMetadata recordMetadata, Exception e) {
@@ -1245,7 +1417,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
                 _messages.put(messageId, message);
               }
             });
-        }
+      }
     }
   }
 
@@ -1256,13 +1428,16 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     return topic + "-" + partition + "-" + offset;
   }
 
-
   private void produceRecordsWithKafkaProducer() {
+    produceRecordsWithKafkaProducer(false);
+  }
+
+  private void produceRecordsWithKafkaProducer(boolean useWallClock) {
     _messages = new ConcurrentSkipListMap<>();
     _random = new Random(23423423);
     try {
-      produceMessages(_messages, TOPIC1);
-      produceMessages(_messages, TOPIC2);
+      produceMessages(_messages, TOPIC1, useWallClock);
+      produceMessages(_messages, TOPIC2, useWallClock);
     } catch (InterruptedException e) {
       throw new RuntimeException("Message producing phase failed.", e);
     }
@@ -1271,22 +1446,23 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   /** Generate the following synthetic messages in order and produce to the same partition.
    * <pre>
    * partition SYNTHETIC_PARTITION_0
-   * 0: M0_SEG0 (START)
-   * 1: M1_SEG0 (START)
-   * 2: M2_SEG0 (START) (END)
-   * 3: M3_SEG0 (START)
-   * 4: M1_SEG1(END)
-   * 5: M0_SEG1(END)
-   * 6: M3_SEG1(END)
-   * 7: M4_SEG0 (START) (END)
-   * 8: M5_SEG0 (START)
-   * 9: M5_SEG1 (END)
+   *                              safe offset
+   * 0: M0_SEG0 (START)         | 0
+   * 1: M1_SEG0 (START)         | 0
+   * 2: M2_SEG0 (START) (END)   | 0
+   * 3: M3_SEG0 (START)         | 0
+   * 4: M1_SEG1(END)            | 0
+   * 5: M0_SEG1(END)            | 0
+   * 6: M3_SEG1(END)            | 3
+   * 7: M4_SEG0 (START) (END)   | 7
+   * 8: M5_SEG0 (START)         | 8
+   * 9: M5_SEG1 (END)           | 8
    * </pre>
    */
   private void produceSyntheticMessages(String topic) {
     MessageSplitter splitter = new MessageSplitterImpl(MAX_SEGMENT_SIZE,
-                                                       new DefaultSegmentSerializer(),
-                                                       new UUIDFactory.DefaultUUIDFactory<>());
+        new DefaultSegmentSerializer(),
+        new UUIDFactory.DefaultUUIDFactory<>());
 
     Producer<byte[], byte[]> producer = createKafkaProducer();
     // Prepare messages.
@@ -1357,16 +1533,18 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     private final int _id;
     private final Map<String, String> _messageUnseen;
     private final TestRebalanceListener _listener;
-    private final long quietMillis = 120000;
+    private final long quietMillis = TimeUnit.SECONDS.toMillis(10);
+    private final AtomicReference<Throwable> _error;
 
     RebalanceTestConsumerThread(LiKafkaConsumer<String, String> consumer,
                                 Map<String, String> messageUnseen,
-                                int id) {
+                                int id, AtomicReference<Throwable> error) {
       super("consumer-thread-" + id);
       _consumer = consumer;
       _id = id;
       _messageUnseen = messageUnseen;
       _listener = new TestRebalanceListener();
+      _error = error;
     }
 
     private void processConsumedRecord(ConsumerRecords<String, String> records) {
@@ -1384,7 +1562,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       try {
         _consumer.subscribe(Arrays.asList(TOPIC1, TOPIC2), _listener);
         long noActivityDeadline = System.currentTimeMillis() + quietMillis;
-        while (!_messageUnseen.isEmpty() && System.currentTimeMillis() < noActivityDeadline) {
+        while (!_messageUnseen.isEmpty() && System.currentTimeMillis() < noActivityDeadline && _error.get() == null) {
           int numConsumed = 0;
           while (numConsumed < 150 && !_messageUnseen.isEmpty() && System.currentTimeMillis() < noActivityDeadline) {
             ConsumerRecords<String, String> records = _consumer.poll(10);
@@ -1410,8 +1588,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
             }
           }
           _listener.done = false;
-          while (!_messageUnseen.isEmpty() && !_listener.done) {
-            ConsumerRecords<String, String> records = _consumer.poll(10);
+          while (!_messageUnseen.isEmpty() && !_listener.done && _error.get() == null) {
+            ConsumerRecords<String, String> records = _consumer.poll(500);
             if (records.count() > 0) {
               noActivityDeadline = System.currentTimeMillis() + quietMillis;
             }
@@ -1419,7 +1597,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           }
         }
       } catch (Throwable t) {
-        t.printStackTrace();
+        _error.compareAndSet(null, t);
       }
     }
 

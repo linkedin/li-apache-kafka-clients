@@ -316,7 +316,7 @@ public class ConsumerRecordsProcessorTest {
     MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false, segmentDeserializer);
     DeliveredMessageOffsetTracker deliveredMessageOffsetTracker = new DeliveredMessageOffsetTracker(4);
     ConsumerRecordsProcessor processor =  new ConsumerRecordsProcessor<>(assembler, stringDeserializer, errorThrowingDeserializer,
-                                                                          deliveredMessageOffsetTracker, null);
+                                                                          deliveredMessageOffsetTracker, null, (tp) -> null);
 
     StringSerializer stringSerializer = new StringSerializer();
     ConsumerRecord<byte[], byte[]> consumerRecord0 = new ConsumerRecord<>("topic", 0, 0, null,
@@ -404,7 +404,7 @@ public class ConsumerRecordsProcessorTest {
     Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
     MessageAssembler assembler = new MessageAssemblerImpl(5000, 100, false, segmentDeserializer);
     DeliveredMessageOffsetTracker deliveredMessageOffsetTracker = new DeliveredMessageOffsetTracker(4);
-    return new ConsumerRecordsProcessor<>(assembler, stringDeserializer, stringDeserializer, deliveredMessageOffsetTracker, null);
+    return new ConsumerRecordsProcessor<>(assembler, stringDeserializer, stringDeserializer, deliveredMessageOffsetTracker, null, (tp) -> null);
   }
 
   private byte[] wrapMessageBytes(Serializer<LargeMessageSegment> segmentSerializer, byte[] messageBytes) {

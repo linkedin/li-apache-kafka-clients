@@ -284,6 +284,15 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _producer.flush();
   }
 
+  /**
+   * This method will flush all the message buffered in producer. The call blocks until timeout.
+   */
+  @Override
+  public void flush(long timeout, TimeUnit timeUnit) {
+    LOG.warn("LiKafkaProducerImpl does not support bounded flush. Calling flush() on producer, instead.");
+    _producer.flush();
+  }
+
   @Override
   public List<PartitionInfo> partitionsFor(String topic) {
     return _producer.partitionsFor(topic);

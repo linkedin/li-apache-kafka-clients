@@ -83,22 +83,31 @@ public class LargeMessageBufferPool {
       uuidSetForPartition.add(messageId);
       _offsetTracker.maybeTrackMessage(tp, messageId, offset);
     }
-    maybeEvictMessagesForSpace();
-
-    // Expire message if necessary.
-    for (UUID expiredMessageId : _offsetTracker.expireMessageUntilOffset(tp, offset - _expirationOffsetGap)) {
-      removeMessage(expiredMessageId);
-      _incompleteMessageByPartition.get(tp).remove(expiredMessageId);
-    }
+    evictMessagesForSpace();
+    expireSegments(tp, offset);
 
     return segmentAddResult;
   }
 
+  /**
+   * Expire segments that are beyond the expirationOffsetGap.
+   */
+  private void expireSegments(TopicPartition tp, long offset) {
+    for (UUID expiredMessageId : _offsetTracker.expireMessageUntilOffset(tp, offset - _expirationOffsetGap)) {
+      removeMessage(expiredMessageId);
+      _incompleteMessageByPartition.get(tp).remove(expiredMessageId);
+    }
+  }
+
+  /**
+   * This will *not* clear any stale state.  Probably don't use this except for testing purposes.
+   */
   public synchronized Map<TopicPartition, Long> safeOffsets() {
     return _offsetTracker.safeOffsets();
   }
 
-  public synchronized long safeOffset(TopicPartition tp) {
+  public synchronized long safeOffset(TopicPartition tp, long currentOffset) {
+    expireSegments(tp, currentOffset);
     return _offsetTracker.safeOffset(tp);
   }
 
@@ -128,7 +137,7 @@ public class LargeMessageBufferPool {
     }
   }
 
-  private void maybeEvictMessagesForSpace() {
+  private void evictMessagesForSpace() {
     // When the eldest message is the current message, the message will not be completed. This indicates the buffer
     // capacity is too small to hold even one message.
     while (_bufferUsed > _bufferCapacity) {
@@ -154,9 +163,9 @@ public class LargeMessageBufferPool {
     LargeMessage message = null;
     if (eldestKey != null) {
       message = _incompleteMessageMap.get(eldestKey);
-      long offsetBeforeRemoval = safeOffset(message.topicPartition());
+      long offsetBeforeRemoval = _offsetTracker.safeOffset(message.topicPartition());
       removeMessage(eldestKey);
-      long offsetAfterRemoval = safeOffset(message.topicPartition());
+      long offsetAfterRemoval = _offsetTracker.safeOffset(message.topicPartition());
 
       String errMsg = "Large message " + message.toString() + " is evicted. "
           + "Offset of " + message.topicPartition() + " has advanced from " + offsetBeforeRemoval

@@ -6,12 +6,11 @@ package com.linkedin.kafka.clients.largemessage;
 
 import org.apache.kafka.common.TopicPartition;
 
-import java.util.Map;
 
 /**
  * The interface of the assembler on consumer side to re-assemeble the message segments created by
  * {@link MessageSplitter}. Message assembler is also responsible for keep tracking of the safe offset to commit
- * for a partition (see {@link #safeOffsets()})
+ * for a partition (see {@link #safeOffset})
  */
 public interface MessageAssembler {
 
@@ -28,23 +27,18 @@ public interface MessageAssembler {
   AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes);
 
   /**
-   * This method should return the safe offset to commit for each partition.
-   * A safe offset for a partition is the smallest of the first segment across all incomplete messages.
-   * A safe offset will guarantee that all the segments of an incomplete message will be consumed again if
-   * the consumer accidentally died.
-   *
-   * @return a map of safe offset for each partition.
-   */
-  Map<TopicPartition, Long> safeOffsets();
-
-  /**
    * Get the safe offset for a particular partition. When safe offset of a partition is not available, Long.Max_Value
-   * will be returned.
+   * will be returned.  This will also expire any large messages that can not be assembled if the interval between
+   * the uncompleted large message offset and the currentPosition is larger than some threshold for example
+   * {@link com.linkedin.kafka.clients.consumer.LiKafkaConsumerConfig#MESSAGE_ASSEMBLER_EXPIRATION_OFFSET_GAP_CONFIG}
    *
    * @param tp the topic partition to get safe offset.
+   * @param currentPosition the current position of the consumer for the specified tp.  If the current position
+   *                        is not known the highest known consumed position can be used with corresponding less
+   *                        accuracy in expiring messages.
    * @return the safe offset.
    */
-  long safeOffset(TopicPartition tp);
+  long safeOffset(TopicPartition tp, long currentPosition);
 
   /**
    * This method is to clean up all the states in the message assembler.

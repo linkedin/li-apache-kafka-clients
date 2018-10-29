@@ -9,8 +9,6 @@ import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-
 import static com.linkedin.kafka.clients.largemessage.MessageAssembler.AssembleResult.INCOMPLETE_RESULT;
 
 
@@ -52,13 +50,8 @@ public class MessageAssemblerImpl implements MessageAssembler {
   }
 
   @Override
-  public Map<TopicPartition, Long> safeOffsets() {
-    return _messagePool.safeOffsets();
-  }
-
-  @Override
-  public long safeOffset(TopicPartition tp) {
-    return _messagePool.safeOffset(tp);
+  public long safeOffset(TopicPartition tp, long currentPosition) {
+    return _messagePool.safeOffset(tp, currentPosition);
   }
 
   @Override
