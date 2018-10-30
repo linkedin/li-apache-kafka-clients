@@ -11,6 +11,8 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Set;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -286,11 +288,21 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   /**
    * This method will flush all the message buffered in producer. The call blocks until timeout.
+   * If the underlying producer doesn't support a bounded flush, it will invoke the {@link #flush()}.
    */
   @Override
   public void flush(long timeout, TimeUnit timeUnit) {
-    LOG.warn("LiKafkaProducerImpl does not support bounded flush. Calling flush() on producer, instead.");
-    _producer.flush();
+    try {
+      Method flushMethod = _producer.getClass().getMethod("flush", long.class, TimeUnit.class);
+      flushMethod.setAccessible(true);
+      flushMethod.invoke(_producer, timeout, timeUnit);
+    } catch (NoSuchMethodException e) {
+      LOG.warn("LiKafkaProducerImpl does not support bounded flush. Calling flush() on producer, instead.");
+      _producer.flush();
+    } catch (IllegalAccessException | InvocationTargetException e) {
+      LOG.warn("Unable to access the bounded flush method defined in KafkaProducer. Calling flush() on producer, instead");
+      _producer.flush();
+    }
   }
 
   @Override

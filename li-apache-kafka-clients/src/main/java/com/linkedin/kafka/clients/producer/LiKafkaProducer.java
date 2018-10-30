@@ -53,6 +53,7 @@ public interface LiKafkaProducer<K, V> extends Producer<K, V> {
 
   /**
    * Flush any accumulated records from the producer. If the close does not complete within the timeout, throws exception.
+   * If the underlying producer does not support bounded flush, this method defaults to {@link #flush()}
    * TODO: This API is added as a HOTFIX until the API change is available in apache/kafka
    */
   void flush(long timeout, TimeUnit timeUnit);
