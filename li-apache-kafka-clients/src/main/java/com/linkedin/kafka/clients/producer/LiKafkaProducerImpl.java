@@ -14,6 +14,7 @@ import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -25,7 +26,9 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.ProducerFencedException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
@@ -130,6 +133,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final AtomicInteger _numThreadsInSend;
   private volatile boolean _closed;
 
+  private final Method _producerSupportsBoundedFlush;
+
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
   }
@@ -162,6 +167,15 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
                              Auditor<K, V> auditor) {
     // Instantiate the open source producer, which always sents raw bytes.
     _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
+    // TODO: This hack remains until bounded flush is added to apache/kafka
+    Method producerSupportsBoundedFlush;
+    try {
+      producerSupportsBoundedFlush = _producer.getClass().getMethod("flush", long.class, TimeUnit.class);
+    } catch (NoSuchMethodException e) {
+      LOG.warn("LiKafkaProducerImpl does not support bounded flush.");
+      producerSupportsBoundedFlush = null;
+    }
+    _producerSupportsBoundedFlush = producerSupportsBoundedFlush;
 
     try {
       // Instantiate the key serializer if necessary.
@@ -292,16 +306,36 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
    */
   @Override
   public void flush(long timeout, TimeUnit timeUnit) {
-    try {
-      Method flushMethod = _producer.getClass().getMethod("flush", long.class, TimeUnit.class);
-      flushMethod.setAccessible(true);
-      flushMethod.invoke(_producer, timeout, timeUnit);
-    } catch (NoSuchMethodException e) {
-      LOG.warn("LiKafkaProducerImpl does not support bounded flush. Calling flush() on producer, instead.");
-      _producer.flush();
-    } catch (IllegalAccessException | InvocationTargetException e) {
-      LOG.warn("Unable to access the bounded flush method defined in KafkaProducer. Calling flush() on producer, instead");
-      _producer.flush();
+    boolean invokeFlush = false;
+    if (_producerSupportsBoundedFlush != null) {
+      try {
+        _producerSupportsBoundedFlush.invoke(_producer, timeout, timeUnit);
+      } catch (IllegalAccessException | InvocationTargetException e) {
+        LOG.trace("Underlying producer does not support bounded flush!", e);
+        invokeFlush = true;
+      }
+    } else {
+      invokeFlush = true;
+    }
+
+    if (invokeFlush) {
+      final CountDownLatch latch = new CountDownLatch(1);
+      Thread t = new Thread(() -> {
+        _producer.flush();
+        latch.countDown();
+      });
+      t.setDaemon(true);
+      t.start();
+
+      boolean latchResult = false;
+      try {
+        latchResult = latch.await(timeout, timeUnit);
+      } catch (InterruptedException e) {
+        throw new InterruptException("Flush interruped.", e);
+      }
+      if (!latchResult) {
+        throw new TimeoutException("Failed to flush accumulated records within " + timeout + " " + timeUnit);
+      }
     }
   }
 
