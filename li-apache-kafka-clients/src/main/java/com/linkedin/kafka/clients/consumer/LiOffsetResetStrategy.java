@@ -5,7 +5,7 @@
 package com.linkedin.kafka.clients.consumer;
 
 /**
- * Since enum are essentially final in Java, we are duplicating the values from
+ * Since enums are essentially final in Java, we are duplicating the values from
  * the open-source equivalent {@link org.apache.kafka.clients.consumer.OffsetResetStrategy}
  *
  * This workaround needs to be provided until apache/kafka can support a closest reset policy,

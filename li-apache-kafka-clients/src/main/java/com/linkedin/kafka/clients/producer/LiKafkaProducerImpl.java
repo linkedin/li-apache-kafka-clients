@@ -113,6 +113,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaProducerImpl.class);
+  private static final String BOUNDED_FLUSH_THREAD_PREFIX = "Bounded-Flush-Thread-";
 
   // Large message settings
   private final boolean _largeMessageEnabled;
@@ -133,7 +134,9 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final AtomicInteger _numThreadsInSend;
   private volatile boolean _closed;
 
-  private final Method _producerSupportsBoundedFlush;
+  // This is null if the underlying producer does not have an implementation for time-bounded flush
+  private final Method _boundedFlushMethod;
+  private final AtomicInteger _boundFlushThreadCount = new AtomicInteger();
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
@@ -172,10 +175,10 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     try {
       producerSupportsBoundedFlush = _producer.getClass().getMethod("flush", long.class, TimeUnit.class);
     } catch (NoSuchMethodException e) {
-      LOG.warn("LiKafkaProducerImpl does not support bounded flush.");
+      LOG.warn("Wrapped KafkaProducer does not support time-bounded flush.", e);
       producerSupportsBoundedFlush = null;
     }
-    _producerSupportsBoundedFlush = producerSupportsBoundedFlush;
+    _boundedFlushMethod = producerSupportsBoundedFlush;
 
     try {
       // Instantiate the key serializer if necessary.
@@ -306,25 +309,29 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
    */
   @Override
   public void flush(long timeout, TimeUnit timeUnit) {
-    boolean invokeFlush = false;
-    if (_producerSupportsBoundedFlush != null) {
+    boolean useSeparateThreadForFlush = false;
+    if (_boundedFlushMethod != null) {
       try {
-        _producerSupportsBoundedFlush.invoke(_producer, timeout, timeUnit);
+        _boundedFlushMethod.invoke(_producer, timeout, timeUnit);
       } catch (IllegalAccessException | InvocationTargetException e) {
         LOG.trace("Underlying producer does not support bounded flush!", e);
-        invokeFlush = true;
+        useSeparateThreadForFlush = true;
       }
     } else {
-      invokeFlush = true;
+      useSeparateThreadForFlush = true;
     }
 
-    if (invokeFlush) {
+    if (useSeparateThreadForFlush) {
       final CountDownLatch latch = new CountDownLatch(1);
       Thread t = new Thread(() -> {
         _producer.flush();
         latch.countDown();
       });
       t.setDaemon(true);
+      t.setName(BOUNDED_FLUSH_THREAD_PREFIX + _boundFlushThreadCount.getAndIncrement());
+      t.setUncaughtExceptionHandler((t1, e) -> {
+        LOG.warn("Thread " + t1.getName() + " terminated unexpectedly.", e);
+      });
       t.start();
 
       boolean latchResult = false;
