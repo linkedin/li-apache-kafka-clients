@@ -916,6 +916,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.assign(timestampsToSearch.keySet());
       Map<TopicPartition, OffsetAndTimestamp> offsets = consumer.offsetsForTimes(timestampsToSearch);
       for (Map.Entry<TopicPartition, OffsetAndTimestamp> entry : offsets.entrySet()) {
+        assertNotNull(entry.getValue(), "Failed to find offset for topic partition " + entry.getKey() +
+            " for timestamp " + timestampsToSearch.get(entry.getKey()));
         consumer.seek(entry.getKey(), entry.getValue().offset());
       }
 

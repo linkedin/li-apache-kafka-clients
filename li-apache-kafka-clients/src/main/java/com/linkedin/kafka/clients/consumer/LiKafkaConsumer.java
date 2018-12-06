@@ -8,22 +8,14 @@ import com.linkedin.kafka.clients.annotations.InterfaceOrigin;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.common.Metric;
-import org.apache.kafka.common.MetricName;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 
 import java.time.Duration;
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -54,20 +46,6 @@ import java.util.regex.Pattern;
  * be handy. Please read the documentation of the corresponding method to ensure correct usage.
  */
 public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Set<TopicPartition> assignment();
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Set<String> subscription();
 
   /**
    * {@inheritDoc}
@@ -116,12 +94,12 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
   void subscribe(Pattern pattern);
 
   /**
-   * Unsubscribe from topics currently subscribed with {@link #subscribe(Collection)}. This
-   * also clears any partitions directly assigned through {@link #assign(Collection)}.
+   * {@inheritDoc}
    * <p>
    * In order to support large message, the consumer maintains some state internally for each partition. This method
    * will clear all the internal state maintained for large messages.
    */
+  @Override
   @InterfaceOrigin.ApacheKafka
   void unsubscribe();
 
@@ -136,34 +114,6 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
   @Override
   @InterfaceOrigin.ApacheKafka
   void assign(Collection<TopicPartition> partitions);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  ConsumerRecords<K, V> poll(long timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  ConsumerRecords<K, V> poll(Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void commitSync();
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void commitSync(Duration timeout);
 
   /**
    * {@inheritDoc}
@@ -186,20 +136,6 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
   @Override
   @InterfaceOrigin.ApacheKafka
   void commitSync(final Map<TopicPartition, OffsetAndMetadata> offsets, final Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void commitAsync();
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void commitAsync(OffsetCommitCallback callback);
 
   /**
    * {@inheritDoc}
@@ -254,13 +190,6 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
   void seekToBeginning(Collection<TopicPartition> partitions);
 
   /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void seekToEnd(Collection<TopicPartition> partitions);
-
-  /**
    * Seek to the committed offsets of this consumer group for the given partitions.
    * <p>
    * This method is large message aware. This method is synchronous and takes effect immediately. If there is
@@ -268,34 +197,6 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    */
   @InterfaceOrigin.LiKafkaClients
   void seekToCommitted(Collection<TopicPartition> partitions);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  long position(TopicPartition partition);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  long position(TopicPartition partition, final Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  OffsetAndMetadata committed(TopicPartition partition);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  OffsetAndMetadata committed(TopicPartition partition, final Duration timeout);
 
   /**
    * With large message support, the consumer makes sure the offset committed to Kafka are the safe offsets
@@ -311,62 +212,6 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    */
   @InterfaceOrigin.LiKafkaClients
   Long committedSafeOffset(TopicPartition partition);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<MetricName, ? extends Metric> metrics();
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  List<PartitionInfo> partitionsFor(String topic);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  List<PartitionInfo> partitionsFor(String topic, Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<String, List<PartitionInfo>> listTopics();
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<String, List<PartitionInfo>> listTopics(Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Set<TopicPartition> paused();
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void pause(Collection<TopicPartition> partitions);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void resume(Collection<TopicPartition> partitions);
 
   /**
    * This method is to help the users that want to checkpoint the offsets outside of Kafka. It returns the safe offset
@@ -444,74 +289,4 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    */
   @InterfaceOrigin.LiKafkaClients
   Map<TopicPartition, Long> safeOffsets();
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch, Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions, Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions, Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void close();
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void close(long timeout, TimeUnit unit);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void close(Duration timeout);
-
-  /**
-   * {@inheritDoc}
-   */
-  @Override
-  @InterfaceOrigin.ApacheKafka
-  void wakeup();
 }
