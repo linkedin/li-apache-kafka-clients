@@ -8,8 +8,11 @@ import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import java.util.Collections;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -30,18 +33,67 @@ import static com.linkedin.kafka.clients.largemessage.MessageAssembler.AssembleR
 public class ConsumerRecordsProcessor<K, V> {
 
   private static final Logger LOG = LoggerFactory.getLogger(ConsumerRecordsProcessor.class);
+
+  /**
+   * Holds the current and stored (initial consumer high watermark).
+   */
+  private static final class ConsumerHighWatermarkState {
+    /** The actual offset committed (i.e. the safe offset) not the consumer high watermark. */
+    private final long _initialCommittedOffset;
+
+    /** The consumer, high, watermark fetched from the Kafka server. */
+    private final long _initialConsumerHighWatermark;
+
+    /** This gets updated to be the last message to be delivered to the caller. */
+    private long _currentConsumerHighWatermark;
+
+    ConsumerHighWatermarkState(long initialConsumerHighWatermark, long initialCommittedOffset) {
+      _initialConsumerHighWatermark = initialConsumerHighWatermark;
+      _currentConsumerHighWatermark = initialConsumerHighWatermark;
+      _initialCommittedOffset = initialCommittedOffset;
+    }
+
+    ConsumerHighWatermarkState() {
+      this(-1, -1);
+    }
+
+    boolean isCurrentDefined() {
+      return _currentConsumerHighWatermark != -1;
+    }
+
+    boolean isInitialDefined() {
+      return _initialConsumerHighWatermark != -1;
+    }
+
+    boolean isCommittedOffsetDefined() {
+      return _initialCommittedOffset != -1;
+    }
+  }
+
   private final MessageAssembler _messageAssembler;
   private final Deserializer<K> _keyDeserializer;
   private final Deserializer<V> _valueDeserializer;
   private final DeliveredMessageOffsetTracker _deliveredMessageOffsetTracker;
-  private final Map<TopicPartition, Long> _partitionConsumerHighWatermark;
+  private final Map<TopicPartition, ConsumerHighWatermarkState> _partitionConsumerHighWatermark;
   private final Auditor<K, V> _auditor;
+  private final Function<TopicPartition, ConsumerHighWatermarkState> _storedConsumerHighWatermark;
 
+  /**
+   *
+   * @param messageAssembler non-null.  Assembles large segments segments
+   * @param keyDeserializer non-null.
+   * @param valueDeserializer non-null
+   * @param deliveredMessageOffsetTracker non-null.  Keeps a history of safe offsets.
+   * @param auditor This may be null otherwise auditing is called when messages are complete.
+   * @param storedOffset non-null.  A function that returns the offset information stored in Kafka.   This may
+   *                      be a blocking call and should return null if the information is not available.
+   */
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
                                   Deserializer<K> keyDeserializer,
                                   Deserializer<V> valueDeserializer,
                                   DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
-                                  Auditor<K, V> auditor) {
+                                  Auditor<K, V> auditor,
+                                  Function<TopicPartition, OffsetAndMetadata> storedOffset) {
     _messageAssembler = messageAssembler;
     _keyDeserializer = keyDeserializer;
     _valueDeserializer = valueDeserializer;
@@ -51,6 +103,19 @@ public class ConsumerRecordsProcessor<K, V> {
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
     }
+    _storedConsumerHighWatermark = (topicPartition) -> {
+      OffsetAndMetadata offsetAndMetadata = storedOffset.apply(topicPartition);
+
+      Long consumerHighWatermark = null;
+      if (offsetAndMetadata != null) {
+        consumerHighWatermark = LiKafkaClientsUtils.offsetFromWrappedMetadata(offsetAndMetadata.metadata());
+      }
+
+      if (consumerHighWatermark == null) {
+        return new ConsumerHighWatermarkState();
+      }
+      return new ConsumerHighWatermarkState(consumerHighWatermark, offsetAndMetadata.offset());
+    };
   }
 
   /**
@@ -163,8 +228,10 @@ public class ConsumerRecordsProcessor<K, V> {
    */
   public Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit(Map<TopicPartition, OffsetAndMetadata> offsetsToCommit,
                                                                     boolean ignoreConsumerHighWatermark) {
-    Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit = new HashMap<>();
+    Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit = new HashMap<>(offsetsToCommit.size());
     for (TopicPartition tp : offsetsToCommit.keySet()) {
+      ConsumerHighWatermarkState highWatermarkState =
+          _partitionConsumerHighWatermark.computeIfAbsent(tp, _storedConsumerHighWatermark);
       long origOffset = offsetsToCommit.get(tp).offset();
       Long safeOffsetToCommit = origOffset;
       Long earliestTrackedOffset = _deliveredMessageOffsetTracker.earliestTrackedOffset(tp);
@@ -179,20 +246,35 @@ public class ConsumerRecordsProcessor<K, V> {
           //user is attempting to commit "current location" (as opposed to arbitrary seek shenanigans)
           //in this case we must also take into account the earliest offset for which we still have
           //any hope of delivering a large message (maybe we dropped a lot of them due to low memory)
-          safeOffsetToCommit = _messageAssembler.safeOffset(tp);
+          long offsetToCheck = latestDelivered == null ? origOffset : latestDelivered;
+          safeOffsetToCommit = _messageAssembler.safeOffset(tp, offsetToCheck);
         } else {
           if (previousDeliveredOffset != null) {
             safeOffsetToCommit = _deliveredMessageOffsetTracker.safeOffset(tp, previousDeliveredOffset);
           } else {
-            safeOffsetToCommit = _messageAssembler.safeOffset(tp);
+            safeOffsetToCommit = _messageAssembler.safeOffset(tp, latestDelivered);
           }
         }
       }
-      // We need to combine the metadata with the high watermark. High watermark should never rewind.
-      Long hw = _partitionConsumerHighWatermark.get(tp);
-      hw = (hw == null || ignoreConsumerHighWatermark) ? origOffset : Math.max(origOffset, hw);
-      String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(offsetsToCommit.get(tp).metadata(), hw);
-      OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(Math.min(safeOffsetToCommit, origOffset), wrappedMetadata);
+
+      // We need to combine the metadata with the high watermark. High watermark should , generally not rewind.
+      long highWatermarkToCommit;
+      if (ignoreConsumerHighWatermark) {
+        highWatermarkToCommit = origOffset;
+      } else if (safeOffsetToCommit == origOffset && highWatermarkState.isInitialDefined() &&
+          highWatermarkState.isCommittedOffsetDefined() && safeOffsetToCommit == highWatermarkState._initialCommittedOffset) {
+        //We didn't consume anything and so need to preserve the old high watermark in the commit.
+        highWatermarkToCommit = Math.max(highWatermarkState._currentConsumerHighWatermark, highWatermarkState._initialConsumerHighWatermark);
+      } else if (highWatermarkState.isCurrentDefined()) {
+        highWatermarkToCommit = Math.max(origOffset, highWatermarkState._currentConsumerHighWatermark);
+      } else {
+        // No initial or current state so this is a new commit.
+        highWatermarkToCommit = origOffset;
+      }
+
+      safeOffsetToCommit = Math.min(safeOffsetToCommit, origOffset);
+      String wrappedMetadata = LiKafkaClientsUtils.wrapMetadataWithOffset(offsetsToCommit.get(tp).metadata(), highWatermarkToCommit);
+      OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(safeOffsetToCommit, wrappedMetadata);
       safeOffsetsToCommit.put(tp, offsetAndMetadata);
     }
     return safeOffsetsToCommit;
@@ -269,7 +351,17 @@ public class ConsumerRecordsProcessor<K, V> {
    */
   public void setPartitionConsumerHighWaterMark(TopicPartition tp, long offset) {
     // When user seek to an offset, the HW should be that offset - 1.
-    _partitionConsumerHighWatermark.put(tp, offset);
+    _partitionConsumerHighWatermark.computeIfAbsent(tp, _storedConsumerHighWatermark)._currentConsumerHighWatermark = offset;
+  }
+
+  /**
+   * Partitions known to the consumer records processor since they have consumer, high  watermarks.  This may be
+   * a subset of the assigned partitions.
+   * @return non-null
+   * which is why this is interesting to call otherwise just call consumer.assigned()
+   */
+  public Set<TopicPartition> knownPartitions() {
+    return Collections.unmodifiableSet(_partitionConsumerHighWatermark.keySet());
   }
 
   /**
@@ -277,23 +369,6 @@ public class ConsumerRecordsProcessor<K, V> {
    */
   public void clearAllConsumerHighWaterMarks() {
     _partitionConsumerHighWatermark.clear();
-  }
-
-  /**
-   * @return The number of high watermarks in track.
-   */
-  public int numConsumerHighWaterMarks() {
-    return _partitionConsumerHighWatermark.size();
-  }
-
-  /**
-   * Get the high watermark of a given partition.
-   *
-   * @param tp the partition to get high watermark.
-   * @return the high watermark of the given partition.
-   */
-  public Long consumerHighWaterMarkForPartition(TopicPartition tp) {
-    return _partitionConsumerHighWatermark.get(tp);
   }
 
   /**
@@ -340,6 +415,9 @@ public class ConsumerRecordsProcessor<K, V> {
         _auditor.record(_auditor.auditToken(key, value), tp.topic(), consumerRecord.timestamp(), 1L,
                         sizeInBytes, AuditType.SUCCESS);
       }
+
+      _partitionConsumerHighWatermark.computeIfAbsent(tp, _storedConsumerHighWatermark)._currentConsumerHighWatermark = consumerRecord.offset();
+
       handledRecord = new ConsumerRecord<>(
           consumerRecord.topic(),
           consumerRecord.partition(),
@@ -361,7 +439,7 @@ public class ConsumerRecordsProcessor<K, V> {
       LOG.trace("Got message {} from partition {}", messageOffset, tp);
       boolean shouldSkip = shouldSkip(tp, messageOffset);
       // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
-      long safeOffset = Math.min(messageOffset + 1, _messageAssembler.safeOffset(tp));
+      long safeOffset = Math.min(messageOffset + 1, _messageAssembler.safeOffset(tp, messageOffset));
       _deliveredMessageOffsetTracker.track(tp,
                                            messageOffset,
                                            safeOffset,
@@ -392,7 +470,17 @@ public class ConsumerRecordsProcessor<K, V> {
    * @return true if the message should be skipped. Otherwise false.
    */
   private boolean shouldSkip(TopicPartition tp, long offset) {
-    Long hw = _partitionConsumerHighWatermark.get(tp);
-    return hw != null && hw > offset;
+    ConsumerHighWatermarkState consumerHighWatermarkState =
+        _partitionConsumerHighWatermark.computeIfAbsent(tp, _storedConsumerHighWatermark);
+    long hw = 0;
+    if (consumerHighWatermarkState.isCurrentDefined()) {
+      hw = consumerHighWatermarkState._currentConsumerHighWatermark;
+    } else if (consumerHighWatermarkState.isInitialDefined()) {
+      hw = consumerHighWatermarkState._initialConsumerHighWatermark;
+    } else {
+      return false;
+    }
+    return hw > offset;
   }
+
 }

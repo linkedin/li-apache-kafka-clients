@@ -11,7 +11,10 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
@@ -23,7 +26,9 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.ProducerFencedException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
@@ -108,6 +113,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaProducerImpl.class);
+  private static final String BOUNDED_FLUSH_THREAD_PREFIX = "Bounded-Flush-Thread-";
 
   // Large message settings
   private final boolean _largeMessageEnabled;
@@ -127,6 +133,10 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   // everything is audited.
   private final AtomicInteger _numThreadsInSend;
   private volatile boolean _closed;
+
+  // This is null if the underlying producer does not have an implementation for time-bounded flush
+  private final Method _boundedFlushMethod;
+  private final AtomicInteger _boundFlushThreadCount = new AtomicInteger();
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
@@ -160,6 +170,15 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
                              Auditor<K, V> auditor) {
     // Instantiate the open source producer, which always sents raw bytes.
     _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
+    // TODO: This hack remains until bounded flush is added to apache/kafka
+    Method producerSupportsBoundedFlush;
+    try {
+      producerSupportsBoundedFlush = _producer.getClass().getMethod("flush", long.class, TimeUnit.class);
+    } catch (NoSuchMethodException e) {
+      LOG.warn("Wrapped KafkaProducer does not support time-bounded flush.", e);
+      producerSupportsBoundedFlush = null;
+    }
+    _boundedFlushMethod = producerSupportsBoundedFlush;
 
     try {
       // Instantiate the key serializer if necessary.
@@ -282,6 +301,49 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   @Override
   public void flush() {
     _producer.flush();
+  }
+
+  /**
+   * This method will flush all the message buffered in producer. The call blocks until timeout.
+   * If the underlying producer doesn't support a bounded flush, it will invoke the {@link #flush()}.
+   */
+  @Override
+  public void flush(long timeout, TimeUnit timeUnit) {
+    boolean useSeparateThreadForFlush = false;
+    if (_boundedFlushMethod != null) {
+      try {
+        _boundedFlushMethod.invoke(_producer, timeout, timeUnit);
+      } catch (IllegalAccessException | InvocationTargetException e) {
+        LOG.trace("Underlying producer does not support bounded flush!", e);
+        useSeparateThreadForFlush = true;
+      }
+    } else {
+      useSeparateThreadForFlush = true;
+    }
+
+    if (useSeparateThreadForFlush) {
+      final CountDownLatch latch = new CountDownLatch(1);
+      Thread t = new Thread(() -> {
+        _producer.flush();
+        latch.countDown();
+      });
+      t.setDaemon(true);
+      t.setName(BOUNDED_FLUSH_THREAD_PREFIX + _boundFlushThreadCount.getAndIncrement());
+      t.setUncaughtExceptionHandler((t1, e) -> {
+        LOG.warn("Thread " + t1.getName() + " terminated unexpectedly.", e);
+      });
+      t.start();
+
+      boolean latchResult = false;
+      try {
+        latchResult = latch.await(timeout, timeUnit);
+      } catch (InterruptedException e) {
+        throw new InterruptException("Flush interruped.", e);
+      }
+      if (!latchResult) {
+        throw new TimeoutException("Failed to flush accumulated records within " + timeout + " " + timeUnit);
+      }
+    }
   }
 
   @Override
