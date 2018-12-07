@@ -16,6 +16,7 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -56,6 +57,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.SerializationException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Deserializer;
@@ -433,6 +435,34 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       assertEquals(3L, consumer.committed(tp).offset());
       assertEquals(3L, consumer.committedSafeOffset(tp).longValue());
 
+    } finally {
+      consumer.close();
+    }
+  }
+
+  @Test(expectedExceptions = TimeoutException.class)
+  public void testCommitWithTimeout() {
+    String topic = "testCommitWithTimeout";
+    produceSyntheticMessages(topic);
+    Properties props = new Properties();
+    // All the consumers should have the same group id.
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommitWithTimeout");
+    // Make sure we start to consume from the beginning.
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    // Only fetch one record at a time.
+    props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
+    // No auto commmit
+    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    LiKafkaConsumer<String, String> consumer = createConsumer(props);
+    try {
+      TopicPartition tp = new TopicPartition(topic, SYNTHETIC_PARTITION_0);
+      consumer.assign(Arrays.asList(tp));
+
+      while (consumer.poll(10).isEmpty()) {
+      }
+      // Shutdown the broker so that offset commit would hang and eventually time out.
+      tearDown();
+      consumer.commitSync(Duration.ofSeconds(3));
     } finally {
       consumer.close();
     }
