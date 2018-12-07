@@ -1321,7 +1321,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         produceRecordsWithKafkaProducer();
       }
       if (currentLso == initialLso) {
-        throw new IllegalStateException("nothing was truncated broker-side within timeout");
+        throw new IllegalStateException("nothing was truncated broker-side within timeout. LogStartOffset = " +
+            currentLso + " remains the same after " + giveUp + "ms.");
       }
       truncatedStartOffset = currentLso;
     }
