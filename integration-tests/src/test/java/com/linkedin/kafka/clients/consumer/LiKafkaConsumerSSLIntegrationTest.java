@@ -6,7 +6,7 @@ package com.linkedin.kafka.clients.consumer;
 
 import java.io.File;
 import java.io.IOException;
-import org.apache.kafka.common.protocol.SecurityProtocol;
+import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

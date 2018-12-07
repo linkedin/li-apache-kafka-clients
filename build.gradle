@@ -41,7 +41,7 @@ project.ext {
       url "https://github.com/linkedin/li-apache-kafka-clients"
     }
   }
-  kafkaVersion = "0.11.0.3"
+  kafkaVersion = "2.0.1"
 }
 
 subprojects {

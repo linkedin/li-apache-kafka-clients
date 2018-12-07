@@ -33,10 +33,10 @@ public class LageMessageCallbackTest {
     });
 
     for (int i = 0; i < numSegments - 1; i++) {
-      callback.onCompletion(new RecordMetadata(new TopicPartition("topic", 0), 0L, 0L, 0L, 0, 0, 0), null);
+      callback.onCompletion(new RecordMetadata(new TopicPartition("topic", 0), 0L, 0L, 0L, 0L, 0, 0), null);
       assertTrue("The user callback should not be fired.", callbackFired.get() == 0);
     }
-    callback.onCompletion(new RecordMetadata(new TopicPartition("topic", 0), 0L, 0L, 0L, 0, 0, 0), null);
+    callback.onCompletion(new RecordMetadata(new TopicPartition("topic", 0), 0L, 0L, 0L, 0L, 0, 0), null);
     assertTrue("The user callback should not be fired.", callbackFired.get() == 1);
   }
 
@@ -59,10 +59,10 @@ public class LageMessageCallbackTest {
       if (i == 3) {
         e = e1;
       }
-      callback.onCompletion(new RecordMetadata(new TopicPartition("topic", 0), 0L, 0L, 0L, 0, 0, 0), e);
+      callback.onCompletion(new RecordMetadata(new TopicPartition("topic", 0), 0L, 0L, 0L, 0L, 0, 0), e);
       assertTrue("The user callback should not be fired.", callbackFired.get() == 0);
     }
-    callback.onCompletion(new RecordMetadata(new TopicPartition("topic", 0), 0L, 0L, 0L, 0, 0, 0), e2);
+    callback.onCompletion(new RecordMetadata(new TopicPartition("topic", 0), 0L, 0L, 0L, 0L, 0, 0), e2);
     assertTrue("The user callback should not be fired.", callbackFired.get() == 1);
   }
 }

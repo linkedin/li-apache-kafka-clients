@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.common.network.Mode;
-import org.apache.kafka.common.protocol.SecurityProtocol;
+import org.apache.kafka.common.security.auth.SecurityProtocol;
 
 
 public class EmbeddedBrokerBuilder {
@@ -67,7 +67,7 @@ public class EmbeddedBrokerBuilder {
     this.logRetentionMs = millis;
     return this;
   }
-  
+
   public EmbeddedBrokerBuilder enable(SecurityProtocol protocol) {
     switch (protocol) {
       case PLAINTEXT:

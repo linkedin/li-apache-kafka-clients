@@ -13,6 +13,7 @@ import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -222,6 +223,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
+  public void subscribe(Pattern pattern) {
+    _kafkaConsumer.subscribe(pattern);
+  }
+
+  @Override
   public void unsubscribe() {
     // Clear all the state of the topic in consumer record processor.
     _consumerRecordsProcessor.clear();
@@ -269,44 +275,66 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
+  public ConsumerRecords<K, V> poll(Duration timeout) {
+    return poll(timeout.toMillis());
+  }
+
+  @Override
   public void commitSync() {
     // Preserve the high watermark.
-    commitOffsets(currentOffsetAndMetadataMap(), false, null, true);
+    commitOffsets(currentOffsetAndMetadataMap(), false, null, true, null);
+  }
+
+  @Override
+  public void commitSync(Duration timeout) {
+    commitOffsets(currentOffsetAndMetadataMap(), false, null, true, timeout);
   }
 
   @Override
   public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
     // ignore the high watermark.
-    commitOffsets(offsets, true, null, true);
+    commitOffsets(offsets, true, null, true, null);
+  }
+
+  @Override
+  public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
+    commitOffsets(offsets, true, null, true, timeout);
   }
 
   @Override
   public void commitAsync() {
-    commitOffsets(currentOffsetAndMetadataMap(), false, null, false);
+    commitOffsets(currentOffsetAndMetadataMap(), false, null, false, null);
   }
 
   @Override
   public void commitAsync(OffsetCommitCallback callback) {
     // preserve the high watermark.
-    commitOffsets(currentOffsetAndMetadataMap(), false, callback, false);
+    commitOffsets(currentOffsetAndMetadataMap(), false, callback, false, null);
   }
 
   @Override
   public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
     // Ignore the high watermark.
-    commitOffsets(offsets, true, callback, false);
+    commitOffsets(offsets, true, callback, false, null);
   }
 
   // Private function to avoid duplicate code.
+  // timeout is used when sync == true only.
   private void commitOffsets(Map<TopicPartition, OffsetAndMetadata> offsets,
                              boolean ignoreConsumerHighWatermark,
                              OffsetCommitCallback callback,
-                             boolean sync) {
+                             boolean sync,
+                             Duration timeout) {
     Map<TopicPartition, OffsetAndMetadata> offsetsToCommit =
         _consumerRecordsProcessor.safeOffsetsToCommit(offsets, ignoreConsumerHighWatermark);
     if (sync) {
-      LOG.trace("Committing offsets synchronously: {}", offsetsToCommit);
-      _kafkaConsumer.commitSync(offsetsToCommit);
+      if (timeout == null) {
+        LOG.trace("Committing offsets synchronously: {}", offsetsToCommit);
+        _kafkaConsumer.commitSync(offsetsToCommit);
+      } else {
+        LOG.trace("Committing offsets synchronously with timeout {} ms: {}", timeout.toMillis(), offsetsToCommit);
+        _kafkaConsumer.commitSync(offsetsToCommit, timeout);
+      }
     } else {
       LOG.trace("Committing offsets asynchronously: {}", offsetsToCommit);
       _offsetCommitCallback.setUserCallback(callback);
@@ -409,10 +437,24 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public long position(TopicPartition partition) {
+    return positionMain(partition, null);
+  }
+
+  @Override
+  public long position(TopicPartition partition, Duration timeout) {
+    return positionMain(partition, timeout);
+  }
+
+  // A help method for position() to avoid code duplication
+  private long positionMain(TopicPartition partition, Duration timeout) {
     // Not handling large message here. The position will be actual position.
     while (true) { // In kafka 0.10.x we can get an unbounded number of invalid offset exception
       try {
-        return _kafkaConsumer.position(partition);
+        if (timeout == null) {
+          return _kafkaConsumer.position(partition);
+        } else {
+          return _kafkaConsumer.position(partition, timeout);
+        }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
       }
@@ -528,10 +570,25 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public OffsetAndMetadata committed(TopicPartition partition) {
+    return committedMain(partition, null);
+  }
+
+  @Override
+  public OffsetAndMetadata committed(TopicPartition partition, Duration timeout) {
+    return committedMain(partition, timeout);
+  }
+
+  // A help method for committed() to avoid code duplication.
+  private OffsetAndMetadata committedMain(TopicPartition partition, Duration timeout) {
     // Not handling large message here. The committed will be the actual committed value.
     // The returned metadata includes the user committed offset and the user committed metadata, separated by the
     // first comma.
-    OffsetAndMetadata offsetAndMetadata = _kafkaConsumer.committed(partition);
+    OffsetAndMetadata offsetAndMetadata;
+    if (timeout == null) {
+      offsetAndMetadata = _kafkaConsumer.committed(partition);
+    } else {
+      offsetAndMetadata = _kafkaConsumer.committed(partition, timeout);
+    }
     if (offsetAndMetadata != null) {
       String rawMetadata = offsetAndMetadata.metadata();
       Long userOffset = LiKafkaClientsUtils.offsetFromWrappedMetadata(rawMetadata);
@@ -567,8 +624,18 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
+  public List<PartitionInfo> partitionsFor(String topic, Duration timeout) {
+    return _kafkaConsumer.partitionsFor(topic, timeout);
+  }
+
+  @Override
   public Map<String, List<PartitionInfo>> listTopics() {
     return _kafkaConsumer.listTopics();
+  }
+
+  @Override
+  public Map<String, List<PartitionInfo>> listTopics(Duration timeout) {
+    return _kafkaConsumer.listTopics(timeout);
   }
 
   @Override
@@ -592,13 +659,28 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
+  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch, Duration timeout) {
+    return _kafkaConsumer.offsetsForTimes(timestampsToSearch, timeout);
+  }
+
+  @Override
   public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
     return _kafkaConsumer.beginningOffsets(partitions);
   }
 
   @Override
+  public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions, Duration timeout) {
+    return _kafkaConsumer.beginningOffsets(partitions, timeout);
+  }
+
+  @Override
   public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
     return _kafkaConsumer.endOffsets(partitions);
+  }
+
+  @Override
+  public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions, Duration timeout) {
+    return _kafkaConsumer.endOffsets(partitions, timeout);
   }
 
   @Override
@@ -646,6 +728,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     remaining = System.currentTimeMillis() - deadline; //could be negative
     _consumerRecordsProcessor.close(Math.max(0, remaining), TimeUnit.MILLISECONDS);
     LOG.info("Shutdown complete in {} millis", (System.currentTimeMillis() - start));
+  }
+
+  @Override
+  public void close(Duration timeout) {
+    close(timeout.toMillis(), TimeUnit.MILLISECONDS);
   }
 
   @Override
