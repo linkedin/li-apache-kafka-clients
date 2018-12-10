@@ -351,6 +351,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     return _producer.partitionsFor(topic);
   }
 
+  @Override
   public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
     //TODO come back here when upstream API settles
     throw new UnsupportedOperationException("not implemented");
