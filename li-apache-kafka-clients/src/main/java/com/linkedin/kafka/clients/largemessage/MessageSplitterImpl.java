@@ -94,8 +94,8 @@ public class MessageSplitterImpl implements MessageSplitter {
       LargeMessageSegment segment = new LargeMessageSegment(segmentMessageId, seq,
           numberOfSegments, messageSizeInBytes, payload);
 
-      // NOTE: we have to use null topic here to serialize because the segment should be topic independent.
-      byte[] segmentValue = _segmentSerializer.serialize(null, segment);
+      // NOTE: Even though we are passing topic here to serialize, the segment itself should be topic independent.
+      byte[] segmentValue = _segmentSerializer.serialize(topic, segment);
       ProducerRecord<byte[], byte[]> segmentProducerRecord =
           new ProducerRecord<>(topic, partition, timestamp, segmentKey, segmentValue);
       segments.add(segmentProducerRecord);
