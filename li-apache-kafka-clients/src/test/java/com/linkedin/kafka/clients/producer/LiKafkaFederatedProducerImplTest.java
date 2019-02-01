@@ -69,7 +69,7 @@ public class LiKafkaFederatedProducerImplTest {
   }
 
   @Test
-  public void testSend() {
+  public void testBasicWorkflow() {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
     when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC1))).thenReturn(CLUSTER1);
     when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC2))).thenReturn(CLUSTER2);
@@ -109,6 +109,15 @@ public class LiKafkaFederatedProducerImplTest {
     List<ProducerRecord> expectedHistory2 = new ArrayList<>(Arrays.asList(record2));
     assertEquals("Cluster1", expectedHistory1, producer1.history());
     assertEquals("Cluster2", expectedHistory2, producer2.history());
+
+    // Verify per-cluster producers are not in closed state.
+    assertFalse("Producer for cluster 1 should have not been closed", producer1.closed());
+    assertFalse("Producer for cluster 2 should have not been closed", producer2.closed());
+
+    // Close the federated producer and verify both producers are closed.
+    _federatedProducer.close();
+    assertTrue("Producer for cluster 1 should have been closed", producer1.closed());
+    assertTrue("Producer for cluster 2 should have been closed", producer2.closed());
   }
 
   private boolean isError(Future<?> future) {

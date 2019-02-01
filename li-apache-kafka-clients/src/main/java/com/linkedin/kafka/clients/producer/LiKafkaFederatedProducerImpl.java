@@ -17,6 +17,7 @@ import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -36,6 +37,7 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
@@ -104,6 +106,10 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
     public boolean closed() {
       return _closed;
+    }
+
+    public void setClosed(boolean value) {
+      _closed = value;
     }
   }
 
@@ -355,7 +361,68 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   @Override
   public void close(long timeout, TimeUnit timeUnit) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    if (_producers.isEmpty()) {
+      LOG.warn("No producers to close for cluster group {}", _clusterGroup);
+      return;
+    }
+
+    LOG.info("Closing LiKafkaProducer for cluster group {} in {} {}...", _clusterGroup, timeout, timeUnit);
+
+    long startTimeMs = System.currentTimeMillis();
+    long budgetMs = timeUnit.toMillis(timeout);
+    long deadlineTimeMs = startTimeMs + budgetMs;
+
+    List<Thread> taskThreads = new ArrayList<>();
+    for (Map.Entry<ClusterDescriptor, PerClusterProducerContext<K, V>> entry : _producers.entrySet()) {
+      Thread taskThread = new Thread(new CloseTask(entry.getValue(), deadlineTimeMs));
+      taskThreads.add(taskThread);
+      taskThread.start();
+    }
+
+    for (Thread taskThread : taskThreads) {
+      try {
+        taskThread.join();
+      } catch (InterruptedException e) {
+        throw new KafkaException("Fail to close all producers for cluster group " + _clusterGroup, e);
+      }
+    }
+
+    LOG.info("LiKafkaProducer close for cluster group {} complete in {} milliseconds", _clusterGroup,
+        (System.currentTimeMillis() - startTimeMs));
+  }
+
+  private class CloseTask implements Runnable {
+    private PerClusterProducerContext<K, V> _context;
+    private long _deadlineTimeMs;
+
+    CloseTask(PerClusterProducerContext<K, V> context, long deadlineTimeMs) {
+      _context = context;
+      _deadlineTimeMs = _deadlineTimeMs;
+    }
+
+    public void run() {
+      LOG.info("Closing LiKafkaProducer for cluster {}", _context.cluster());
+      LongAdder numThreadsInSend = _context.numThreadsInSend();
+
+      _context.setClosed(true);
+      synchronized (numThreadsInSend) {
+        long remainingMs = _deadlineTimeMs - System.currentTimeMillis();
+        while (numThreadsInSend.intValue() > 0 && remainingMs > 0) {
+          try {
+            numThreadsInSend.wait(remainingMs);
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted when there are still {} sender threads for cluster {}.", numThreadsInSend.intValue(),
+                _context.cluster());
+            break;
+          }
+          remainingMs = _deadlineTimeMs - System.currentTimeMillis();
+        }
+      }
+
+      _context.auditor().close(Math.max(0, _deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+      _context.producer().close(Math.max(0, _deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+      LOG.info("LiKafkaProducer close complete for cluster {}", _context.cluster());
+    }
   }
 
   // Transactions are not supported in federated clients.
