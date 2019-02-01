@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.consumer;
 
+import com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -35,6 +36,10 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String ENABLE_AUTO_COMMIT_CONFIG = ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
+  public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_CONFIG;
+  public static final String CLUSTER_GROUP_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_GROUP_CONFIG;
+  public static final String CLUSTER_ENVIRONMENT_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_CONFIG;
 
   private static final String MESSAGE_ASSEMBLER_BUFFER_CAPACITY_DOC = "The maximum number of bytes the message assembler " +
       " uses to buffer the incomplete large message segments. The capacity is shared by messages from all the topics. " +
@@ -79,6 +84,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
       + "the offset to the latest offset</li><li>none: throw exception to the consumer if no previous offset is found "
       + "for the consumer's group</li><li>anything else: throw exception to the consumer.</li></ul>";
 
+  public static final String METADATA_SERVICE_CLIENT_CLASS_DOC =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_DOC;
+
+  public static final String CLUSTER_GROUP_DOC = LiKafkaCommonClientConfigs.CLUSTER_GROUP_DOC;
+
+  public static final String CLUSTER_ENVIRONMENT_DOC = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_DOC;
 
   static {
     CONFIG = new ConfigDef()
@@ -139,8 +150,17 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 Type.STRING,
                 "none",
                 Importance.MEDIUM,
-                AUTO_OFFSET_RESET_DOC);
-
+                AUTO_OFFSET_RESET_DOC)
+        .define(CLUSTER_GROUP_CONFIG,
+                Type.STRING,
+                "",
+                Importance.MEDIUM,
+                CLUSTER_GROUP_DOC)
+        .define(CLUSTER_ENVIRONMENT_CONFIG,
+                Type.STRING,
+                "",
+                Importance.MEDIUM,
+                CLUSTER_ENVIRONMENT_DOC);
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {

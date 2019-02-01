@@ -1,0 +1,24 @@
+/*
+ * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ */
+
+package com.linkedin.kafka.clients.common;
+
+
+/**
+ * The common configurations for both LiKafkaProducer and LiKafkaConsumer
+ */
+public final class LiKafkaCommonClientConfigs {
+  public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG = "metadata.service.client";
+  public static final String METADATA_SERVICE_CLIENT_CLASS_DOC = "The metadata service client class";
+
+  public static final String CLUSTER_GROUP_CONFIG = "cluster.group";
+  public static final String CLUSTER_GROUP_DOC = "The name of the cluster group";
+
+  public static final String CLUSTER_ENVIRONMENT_CONFIG = "cluster.environment";
+  public static final String CLUSTER_ENVIRONMENT_DOC = "The location of the cluster group";
+
+  private LiKafkaCommonClientConfigs() {
+    // Not called. Just to avoid style check error.
+  }
+}
