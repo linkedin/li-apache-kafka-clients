@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.metadataservice;
 
+import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 
 import java.util.Map;
@@ -28,7 +29,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    *
    * @param clientId          The id of the client
    * @param topicName         The topic name
-   * @return The name of the physical cluster where the topic is hosted
+   * @return The descriptor of the physical cluster where the topic is hosted
    */
-  public String getClusterForTopic(UUID clientId, String topicName);
+  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName);
 }
