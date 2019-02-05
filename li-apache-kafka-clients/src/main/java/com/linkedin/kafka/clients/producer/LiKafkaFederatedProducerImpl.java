@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
@@ -21,7 +22,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -55,12 +56,12 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
     // A counter of the threads in the middle of sending messages. This is needed to ensure when we close the producer
     // everything is audited.
-    private final AtomicInteger _numThreadsInSend = new AtomicInteger();
+    private final LongAdder _numThreadsInSend = new LongAdder();
     private volatile boolean _closed;
 
     // This is null if the underlying producer does not have an implementation for time-bounded flush
     private final Method _boundedFlushMethod;
-    private final AtomicInteger _boundFlushThreadCount = new AtomicInteger();
+    private final LongAdder _boundedFlushThreadCount = new LongAdder();
 
     public PerClusterProducerContext(LiKafkaProducerConfig configs) {
       _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
@@ -90,7 +91,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       return _auditor;
     }
 
-    public AtomicInteger numThreadsInSend() {
+    public LongAdder numThreadsInSend() {
       return _numThreadsInSend;
     }
 
@@ -109,7 +110,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   private UUID _clientId;
 
   // Per cluster producers, which sends raw bytes
-  private Map<String, PerClusterProducerContext<K, V>> _producers;
+  private Map<ClusterDescriptor, PerClusterProducerContext<K, V>> _producers;
 
   // Large message settings
   private final boolean _largeMessageEnabled;
@@ -156,7 +157,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
         configs.getString(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG));
 
     // Each per-cluster producer and auditor will be intantiated when the client starts producing to that cluster.
-    _producers = new HashMap<String, PerClusterProducerContext<K, V>>();
+    _producers = new HashMap<ClusterDescriptor, PerClusterProducerContext<K, V>>();
 
     try {
       // Instantiate metadata service client if necessary.

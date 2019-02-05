@@ -22,4 +22,8 @@ public class ClusterGroupDescriptor {
   public String name() {
     return _name;
   }
+
+  public String toString() {
+    return _name + "@" + _environment;
+  }
 }
