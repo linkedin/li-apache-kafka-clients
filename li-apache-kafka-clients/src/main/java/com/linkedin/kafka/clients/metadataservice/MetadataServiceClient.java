@@ -6,7 +6,6 @@ package com.linkedin.kafka.clients.metadataservice;
 
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 
-import java.io.Closeable;
 import java.util.Map;
 import java.util.UUID;
 
@@ -14,7 +13,7 @@ import org.apache.kafka.common.Configurable;
 
 
 // An interface to a generic metadata service which serves cluster and topic metadata for federated Kafka clusters.
-public interface MetadataServiceClient extends Configurable, Closeable {
+public interface MetadataServiceClient extends Configurable, AutoCloseable {
   /**
    * Register a federated client with the metadata service. Called by the client to be registered.
    *
