@@ -35,6 +35,9 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String SEGMENT_SERIALIZER_CLASS_CONFIG = "segment.serializer";
   public static final String UUID_FACTORY_CLASS_CONFIG = "uuid.factory.class";
   public static final String CURRENT_PRODUCER = "current.producer";
+  public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG = "metadata.service.client";
+  public static final String CLUSTER_GROUP_CONFIG = "cluster.group";
+  public static final String CLUSTER_ENVIRONMENT_CONFIG = "cluster.environment";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +
@@ -57,8 +60,14 @@ public class LiKafkaProducerConfig extends AbstractConfig {
 
   public static final String UUID_FACTORY_CLASS_DOC = "The UUID factory class to use for UUID generation.";
 
+  public static final String METADATA_SERVICE_CLIENT_CLASS_DOC = "The metadata service client class";
+
+  public static final String CLUSTER_GROUP_DOC = "The name of the cluster group";
+
+  public static final String CLUSTER_ENVIRONMENT_DOC = "The location of the cluster group";
 
   static {
+    // TODO: Add a default metadata service client class.
     CONFIG = new ConfigDef()
         .define(LARGE_MESSAGE_ENABLED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM, LARGE_MESSAGE_ENABLED_DOC)
         .define(MAX_MESSAGE_SEGMENT_BYTES_CONFIG, Type.INT, "800000", Importance.MEDIUM, MAX_MESSAGE_SEGMENT_BYTES_DOC)
