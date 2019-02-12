@@ -27,8 +27,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.MockProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -39,7 +37,6 @@ import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.ProducerFencedException;
-import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,18 +64,10 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     private final Method _boundedFlushMethod;
     private final LongAdder _boundedFlushThreadCount = new LongAdder();
 
-    public PerClusterProducerContext(ClusterDescriptor cluster, LiKafkaProducerConfig configs) {
-      this(cluster, configs, false);
-    }
-
     public PerClusterProducerContext(ClusterDescriptor cluster, LiKafkaProducerConfig configs,
-        boolean useMockProducer) {
+        Producer<byte[], byte[]> producer) {
       _cluster = cluster;
-      if (useMockProducer) {
-        _producer = new MockProducer<>(true, new ByteArraySerializer(), new ByteArraySerializer());
-      } else {
-        _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
-      }
+      _producer = producer;
 
       // TODO: This hack remains until bounded flush is added to apache/kafka
       Method producerSupportsBoundedFlush;
@@ -130,8 +119,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   // Per cluster producers, which sends raw bytes
   private Map<ClusterDescriptor, PerClusterProducerContext<K, V>> _producers;
 
-  // If true, create mock producers
-  private boolean _useMockProducer = false;
+  // Raw byte producer builder for creating per-cluster producer
+  private RawByteProducerBuilder _producerBuilder;
 
   // Producer configs common to all clusters
   private LiKafkaProducerConfig _commonProducerConfigs;
@@ -148,29 +137,21 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   private final UUIDFactory<K, V> _uuidFactory;
 
   public LiKafkaFederatedProducerImpl(Properties props) {
-    this(new LiKafkaProducerConfig(props), null, null, null, null, false);
+    this(new LiKafkaProducerConfig(props), null, null, null, null, null);
   }
 
   public LiKafkaFederatedProducerImpl(Properties props,
       Serializer<K> keySerializer,
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
-      MetadataServiceClient mdsClient) {
+      MetadataServiceClient mdsClient,
+      RawByteProducerBuilder producerBuilder) {
     this(new LiKafkaProducerConfig(props), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient,
-        false);
+        producerBuilder);
   }
 
   public LiKafkaFederatedProducerImpl(Map<String, ?> configs) {
-    this(new LiKafkaProducerConfig(configs), null, null, null, null, false);
-  }
-
-  public LiKafkaFederatedProducerImpl(Map<String, ?> configs,
-      Serializer<K> keySerializer,
-      Serializer<V> valueSerializer,
-      Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
-      MetadataServiceClient mdsClient) {
-    this(new LiKafkaProducerConfig(configs), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient,
-        false);
+    this(new LiKafkaProducerConfig(configs), null, null, null, null, null);
   }
 
   public LiKafkaFederatedProducerImpl(Map<String, ?> configs,
@@ -178,9 +159,9 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
       MetadataServiceClient mdsClient,
-      boolean useMockProducer) {
+      RawByteProducerBuilder producerBuilder) {
     this(new LiKafkaProducerConfig(configs), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient,
-        useMockProducer);
+        producerBuilder);
   }
 
   @SuppressWarnings("unchecked")
@@ -189,14 +170,15 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
       MetadataServiceClient mdsClient,
-      boolean useMockProducer) {
+      RawByteProducerBuilder producerBuilder) {
     _commonProducerConfigs = configs;
     _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaProducerConfig.CLUSTER_ENVIRONMENT_CONFIG),
         configs.getString(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG));
 
-    // Each per-cluster producer and auditor will be intantiated when the client begins to produce to that cluster.
+    // Each per-cluster producer and auditor will be intantiated by the passed-in producer builder when the client
+    // begins to produce to that cluster. If a null builder is passed, create a default one, which builds KafkaProducer.
     _producers = new HashMap<ClusterDescriptor, PerClusterProducerContext<K, V>>();
-    _useMockProducer = useMockProducer;
+    _producerBuilder = producerBuilder != null ? producerBuilder : new RawByteProducerBuilder();
 
     try {
       // Instantiate metadata service client if necessary.
@@ -253,12 +235,11 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     Producer<byte[], byte[]> producer = context.producer();
     Auditor<K, V> auditor = context.auditor();
     LongAdder numThreadsInSend = context.numThreadsInSend();
-    boolean closed = context.closed();
 
     numThreadsInSend.increment();
     boolean failed = true;
     try {
-      if (closed) {
+      if (context.closed()) {
         throw new IllegalStateException("LiKafkaProducer has been closed.");
       }
 
@@ -322,7 +303,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
             producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       }
       numThreadsInSend.decrement();
-      if (closed) {
+      if (context.closed()) {
         synchronized (numThreadsInSend) {
           numThreadsInSend.notifyAll();
         }
@@ -349,11 +330,6 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   @Override
   public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
     // TODO: come back here when upstream API settles
-    throw new UnsupportedOperationException("Not implemented yet");
-  }
-
-  @Override
-  public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -414,11 +390,12 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     }
 
     // Create per-cluster producer config with the actual bootstrap URL of the physical cluster to connect to.
-    Map<String, Object> perClusterProducerConfig = _commonProducerConfigs.originals();
-    perClusterProducerConfig.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
-    Producer<byte[], byte[]> producerToInject = null;
-    PerClusterProducerContext newContext =
-        new PerClusterProducerContext(cluster, new LiKafkaProducerConfig(perClusterProducerConfig), _useMockProducer);
+    Map<String, Object> configMap = _commonProducerConfigs.originals();
+    configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
+    LiKafkaProducerConfig perClusterProducerConfig = new LiKafkaProducerConfig(configMap);
+    _producerBuilder.setProducerConfig(perClusterProducerConfig);
+    PerClusterProducerContext newContext = new PerClusterProducerContext(cluster, perClusterProducerConfig,
+        _producerBuilder.build());
     _producers.put(cluster, newContext);
     return newContext;
   }

@@ -16,9 +16,11 @@ import java.util.UUID;
 import java.util.concurrent.Future;
 
 import org.apache.kafka.clients.producer.MockProducer;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -44,6 +46,13 @@ public class LiKafkaFederatedProducerImplTest {
   private MetadataServiceClient _mdsClient;
   private LiKafkaFederatedProducerImpl<byte[], byte[]> _federatedProducer;
 
+  private class MockProducerBuilder extends RawByteProducerBuilder {
+    @Override
+    public Producer<byte[], byte[]> build() {
+      return new MockProducer<>(true, new ByteArraySerializer(), new ByteArraySerializer());
+    }
+  }
+
   @BeforeMethod
   public void setup() {
     _mdsClient = Mockito.mock(MetadataServiceClient.class);
@@ -55,7 +64,8 @@ public class LiKafkaFederatedProducerImplTest {
     producerConfig.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
     producerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
 
-    _federatedProducer = new LiKafkaFederatedProducerImpl<>(producerConfig, null, null, null, _mdsClient, true);
+    _federatedProducer = new LiKafkaFederatedProducerImpl<>(producerConfig, null, null, null, _mdsClient,
+        new MockProducerBuilder());
   }
 
   @Test
