@@ -46,7 +46,7 @@ public class LiKafkaFederatedProducerImplTest {
   private MetadataServiceClient _mdsClient;
   private LiKafkaFederatedProducerImpl<byte[], byte[]> _federatedProducer;
 
-  private class MockProducerBuilder extends RawByteProducerBuilder {
+  private class MockProducerBuilder extends RawProducerBuilder {
     @Override
     public Producer<byte[], byte[]> build() {
       return new MockProducer<>(true, new ByteArraySerializer(), new ByteArraySerializer());

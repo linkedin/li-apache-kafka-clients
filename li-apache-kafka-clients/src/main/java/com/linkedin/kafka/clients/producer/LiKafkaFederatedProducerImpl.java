@@ -120,7 +120,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   private Map<ClusterDescriptor, PerClusterProducerContext<K, V>> _producers;
 
   // Raw byte producer builder for creating per-cluster producer
-  private RawByteProducerBuilder _producerBuilder;
+  private RawProducerBuilder _producerBuilder;
 
   // Producer configs common to all clusters
   private LiKafkaProducerConfig _commonProducerConfigs;
@@ -129,6 +129,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   private final boolean _largeMessageEnabled;
   private final int _maxMessageSegmentSize;
   private final MessageSplitter _messageSplitter;
+  private final boolean _largeMessageSegmentWrappingRequired;
 
   // Serializers
   private Serializer<K> _keySerializer;
@@ -145,7 +146,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
       MetadataServiceClient mdsClient,
-      RawByteProducerBuilder producerBuilder) {
+      RawProducerBuilder producerBuilder) {
     this(new LiKafkaProducerConfig(props), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient,
         producerBuilder);
   }
@@ -159,7 +160,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
       MetadataServiceClient mdsClient,
-      RawByteProducerBuilder producerBuilder) {
+      RawProducerBuilder producerBuilder) {
     this(new LiKafkaProducerConfig(configs), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient,
         producerBuilder);
   }
@@ -170,7 +171,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
       MetadataServiceClient mdsClient,
-      RawByteProducerBuilder producerBuilder) {
+      RawProducerBuilder producerBuilder) {
     _commonProducerConfigs = configs;
     _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaProducerConfig.CLUSTER_ENVIRONMENT_CONFIG),
         configs.getString(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG));
@@ -178,7 +179,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // Each per-cluster producer and auditor will be intantiated by the passed-in producer builder when the client
     // begins to produce to that cluster. If a null builder is passed, create a default one, which builds KafkaProducer.
     _producers = new HashMap<ClusterDescriptor, PerClusterProducerContext<K, V>>();
-    _producerBuilder = producerBuilder != null ? producerBuilder : new RawByteProducerBuilder();
+    _producerBuilder = producerBuilder != null ? producerBuilder : new RawProducerBuilder();
 
     try {
       // Instantiate metadata service client if necessary.
@@ -211,6 +212,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       segmentSerializer.configure(configs.originals(), false);
       _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
       _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
+      _largeMessageSegmentWrappingRequired =
+          configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG);
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
@@ -264,49 +267,56 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
         serializedValue = _valueSerializer.serialize(topic, value);
         serializedKey = _keySerializer.serialize(topic, key);
       } catch (Throwable t) {
-        // Audit the attempt and the failure.
+        // Audit the attempt. The failure will be recorded in the finally block below.
         auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.ATTEMPT);
         throw t;
       }
-      int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
-          + (serializedValue == null ? 0 : serializedValue.length);
+      int serializedKeyLength = serializedKey == null ? 0 : serializedKey.length;
+      int serializedValueLength = serializedValue == null ? 0 : serializedValue.length;
+      int sizeInBytes = serializedKeyLength + serializedValueLength;
       // Audit the attempt.
       auditor.record(auditToken, topic, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
       // We wrap the user callback for error logging and auditing purpose.
       Callback errorLoggingCallback =
           new ErrorLoggingCallback<>(messageId, auditToken, topic, timestamp, sizeInBytes, auditor, callback);
-      if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
+      if (_largeMessageEnabled && serializedValueLength > _maxMessageSegmentSize) {
+        // Split the payload into large message segments
         List<ProducerRecord<byte[], byte[]>> segmentRecords =
             _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue);
         Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
         for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
           future = producer.send(segmentRecord, largeMessageCallback);
         }
-      } else {
-        // In order to make sure consumer can consume both large message segment and the ordinary message,
-        // we wrap the normal message as a single segment large message. When consumer sees it, it will
-        // be returned by message assembler immediately. We set a pretty large maxSegmentSize to make sure
-        // the message will end up in one segment.
+      } else if (_largeMessageEnabled && _largeMessageSegmentWrappingRequired) {
+        // Wrap the paylod with a large message segment, even if the payload is not big enough to split
         List<ProducerRecord<byte[], byte[]>> wrappedRecord =
-            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, Integer.MAX_VALUE / 2);
-        assert (wrappedRecord.size() == 1);
+            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue,
+                serializedValueLength);
+        if (wrappedRecord.size() != 1) {
+          throw new IllegalStateException("Failed to create a large message segment wrapped message");
+        }
         future = producer.send(wrappedRecord.get(0), errorLoggingCallback);
+      } else {
+        // Do not wrap with a large message segment
+        future = producer.send(new ProducerRecord(topic, partition, timestamp, serializedKey, serializedValue),
+            errorLoggingCallback);
       }
       failed = false;
       return future;
     } catch (SkippableException e) {
-      LOG.warn("Exception thrown when producing message to partition {}-{}", producerRecord.topic(), producerRecord.partition());
+      LOG.warn("Exception thrown when producing message to partition {}-{}: {}", producerRecord.topic(),
+          producerRecord.partition(), e);
       return null;
     } finally {
-      if (failed) {
-        auditor.record(auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
-            producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
-      }
       numThreadsInSend.decrement();
       if (context.closed()) {
         synchronized (numThreadsInSend) {
           numThreadsInSend.notifyAll();
         }
+      }
+      if (failed) {
+        auditor.record(auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
+            producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       }
     }
   }

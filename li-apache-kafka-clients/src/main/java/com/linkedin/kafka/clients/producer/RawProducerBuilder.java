@@ -10,18 +10,18 @@ import org.apache.kafka.common.serialization.ByteArraySerializer;
 
 
 // A builder class that builds per-cluster raw byte producers.
-public class RawByteProducerBuilder {
+public class RawProducerBuilder {
   private LiKafkaProducerConfig _producerConfig;
 
-  public RawByteProducerBuilder() {
+  public RawProducerBuilder() {
     this(null);
   }
 
-  public RawByteProducerBuilder(LiKafkaProducerConfig producerConfig) {
+  public RawProducerBuilder(LiKafkaProducerConfig producerConfig) {
     _producerConfig = producerConfig;
   }
 
-  public RawByteProducerBuilder setProducerConfig(LiKafkaProducerConfig producerConfig) {
+  public RawProducerBuilder setProducerConfig(LiKafkaProducerConfig producerConfig) {
     _producerConfig = producerConfig;
     return this;
   }
