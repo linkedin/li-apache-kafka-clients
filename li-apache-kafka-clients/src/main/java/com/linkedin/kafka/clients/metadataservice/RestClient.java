@@ -100,11 +100,13 @@ public class RestClient {
       entity = httpResponse.getEntity();
       return new HttpResult(httpResponse.getStatusLine().getStatusCode(), EntityUtils.toString(entity));
     } catch (Exception e) {
-      LOG.error("HTTP {} to URI {} failed: {}", request.getMethod(), request.getURI(), request);
+      LOG.error("HTTP {} to URI {} failed (request: {}) : {}", request.getMethod(), request.getURI(), request, e);
       throw e;
     } finally {
       // Ensure the response is fully consumed, which in turn ensures the connection is released and ready for reuse.
-      EntityUtils.consume(entity);
+      if (entity != null) {
+        EntityUtils.consume(entity);
+      }
     }
   }
 }
