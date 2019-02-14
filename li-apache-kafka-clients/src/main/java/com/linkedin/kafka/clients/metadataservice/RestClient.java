@@ -18,6 +18,7 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
@@ -81,42 +82,29 @@ public class RestClient {
   }
 
   public HttpResult doGet(String path) throws IOException, URISyntaxException {
-    URI uri = null;
-    HttpGet httpGet = null;
-    try {
-      uri = new URIBuilder(_serviceUri).setPath(path).build();
-      httpGet = new HttpGet(uri);
-      try (CloseableHttpResponse httpResponse = _httpClient.execute(httpGet)) {
-        return getResult(httpResponse);
-      }
-    } catch (Exception e) {
-      LOG.error("HTTP GET to URI {} failed: {}", uri, httpGet);
-      throw e;
-    }
+    URI uri = new URIBuilder(_serviceUri).setPath(path).build();
+    HttpGet httpGet = new HttpGet(uri);
+    return executeRequest(httpGet);
   }
 
   public HttpResult doPost(String path, List<NameValuePair> postParameters) throws IOException, URISyntaxException {
-    URI uri = null;
-    HttpPost httpPost = null;
-    try {
-      uri = new URIBuilder(_serviceUri).setPath(path).build();
-      httpPost = new HttpPost(uri);
-      httpPost.setEntity(new UrlEncodedFormEntity(postParameters, UTF_8));
-      try (CloseableHttpResponse httpResponse = _httpClient.execute(httpPost)) {
-        return getResult(httpResponse);
-      }
-    } catch (Exception e) {
-      LOG.error("HTTP POST to URI {} failed: {}", uri, httpPost);
-      throw e;
-    }
+    URI uri = new URIBuilder(_serviceUri).setPath(path).build();
+    HttpPost httpPost = new HttpPost(uri);
+    httpPost.setEntity(new UrlEncodedFormEntity(postParameters, UTF_8));
+    return executeRequest(httpPost);
   }
 
-  private HttpResult getResult(CloseableHttpResponse httpResponse) throws IOException {
-    int statusCode = httpResponse.getStatusLine().getStatusCode();
-    HttpEntity entity = httpResponse.getEntity();
-    String responseContent = EntityUtils.toString(entity);
-    // Ensure the response is fully consumed, which in turn ensures the connection is released and ready for reuse.
-    EntityUtils.consume(entity);
-    return new HttpResult(statusCode, responseContent);
+  private HttpResult executeRequest(HttpRequestBase request) throws IOException {
+    HttpEntity entity = null;
+    try (CloseableHttpResponse httpResponse = _httpClient.execute(request)) {
+      entity = httpResponse.getEntity();
+      return new HttpResult(httpResponse.getStatusLine().getStatusCode(), EntityUtils.toString(entity));
+    } catch (Exception e) {
+      LOG.error("HTTP {} to URI {} failed: {}", request.getMethod(), request.getURI(), request);
+      throw e;
+    } finally {
+      // Ensure the response is fully consumed, which in turn ensures the connection is released and ready for reuse.
+      EntityUtils.consume(entity);
+    }
   }
 }
