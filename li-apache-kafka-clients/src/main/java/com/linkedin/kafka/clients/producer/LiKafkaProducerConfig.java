@@ -20,6 +20,8 @@ import org.apache.kafka.common.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
+
 /**
  * The configuration class for LiKafkaProducer
  */
@@ -38,6 +40,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG = "metadata.service.client";
   public static final String CLUSTER_GROUP_CONFIG = "cluster.group";
   public static final String CLUSTER_ENVIRONMENT_CONFIG = "cluster.environment";
+  public static final String MAX_REQUEST_SIZE_CONFIG = ProducerConfig.MAX_REQUEST_SIZE_CONFIG;
+  public static final String LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG = "large.message.segment.wrapping.required";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +
@@ -66,6 +70,13 @@ public class LiKafkaProducerConfig extends AbstractConfig {
 
   public static final String CLUSTER_ENVIRONMENT_DOC = "The location of the cluster group";
 
+  public static final String MAX_REQUEST_SIZE_DOC = "Maximum request size";
+
+  public static final String LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_DOC = "Whether or not to wrap every message " +
+      "payload in a large message segment, even if the original payload is smaller than max.message.segment.bytes " +
+      "and thus not split into multiple messages. This configuration does not have any effect if large message is " +
+      "not enabled.";
+
   static {
     // TODO: Add a default metadata service client class.
     CONFIG = new ConfigDef()
@@ -75,7 +86,12 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(KEY_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, KEY_SERIALIZER_CLASS_DOC)
         .define(VALUE_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, VALUE_SERIALIZER_CLASS_DOC)
         .define(SEGMENT_SERIALIZER_CLASS_CONFIG, Type.CLASS, DefaultSegmentSerializer.class.getName(), Importance.MEDIUM, SEGMENT_SERIALIZER_CLASS_DOC)
-        .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactory.DefaultUUIDFactory.class.getName(), Importance.LOW, UUID_FACTORY_CLASS_DOC);
+        .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactory.DefaultUUIDFactory.class.getName(), Importance.LOW, UUID_FACTORY_CLASS_DOC)
+        .define(CLUSTER_GROUP_CONFIG, Type.STRING, "", Importance.MEDIUM, CLUSTER_GROUP_DOC)
+        .define(CLUSTER_ENVIRONMENT_CONFIG, Type.STRING, "", Importance.MEDIUM, CLUSTER_ENVIRONMENT_DOC)
+        .define(MAX_REQUEST_SIZE_CONFIG, Type.INT, 1 * 1024 * 1024, atLeast(0), Importance.MEDIUM, MAX_REQUEST_SIZE_DOC)
+        .define(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM,
+            LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_DOC);
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {

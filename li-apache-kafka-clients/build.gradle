@@ -13,8 +13,9 @@ plugins {
 }
 
 dependencies {
-    compile "org.apache.kafka:kafka-clients:${rootProject.ext.kafkaVersion}"
     compile "org.apache.httpcomponents:httpclient:4.5.7"
+    compile "org.apache.kafka:kafka-clients:${rootProject.ext.kafkaVersion}"
+    testCompile "org.mockito:mockito-core:2.24.0"
 }
 
 publishing {

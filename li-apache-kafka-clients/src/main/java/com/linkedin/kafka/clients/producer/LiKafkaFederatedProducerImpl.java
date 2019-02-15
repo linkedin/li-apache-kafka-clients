@@ -4,12 +4,15 @@
 
 package com.linkedin.kafka.clients.producer;
 
+import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
+import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
+import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 
 import java.lang.reflect.Method;
@@ -24,7 +27,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -35,7 +37,6 @@ import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.ProducerFencedException;
-import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +51,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   // Per-cluster producer context
   private class PerClusterProducerContext<K, V> {
+    private final ClusterDescriptor _cluster;
     private Producer<byte[], byte[]> _producer;
     /*package private for testing*/ Auditor<K, V> _auditor;
 
@@ -62,8 +64,10 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     private final Method _boundedFlushMethod;
     private final LongAdder _boundedFlushThreadCount = new LongAdder();
 
-    public PerClusterProducerContext(LiKafkaProducerConfig configs) {
-      _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
+    public PerClusterProducerContext(ClusterDescriptor cluster, LiKafkaProducerConfig configs,
+        Producer<byte[], byte[]> producer) {
+      _cluster = cluster;
+      _producer = producer;
 
       // TODO: This hack remains until bounded flush is added to apache/kafka
       Method producerSupportsBoundedFlush;
@@ -80,6 +84,10 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       _auditor.start();
 
       _closed = false;
+    }
+
+    public ClusterDescriptor cluster() {
+      return _cluster;
     }
 
     public Producer<byte[], byte[]> producer() {
@@ -111,10 +119,17 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   // Per cluster producers, which sends raw bytes
   private Map<ClusterDescriptor, PerClusterProducerContext<K, V>> _producers;
 
+  // Raw byte producer builder for creating per-cluster producer
+  private RawProducerBuilder _producerBuilder;
+
+  // Producer configs common to all clusters
+  private LiKafkaProducerConfig _commonProducerConfigs;
+
   // Large message settings
   private final boolean _largeMessageEnabled;
   private final int _maxMessageSegmentSize;
   private final MessageSplitter _messageSplitter;
+  private final boolean _largeMessageSegmentWrappingRequired;
 
   // Serializers
   private Serializer<K> _keySerializer;
@@ -123,27 +138,31 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   private final UUIDFactory<K, V> _uuidFactory;
 
   public LiKafkaFederatedProducerImpl(Properties props) {
-    this(new LiKafkaProducerConfig(props), null, null, null, null);
+    this(new LiKafkaProducerConfig(props), null, null, null, null, null);
   }
 
   public LiKafkaFederatedProducerImpl(Properties props,
       Serializer<K> keySerializer,
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
-      MetadataServiceClient mdsClient) {
-    this(new LiKafkaProducerConfig(props), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient);
+      MetadataServiceClient mdsClient,
+      RawProducerBuilder producerBuilder) {
+    this(new LiKafkaProducerConfig(props), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient,
+        producerBuilder);
   }
 
   public LiKafkaFederatedProducerImpl(Map<String, ?> configs) {
-    this(new LiKafkaProducerConfig(configs), null, null, null, null);
+    this(new LiKafkaProducerConfig(configs), null, null, null, null, null);
   }
 
   public LiKafkaFederatedProducerImpl(Map<String, ?> configs,
       Serializer<K> keySerializer,
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
-      MetadataServiceClient mdsClient) {
-    this(new LiKafkaProducerConfig(configs), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient);
+      MetadataServiceClient mdsClient,
+      RawProducerBuilder producerBuilder) {
+    this(new LiKafkaProducerConfig(configs), keySerializer, valueSerializer, largeMessageSegmentSerializer, mdsClient,
+        producerBuilder);
   }
 
   @SuppressWarnings("unchecked")
@@ -151,12 +170,16 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       Serializer<K> keySerializer,
       Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer,
-      MetadataServiceClient mdsClient) {
+      MetadataServiceClient mdsClient,
+      RawProducerBuilder producerBuilder) {
+    _commonProducerConfigs = configs;
     _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaProducerConfig.CLUSTER_ENVIRONMENT_CONFIG),
         configs.getString(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG));
 
-    // Each per-cluster producer and auditor will be intantiated when the client starts producing to that cluster.
+    // Each per-cluster producer and auditor will be intantiated by the passed-in producer builder when the client
+    // begins to produce to that cluster. If a null builder is passed, create a default one, which builds KafkaProducer.
     _producers = new HashMap<ClusterDescriptor, PerClusterProducerContext<K, V>>();
+    _producerBuilder = producerBuilder != null ? producerBuilder : new RawProducerBuilder();
 
     try {
       // Instantiate metadata service client if necessary.
@@ -189,6 +212,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       segmentSerializer.configure(configs.originals(), false);
       _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
       _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
+      _largeMessageSegmentWrappingRequired =
+          configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG);
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
@@ -208,7 +233,92 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   @Override
   public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    String topic = producerRecord.topic();
+    PerClusterProducerContext context = getOrCreateProducerContextForTopic(topic);
+    Producer<byte[], byte[]> producer = context.producer();
+    Auditor<K, V> auditor = context.auditor();
+    LongAdder numThreadsInSend = context.numThreadsInSend();
+
+    numThreadsInSend.increment();
+    boolean failed = true;
+    try {
+      if (context.closed()) {
+        throw new IllegalStateException("LiKafkaProducer has been closed.");
+      }
+
+      K key = producerRecord.key();
+      V value = producerRecord.value();
+      Object auditToken = auditor.auditToken(key, value);
+      Long timestamp = producerRecord.timestamp() == null ? System.currentTimeMillis() : producerRecord.timestamp();
+      Integer partition = producerRecord.partition();
+      Future<RecordMetadata> future = null;
+      UUID messageId = _uuidFactory.getUuid(producerRecord);
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {} to cluster {}",
+            messageId.toString().replaceAll("-", ""),
+            value.toString(),
+            (key != null) ? key.toString() : "[none]",
+            topic,
+            context.cluster().name());
+      }
+      byte[] serializedValue;
+      byte[] serializedKey;
+      try {
+        serializedValue = _valueSerializer.serialize(topic, value);
+        serializedKey = _keySerializer.serialize(topic, key);
+      } catch (Throwable t) {
+        // Audit the attempt. The failure will be recorded in the finally block below.
+        auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.ATTEMPT);
+        throw t;
+      }
+      int serializedKeyLength = serializedKey == null ? 0 : serializedKey.length;
+      int serializedValueLength = serializedValue == null ? 0 : serializedValue.length;
+      int sizeInBytes = serializedKeyLength + serializedValueLength;
+      // Audit the attempt.
+      auditor.record(auditToken, topic, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
+      // We wrap the user callback for error logging and auditing purpose.
+      Callback errorLoggingCallback =
+          new ErrorLoggingCallback<>(messageId, auditToken, topic, timestamp, sizeInBytes, auditor, callback);
+      if (_largeMessageEnabled && serializedValueLength > _maxMessageSegmentSize) {
+        // Split the payload into large message segments
+        List<ProducerRecord<byte[], byte[]>> segmentRecords =
+            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue);
+        Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
+        for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
+          future = producer.send(segmentRecord, largeMessageCallback);
+        }
+      } else if (_largeMessageEnabled && _largeMessageSegmentWrappingRequired) {
+        // Wrap the paylod with a large message segment, even if the payload is not big enough to split
+        List<ProducerRecord<byte[], byte[]>> wrappedRecord =
+            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue,
+                serializedValueLength);
+        if (wrappedRecord.size() != 1) {
+          throw new IllegalStateException("Failed to create a large message segment wrapped message");
+        }
+        future = producer.send(wrappedRecord.get(0), errorLoggingCallback);
+      } else {
+        // Do not wrap with a large message segment
+        future = producer.send(new ProducerRecord(topic, partition, timestamp, serializedKey, serializedValue),
+            errorLoggingCallback);
+      }
+      failed = false;
+      return future;
+    } catch (SkippableException e) {
+      LOG.warn("Exception thrown when producing message to partition {}-{}: {}", producerRecord.topic(),
+          producerRecord.partition(), e);
+      return null;
+    } finally {
+      numThreadsInSend.decrement();
+      if (context.closed()) {
+        synchronized (numThreadsInSend) {
+          numThreadsInSend.notifyAll();
+        }
+      }
+      if (failed) {
+        auditor.record(auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
+            producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
+      }
+    }
   }
 
   @Override
@@ -223,11 +333,13 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   @Override
   public List<PartitionInfo> partitionsFor(String topic) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    PerClusterProducerContext<K, V> context = getOrCreateProducerContextForTopic(topic);
+    return context.producer().partitionsFor(topic);
   }
 
   @Override
   public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
+    // TODO: come back here when upstream API settles
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -271,5 +383,68 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   @Override
   public void abortTransaction() throws ProducerFencedException {
     throw new UnsupportedOperationException("Not supported");
+  }
+
+  public Producer<byte[], byte[]> getPerClusterProducer(ClusterDescriptor cluster) {
+    PerClusterProducerContext<K, V> context = _producers.get(cluster);
+    return context == null ? null : context.producer();
+  }
+
+  private PerClusterProducerContext<K, V> getOrCreateProducerContextForTopic(String topic) {
+    return getOrCreatePerClusterProducer(_mdsClient.getClusterForTopic(_clientId, topic));
+  }
+
+  private PerClusterProducerContext<K, V> getOrCreatePerClusterProducer(ClusterDescriptor cluster) {
+    if (_producers.containsKey(cluster)) {
+      return _producers.get(cluster);
+    }
+
+    // Create per-cluster producer config with the actual bootstrap URL of the physical cluster to connect to.
+    Map<String, Object> configMap = _commonProducerConfigs.originals();
+    configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
+    LiKafkaProducerConfig perClusterProducerConfig = new LiKafkaProducerConfig(configMap);
+    _producerBuilder.setProducerConfig(perClusterProducerConfig);
+    PerClusterProducerContext newContext = new PerClusterProducerContext(cluster, perClusterProducerConfig,
+        _producerBuilder.build());
+    _producers.put(cluster, newContext);
+    return newContext;
+  }
+
+  private static class ErrorLoggingCallback<K, V> implements Callback {
+    private final UUID _messageId;
+    private final String _topic;
+    private final Long _timestamp;
+    private final Integer _serializedSize;
+    private final Object _auditToken;
+    private final Auditor<K, V> _auditor;
+    private final Callback _userCallback;
+
+    public ErrorLoggingCallback(UUID messageId, Object auditToken, String topic, Long timestamp, Integer serializedSize,
+        Auditor<K, V> auditor, Callback userCallback) {
+      _messageId = messageId;
+      _topic = topic;
+      _timestamp = timestamp;
+      _serializedSize = serializedSize;
+      _auditor = auditor;
+      _auditToken = auditToken;
+      _userCallback = userCallback;
+    }
+
+    @Override
+    public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+      if (e != null) {
+        LOG.error(String.format("Unable to send event %s with message id %s to kafka topic %s",
+            _auditToken == null ? "[No Custom Info]" : _auditToken,
+            (_messageId != null) ? _messageId.toString().replaceAll("-", "") : "[none]", _topic), e);
+        // Audit the failure.
+        _auditor.record(_auditToken, _topic, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
+      } else {
+        // Audit the success.
+        _auditor.record(_auditToken, _topic, _timestamp, 1L, _serializedSize.longValue(), AuditType.SUCCESS);
+      }
+      if (_userCallback != null) {
+        _userCallback.onCompletion(recordMetadata, e);
+      }
+    }
   }
 }
