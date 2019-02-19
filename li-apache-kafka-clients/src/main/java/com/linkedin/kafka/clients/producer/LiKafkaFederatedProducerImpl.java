@@ -17,12 +17,12 @@ import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
@@ -372,19 +372,16 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     long budgetMs = timeUnit.toMillis(timeout);
     long deadlineTimeMs = startTimeMs + budgetMs;
 
-    List<Thread> taskThreads = new ArrayList<>();
+    CountDownLatch countDownLatch = new CountDownLatch(_producers.entrySet().size());
     for (Map.Entry<ClusterDescriptor, PerClusterProducerContext<K, V>> entry : _producers.entrySet()) {
-      Thread taskThread = new Thread(new CloseTask(entry.getValue(), deadlineTimeMs));
-      taskThreads.add(taskThread);
+      Thread taskThread = new Thread(new CloseTask(entry.getValue(), deadlineTimeMs, countDownLatch));
       taskThread.start();
     }
 
-    for (Thread taskThread : taskThreads) {
-      try {
-        taskThread.join();
-      } catch (InterruptedException e) {
-        throw new KafkaException("Fail to close all producers for cluster group " + _clusterGroup, e);
-      }
+    try {
+      countDownLatch.await();
+    } catch (InterruptedException e) {
+      throw new KafkaException("Fail to close all producers for cluster group " + _clusterGroup, e);
     }
 
     LOG.info("LiKafkaProducer close for cluster group {} complete in {} milliseconds", _clusterGroup,
@@ -394,34 +391,40 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   private class CloseTask implements Runnable {
     private PerClusterProducerContext<K, V> _context;
     private long _deadlineTimeMs;
+    private CountDownLatch _countDownLatch;
 
-    CloseTask(PerClusterProducerContext<K, V> context, long deadlineTimeMs) {
+    CloseTask(PerClusterProducerContext<K, V> context, long deadlineTimeMs, CountDownLatch countDownLatch) {
       _context = context;
       _deadlineTimeMs = _deadlineTimeMs;
+      _countDownLatch = countDownLatch;
     }
 
     public void run() {
-      LOG.info("Closing LiKafkaProducer for cluster {}", _context.cluster());
-      LongAdder numThreadsInSend = _context.numThreadsInSend();
+      try {
+        LOG.info("Closing LiKafkaProducer for cluster {}", _context.cluster());
+        LongAdder numThreadsInSend = _context.numThreadsInSend();
 
-      _context.setClosed(true);
-      synchronized (numThreadsInSend) {
-        long remainingMs = _deadlineTimeMs - System.currentTimeMillis();
-        while (numThreadsInSend.intValue() > 0 && remainingMs > 0) {
-          try {
-            numThreadsInSend.wait(remainingMs);
-          } catch (InterruptedException e) {
-            LOG.error("Interrupted when there are still {} sender threads for cluster {}.", numThreadsInSend.intValue(),
-                _context.cluster());
-            break;
+        _context.setClosed(true);
+        synchronized (numThreadsInSend) {
+          long remainingMs = _deadlineTimeMs - System.currentTimeMillis();
+          while (numThreadsInSend.intValue() > 0 && remainingMs > 0) {
+            try {
+              numThreadsInSend.wait(remainingMs);
+            } catch (InterruptedException e) {
+              LOG.error("Interrupted when there are still {} sender threads for cluster {}.",
+                  numThreadsInSend.intValue(), _context.cluster());
+              break;
+            }
+            remainingMs = _deadlineTimeMs - System.currentTimeMillis();
           }
-          remainingMs = _deadlineTimeMs - System.currentTimeMillis();
         }
-      }
 
-      _context.auditor().close(Math.max(0, _deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
-      _context.producer().close(Math.max(0, _deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
-      LOG.info("LiKafkaProducer close complete for cluster {}", _context.cluster());
+        _context.auditor().close(Math.max(0, _deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+        _context.producer().close(Math.max(0, _deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
+        LOG.info("LiKafkaProducer close complete for cluster {}", _context.cluster());
+      } finally {
+        _countDownLatch.countDown();
+      }
     }
   }
 
