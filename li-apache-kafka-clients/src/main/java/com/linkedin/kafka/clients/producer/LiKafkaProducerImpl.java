@@ -40,7 +40,7 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * This producer is the implementation of {@link LiKafkaProducer}.
@@ -119,6 +119,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final boolean _largeMessageEnabled;
   private final int _maxMessageSegmentSize;
   private final MessageSplitter _messageSplitter;
+  private final boolean _largeMessageSegmentWrappingRequired;
 
   // serializers
   private Serializer<K> _keySerializer;
@@ -131,12 +132,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   // A counter of the threads in the middle of sending messages. This is needed to ensure when we close the producer
   // everything is audited.
-  private final AtomicInteger _numThreadsInSend;
+  private final LongAdder _numThreadsInSend = new LongAdder();
   private volatile boolean _closed;
 
   // This is null if the underlying producer does not have an implementation for time-bounded flush
   private final Method _boundedFlushMethod;
-  private final AtomicInteger _boundFlushThreadCount = new AtomicInteger();
+  private final LongAdder _boundFlushThreadCount = new LongAdder();
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
@@ -192,12 +193,16 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
       // prepare to handle large messages.
       _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
-      _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
+      _maxMessageSegmentSize = Math.min(configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG),
+          configs.getInt(ProducerConfig.MAX_REQUEST_SIZE_CONFIG));
       Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer
           : configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
       segmentSerializer.configure(configs.originals(), false);
       _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
       _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
+      _largeMessageSegmentWrappingRequired =
+          configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG);
+
       // Instantiate auditor if necessary
       if (auditor != null) {
         _auditor = auditor;
@@ -206,7 +211,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor = configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class, _producer);
       }
       _auditor.start();
-      _numThreadsInSend = new AtomicInteger(0);
       _closed = false;
     } catch (Exception e) {
       _producer.close();
@@ -221,7 +225,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   @Override
   public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
-    _numThreadsInSend.incrementAndGet();
+    _numThreadsInSend.increment();
     boolean failed = true;
     try {
       if (_closed) {
@@ -252,29 +256,35 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.ATTEMPT);
         throw t;
       }
-      int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
-          + (serializedValue == null ? 0 : serializedValue.length);
+      int serializedKeyLength = serializedKey == null ? 0 : serializedKey.length;
+      int serializedValueLength = serializedValue == null ? 0 : serializedValue.length;
+      int sizeInBytes = serializedKeyLength + serializedValueLength;
       // Audit the attempt.
       _auditor.record(auditToken, topic, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
       // We wrap the user callback for error logging and auditing purpose.
       Callback errorLoggingCallback =
           new ErrorLoggingCallback<>(messageId, auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
-      if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
+      if (_largeMessageEnabled && serializedValueLength > _maxMessageSegmentSize) {
+        // Split the payload into large message segments
         List<ProducerRecord<byte[], byte[]>> segmentRecords =
             _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue);
         Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
         for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
           future = _producer.send(segmentRecord, largeMessageCallback);
         }
-      } else {
-        // In order to make sure consumer can consume both large message segment and the ordinary message,
-        // we wrap the normal message as a single segment large message. When consumer sees it, it will
-        // be returned by message assembler immediately. We set a pretty large maxSegmentSize to make sure
-        // the message will end up in one segment.
+      } else if (_largeMessageEnabled && _largeMessageSegmentWrappingRequired) {
+        // Wrap the paylod with a large message segment, even if the payload is not big enough to split
         List<ProducerRecord<byte[], byte[]>> wrappedRecord =
-            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, Integer.MAX_VALUE / 2);
-        assert (wrappedRecord.size() == 1);
+            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue,
+                serializedValueLength);
+        if (wrappedRecord.size() != 1) {
+          throw new IllegalStateException("Failed to create a large message segment wrapped message");
+        }
         future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
+      } else {
+        // Do not wrap with a large message segment
+        future = _producer.send(new ProducerRecord(topic, partition, timestamp, serializedKey, serializedValue),
+            errorLoggingCallback);
       }
       failed = false;
       return future;
@@ -286,7 +296,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
                         producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       }
-      _numThreadsInSend.decrementAndGet();
+      _numThreadsInSend.decrement();
       if (_closed) {
         synchronized (_numThreadsInSend) {
           _numThreadsInSend.notifyAll();
@@ -328,7 +338,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         latch.countDown();
       });
       t.setDaemon(true);
-      t.setName(BOUNDED_FLUSH_THREAD_PREFIX + _boundFlushThreadCount.getAndIncrement());
+      t.setName(BOUNDED_FLUSH_THREAD_PREFIX + _boundFlushThreadCount.intValue());
+      _boundFlushThreadCount.increment();
       t.setUncaughtExceptionHandler((t1, e) -> {
         LOG.warn("Thread " + t1.getName() + " terminated unexpectedly.", e);
       });
@@ -377,11 +388,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _closed = true;
     synchronized (_numThreadsInSend) {
       long remainingMs = deadlineTimeMs - System.currentTimeMillis();
-      while (_numThreadsInSend.get() > 0 && remainingMs > 0) {
+      while (_numThreadsInSend.intValue() > 0 && remainingMs > 0) {
         try {
           _numThreadsInSend.wait(remainingMs);
         } catch (InterruptedException e) {
-          LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.get());
+          LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.intValue());
           break;
         }
         remainingMs = deadlineTimeMs - System.currentTimeMillis();
