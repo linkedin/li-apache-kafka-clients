@@ -40,7 +40,7 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * This producer is the implementation of {@link LiKafkaProducer}.
@@ -132,12 +132,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   // A counter of the threads in the middle of sending messages. This is needed to ensure when we close the producer
   // everything is audited.
-  private final LongAdder _numThreadsInSend = new LongAdder();
+  private final AtomicInteger _numThreadsInSend;
   private volatile boolean _closed;
 
   // This is null if the underlying producer does not have an implementation for time-bounded flush
   private final Method _boundedFlushMethod;
-  private final LongAdder _boundFlushThreadCount = new LongAdder();
+  private final AtomicInteger _boundFlushThreadCount = new AtomicInteger();
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
@@ -211,6 +211,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor = configs.getConfiguredInstance(LiKafkaProducerConfig.AUDITOR_CLASS_CONFIG, Auditor.class, _producer);
       }
       _auditor.start();
+      _numThreadsInSend = new AtomicInteger(0);
       _closed = false;
     } catch (Exception e) {
       _producer.close();
@@ -225,7 +226,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   @Override
   public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
-    _numThreadsInSend.increment();
+    _numThreadsInSend.incrementAndGet();
     boolean failed = true;
     try {
       if (_closed) {
@@ -296,7 +297,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(_auditor.auditToken(producerRecord.key(), producerRecord.value()), producerRecord.topic(),
                         producerRecord.timestamp(), 1L, 0L, AuditType.FAILURE);
       }
-      _numThreadsInSend.decrement();
+      _numThreadsInSend.decrementAndGet();
       if (_closed) {
         synchronized (_numThreadsInSend) {
           _numThreadsInSend.notifyAll();
@@ -338,8 +339,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         latch.countDown();
       });
       t.setDaemon(true);
-      t.setName(BOUNDED_FLUSH_THREAD_PREFIX + _boundFlushThreadCount.intValue());
-      _boundFlushThreadCount.increment();
+      t.setName(BOUNDED_FLUSH_THREAD_PREFIX + _boundFlushThreadCount.getAndIncrement());
       t.setUncaughtExceptionHandler((t1, e) -> {
         LOG.warn("Thread " + t1.getName() + " terminated unexpectedly.", e);
       });
@@ -388,11 +388,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _closed = true;
     synchronized (_numThreadsInSend) {
       long remainingMs = deadlineTimeMs - System.currentTimeMillis();
-      while (_numThreadsInSend.intValue() > 0 && remainingMs > 0) {
+      while (_numThreadsInSend.get() > 0 && remainingMs > 0) {
         try {
           _numThreadsInSend.wait(remainingMs);
         } catch (InterruptedException e) {
-          LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.intValue());
+          LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.get());
           break;
         }
         remainingMs = deadlineTimeMs - System.currentTimeMillis();
@@ -472,6 +472,4 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   public void abortTransaction() throws ProducerFencedException {
     _producer.abortTransaction();
   }
-
-
 }
