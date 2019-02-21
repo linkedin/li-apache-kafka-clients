@@ -7,7 +7,9 @@ package com.linkedin.kafka.clients.producer;
 import java.util.Map;
 
 
-public class LiKafkaProducerBuilder<K, V> {
+// A class that builds a LiKafkaProducer using the passed-in producer configs. This is supposed to be used by
+// the federated producer to create per-cluster producers.
+class LiKafkaProducerBuilder<K, V> {
   private Map<String, Object> _configMap;
 
   public LiKafkaProducerBuilder() {

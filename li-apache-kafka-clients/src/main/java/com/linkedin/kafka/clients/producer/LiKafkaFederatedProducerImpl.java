@@ -86,7 +86,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
         configs.getString(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG));
 
     // Each per-cluster producer and auditor will be intantiated by the passed-in producer builder when the client
-    // begins to produce to that cluster. If a null builder is passed, create a default one, which builds KafkaProducer.
+    // begins to produce to that cluster. If a null builder is passed, create a default one, which builds LiKafkaProducer.
     _producers = new ConcurrentHashMap<ClusterDescriptor, LiKafkaProducer<K, V>>();
     _producerBuilder = producerBuilder != null ? producerBuilder : new LiKafkaProducerBuilder<K, V>();
 
@@ -142,14 +142,13 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     long deadlineTimeMs = startTimeMs + timeUnit.toMillis(timeout);
     CountDownLatch countDownLatch = new CountDownLatch(_producers.entrySet().size());
     for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
-      Thread taskThread = new Thread(() -> {
+      new Thread(() -> {
           try {
             entry.getValue().flush(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
           } finally {
             countDownLatch.countDown();
           }
-        });
-      taskThread.start();
+        }).start();
     }
 
     try {
@@ -196,14 +195,13 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     long deadlineTimeMs = startTimeMs + timeUnit.toMillis(timeout);
     CountDownLatch countDownLatch = new CountDownLatch(_producers.entrySet().size());
     for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
-      Thread taskThread = new Thread(() -> {
+      new Thread(() -> {
           try {
             entry.getValue().close(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
           } finally {
             countDownLatch.countDown();
           }
-        });
-      taskThread.start();
+        }).start();
     }
 
     try {
@@ -259,7 +257,6 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // Create per-cluster producer config with the actual bootstrap URL of the physical cluster to connect to.
     Map<String, Object> configMap = _commonProducerConfigs.originals();
     configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
-    LOG.error("##### producer Config: " + configMap);
     _producerBuilder.setProducerConfig(configMap);
     LiKafkaProducer<K, V> newProducer = _producerBuilder.build();
     _producers.put(cluster, newProducer);
