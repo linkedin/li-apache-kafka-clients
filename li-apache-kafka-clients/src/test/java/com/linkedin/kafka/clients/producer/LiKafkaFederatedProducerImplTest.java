@@ -16,11 +16,9 @@ import java.util.UUID;
 import java.util.concurrent.Future;
 
 import org.apache.kafka.clients.producer.MockProducer;
-import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -32,10 +30,16 @@ import static org.testng.AssertJUnit.assertNull;
 import static org.testng.AssertJUnit.assertTrue;
 import static org.testng.AssertJUnit.assertFalse;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+
 /**
  * The unit test for federated producer.
  */
 public class LiKafkaFederatedProducerImplTest {
+  private static final Logger LOG = LoggerFactory.getLogger(LiKafkaFederatedProducerImplTest.class);
+
   private static final UUID CLIENT_ID = new UUID(0, 0);
   private static final String TOPIC1 = "topic1";
   private static final String TOPIC2 = "topic2";
@@ -46,10 +50,10 @@ public class LiKafkaFederatedProducerImplTest {
   private MetadataServiceClient _mdsClient;
   private LiKafkaFederatedProducerImpl<byte[], byte[]> _federatedProducer;
 
-  private class MockProducerBuilder extends RawProducerBuilder {
+  private class MockProducerBuilder extends LiKafkaProducerBuilder<byte[], byte[]> {
     @Override
-    public Producer<byte[], byte[]> build() {
-      return new MockProducer<>(true, new ByteArraySerializer(), new ByteArraySerializer());
+    public LiKafkaProducer<byte[], byte[]> build() {
+      return new MockLiKafkaProducer();
     }
   }
 
@@ -64,8 +68,7 @@ public class LiKafkaFederatedProducerImplTest {
     producerConfig.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
     producerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
 
-    _federatedProducer = new LiKafkaFederatedProducerImpl<>(producerConfig, null, null, null, _mdsClient,
-        new MockProducerBuilder());
+    _federatedProducer = new LiKafkaFederatedProducerImpl<>(producerConfig, _mdsClient, new MockProducerBuilder());
   }
 
   @Test
@@ -86,22 +89,19 @@ public class LiKafkaFederatedProducerImplTest {
     ProducerRecord<byte[], byte[]> record2 = new ProducerRecord<>(TOPIC2, 0, 0L, "key2".getBytes(), "value2".getBytes());
     ProducerRecord<byte[], byte[]> record3 = new ProducerRecord<>(TOPIC3, 0, 0L, "key3".getBytes(), "value3".getBytes());
 
-    Future<RecordMetadata> metadata = _federatedProducer.send(record1);
-    assertTrue("Send for topic 1 should be immediately completed", metadata.isDone());
-    assertFalse("Send for topic 1 should be successful", isError(metadata));
+    Future<RecordMetadata> metadata1 = _federatedProducer.send(record1);
+    assertFalse("Send for topic 1 should not be done yet", metadata1.isDone());
 
     Future<RecordMetadata> metadata2 = _federatedProducer.send(record2);
-    assertTrue("Send for topic 2 should be immediately completed", metadata2.isDone());
-    assertFalse("Send for topic 2 should be successful", isError(metadata2));
+    assertFalse("Send for topic 2 should not be done yet", metadata2.isDone());
 
     Future<RecordMetadata> metadata3 = _federatedProducer.send(record3);
-    assertTrue("Send for topic 3 should be immediately completed", metadata3.isDone());
-    assertFalse("Send for topic 3 should be successful", isError(metadata3));
+    assertFalse("Send for topic 3 should not be done yet", metadata3.isDone());
 
     // Verify a correct producer is used for each send. Records 1 and 3 should be produced to cluster 1 and record 2 to
     // cluster 2.
-    MockProducer<byte[], byte[]> producer1 = (MockProducer) _federatedProducer.getPerClusterProducer(CLUSTER1);
-    MockProducer<byte[], byte[]> producer2 = (MockProducer) _federatedProducer.getPerClusterProducer(CLUSTER2);
+    MockProducer producer1 = ((MockLiKafkaProducer) _federatedProducer.getPerClusterProducer(CLUSTER1)).getDelegate();
+    MockProducer producer2 = ((MockLiKafkaProducer) _federatedProducer.getPerClusterProducer(CLUSTER2)).getDelegate();
     assertNotNull("Producer for cluster 1 should have been created", producer1);
     assertNotNull("Producer for cluster 2 should have been created", producer2);
 
@@ -109,6 +109,25 @@ public class LiKafkaFederatedProducerImplTest {
     List<ProducerRecord> expectedHistory2 = new ArrayList<>(Arrays.asList(record2));
     assertEquals("Cluster1", expectedHistory1, producer1.history());
     assertEquals("Cluster2", expectedHistory2, producer2.history());
+
+    // Verify per-cluster producers have not flushed yet.
+    assertFalse("Producer for cluster 1 should have not been flushed", producer1.flushed());
+    assertFalse("Producer for cluster 2 should have not been flushed", producer2.flushed());
+
+    // Flush the federated producer and verify both producers flush.
+    _federatedProducer.flush();
+    assertTrue("Producer for cluster 1 should have been flushed", producer1.flushed());
+    assertTrue("Producer for cluster 2 should have been flushed", producer2.flushed());
+
+    // All sends should have completed without errors.
+    assertTrue("Send for topic 1 should be immediately completed", metadata1.isDone());
+    assertFalse("Send for topic 1 should be successful", isError(metadata1));
+
+    assertTrue("Send for topic 2 should be immediately completed", metadata2.isDone());
+    assertFalse("Send for topic 2 should be successful", isError(metadata2));
+
+    assertTrue("Send for topic 3 should be immediately completed", metadata3.isDone());
+    assertFalse("Send for topic 3 should be successful", isError(metadata3));
 
     // Verify per-cluster producers are not in closed state.
     assertFalse("Producer for cluster 1 should have not been closed", producer1.closed());
