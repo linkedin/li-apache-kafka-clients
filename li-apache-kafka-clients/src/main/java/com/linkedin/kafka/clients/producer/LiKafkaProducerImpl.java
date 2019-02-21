@@ -119,6 +119,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final boolean _largeMessageEnabled;
   private final int _maxMessageSegmentSize;
   private final MessageSplitter _messageSplitter;
+  private final boolean _largeMessageSegmentWrappingRequired;
 
   // serializers
   private Serializer<K> _keySerializer;
@@ -192,12 +193,16 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
       // prepare to handle large messages.
       _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
-      _maxMessageSegmentSize = configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG);
+      _maxMessageSegmentSize = Math.min(configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG),
+          configs.getInt(ProducerConfig.MAX_REQUEST_SIZE_CONFIG));
       Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer
           : configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
       segmentSerializer.configure(configs.originals(), false);
       _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
       _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
+      _largeMessageSegmentWrappingRequired =
+          configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG);
+
       // Instantiate auditor if necessary
       if (auditor != null) {
         _auditor = auditor;
@@ -252,29 +257,35 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.ATTEMPT);
         throw t;
       }
-      int sizeInBytes = (serializedKey == null ? 0 : serializedKey.length)
-          + (serializedValue == null ? 0 : serializedValue.length);
+      int serializedKeyLength = serializedKey == null ? 0 : serializedKey.length;
+      int serializedValueLength = serializedValue == null ? 0 : serializedValue.length;
+      int sizeInBytes = serializedKeyLength + serializedValueLength;
       // Audit the attempt.
       _auditor.record(auditToken, topic, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
       // We wrap the user callback for error logging and auditing purpose.
       Callback errorLoggingCallback =
           new ErrorLoggingCallback<>(messageId, auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
-      if (_largeMessageEnabled && serializedValue != null && serializedValue.length > _maxMessageSegmentSize) {
+      if (_largeMessageEnabled && serializedValueLength > _maxMessageSegmentSize) {
+        // Split the payload into large message segments
         List<ProducerRecord<byte[], byte[]>> segmentRecords =
             _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue);
         Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
         for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
           future = _producer.send(segmentRecord, largeMessageCallback);
         }
-      } else {
-        // In order to make sure consumer can consume both large message segment and the ordinary message,
-        // we wrap the normal message as a single segment large message. When consumer sees it, it will
-        // be returned by message assembler immediately. We set a pretty large maxSegmentSize to make sure
-        // the message will end up in one segment.
+      } else if (_largeMessageEnabled && _largeMessageSegmentWrappingRequired) {
+        // Wrap the paylod with a large message segment, even if the payload is not big enough to split
         List<ProducerRecord<byte[], byte[]>> wrappedRecord =
-            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, Integer.MAX_VALUE / 2);
-        assert (wrappedRecord.size() == 1);
+            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue,
+                serializedValueLength);
+        if (wrappedRecord.size() != 1) {
+          throw new IllegalStateException("Failed to create a large message segment wrapped message");
+        }
         future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
+      } else {
+        // Do not wrap with a large message segment
+        future = _producer.send(new ProducerRecord(topic, partition, timestamp, serializedKey, serializedValue),
+            errorLoggingCallback);
       }
       failed = false;
       return future;
@@ -461,6 +472,4 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   public void abortTransaction() throws ProducerFencedException {
     _producer.abortTransaction();
   }
-
-
 }
