@@ -45,7 +45,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String CLUSTER_GROUP_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_GROUP_CONFIG;
   public static final String CLUSTER_ENVIRONMENT_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_CONFIG;
   public static final String MAX_REQUEST_SIZE_CONFIG = ProducerConfig.MAX_REQUEST_SIZE_CONFIG;
-  public static final String LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG = "large.message.segment.wrapping.required";
+  public static final String LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG =
+      "li.large.message.segment.wrapping.required";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +

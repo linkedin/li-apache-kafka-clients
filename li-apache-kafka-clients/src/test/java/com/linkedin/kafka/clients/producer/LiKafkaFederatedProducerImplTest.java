@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
 package com.linkedin.kafka.clients.producer;
@@ -60,7 +60,7 @@ public class LiKafkaFederatedProducerImplTest {
   @BeforeMethod
   public void setup() {
     _mdsClient = Mockito.mock(MetadataServiceClient.class);
-    when(_mdsClient.registerFederatedClient(anyObject(), anyObject())).thenReturn(CLIENT_ID);
+    when(_mdsClient.registerFederatedClient(anyObject(), anyObject(), anyInt())).thenReturn(CLIENT_ID);
 
     Map<String, String> producerConfig = new HashMap<>();
     producerConfig.put(LiKafkaProducerConfig.CLUSTER_ENVIRONMENT_CONFIG, "env");
@@ -74,9 +74,9 @@ public class LiKafkaFederatedProducerImplTest {
   @Test
   public void testBasicWorkflow() {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC1))).thenReturn(CLUSTER1);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC2))).thenReturn(CLUSTER2);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC3))).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC1), anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC2), anyInt())).thenReturn(CLUSTER2);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC3), anyInt())).thenReturn(CLUSTER1);
 
     // Make sure we start with a clean slate
     assertNull("Producer for cluster 1 should have not been created yet",

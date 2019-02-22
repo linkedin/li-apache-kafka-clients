@@ -45,6 +45,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // The client for the metadata service which serves cluster and topic metadata
   private MetadataServiceClient _mdsClient;
 
+  // Timeout in milliseconds for metadata service requests.
+  private int _mdsRequestTimeoutMs;
+
   // The id of this client assigned by the metadata service
   private UUID _clientId;
 
@@ -87,26 +90,23 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _consumers = new ConcurrentHashMap<ClusterDescriptor, LiKafkaConsumer<K, V>>();
     _consumerBuilder = consumerBuilder != null ? consumerBuilder : new LiKafkaConsumerBuilder<K, V>();
 
+    _mdsRequestTimeoutMs = configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
+
     try {
       // Instantiate metadata service client if necessary.
-      if (mdsClient == null) {
-        _mdsClient = configs.getConfiguredInstance(LiKafkaConsumerConfig.METADATA_SERVICE_CLIENT_CLASS_CONFIG,
-            MetadataServiceClient.class);
-        _mdsClient.setRequestTimeoutMs(configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG));
-      } else {
-        _mdsClient = mdsClient;
-      }
+      _mdsClient = mdsClient != null ? mdsClient :
+          configs.getConfiguredInstance(LiKafkaConsumerConfig.METADATA_SERVICE_CLIENT_CLASS_CONFIG, MetadataServiceClient.class);
 
       // Register this federated client with the metadata service. The metadata service will assign a UUID to this
       // client, which will be used for later interaction between the metadata service and the client.
       //
       // Registration may also return further information such as the metadata server version and any protocol settings.
       // We assume that such information will be kept and used by the metadata service client itself.
-      _clientId = mdsClient.registerFederatedClient(_clusterGroup, configs.originals());
+      _clientId = _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
-          _mdsClient.close();
+          _mdsClient.close(_mdsRequestTimeoutMs);
         }
       } catch (Exception e2) {
         e.addSuppressed(e2);

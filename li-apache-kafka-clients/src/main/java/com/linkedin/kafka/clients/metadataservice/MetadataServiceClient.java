@@ -20,23 +20,32 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    *
    * @param clusterGroup  The cluster group descriptor
    * @param configs       Client configs
+   * @param timeoutMs     Timeout in milliseconds
    * @return The id of the registered client
    */
-  public UUID registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs);
+  public UUID registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs, int timeoutMs);
 
   /**
    * Get the cluster name for the given topic from the given cluster group.
    *
    * @param clientId   The id of the client
    * @param topicName  The topic name
+   * @param timeoutMs     Timeout in milliseconds
    * @return The descriptor of the physical cluster where the topic is hosted
    */
-  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName);
+  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, int timeoutMs);
 
-  /** Set the default timeout for each request to the metadata service in milliseconds. If this is not set, each request
-   *  will wait indefinitely.
+  /**
+   * Close this metadata service client with the specified timeout.
    *
    * @param timeoutMs  Timeout in milliseconds
    */
-  public void setRequestTimeoutMs(int timeoutMs);
+  public void close(int timeoutMs);
+
+  /**
+   * Close this metadata service client with the maximum timeout.
+   */
+  default public void close() {
+    close(Integer.MAX_VALUE);
+  }
 }
