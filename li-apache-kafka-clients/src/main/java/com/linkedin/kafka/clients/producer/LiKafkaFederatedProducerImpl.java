@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
 package com.linkedin.kafka.clients.producer;
@@ -48,6 +48,9 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   // The client for the metadata service which serves cluster and topic metadata
   private MetadataServiceClient _mdsClient;
 
+  // Timeout in milliseconds for metadata service requests.
+  private int _mdsRequestTimeoutMs;
+
   // The id of this client assigned by the metadata service
   private UUID _clientId;
 
@@ -90,25 +93,26 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     _producers = new ConcurrentHashMap<ClusterDescriptor, LiKafkaProducer<K, V>>();
     _producerBuilder = producerBuilder != null ? producerBuilder : new LiKafkaProducerBuilder<K, V>();
 
+    _mdsRequestTimeoutMs = configs.getInt(LiKafkaProducerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
+
     try {
       // Instantiate metadata service client if necessary.
-        _mdsClient = mdsClient != null ? mdsClient :
-            configs.getConfiguredInstance(LiKafkaProducerConfig.METADATA_SERVICE_CLIENT_CLASS_CONFIG,
-                MetadataServiceClient.class);
+      _mdsClient = mdsClient != null ? mdsClient :
+          configs.getConfiguredInstance(LiKafkaProducerConfig.METADATA_SERVICE_CLIENT_CLASS_CONFIG, MetadataServiceClient.class);
 
       // Register this federated client with the metadata service. The metadata service will assign a UUID to this
       // client, which will be used for later interaction between the metadata service and the client.
       //
       // Registration may also return further information such as the metadata server version and any protocol settings.
       // We assume that such information will be kept and used by the metadata service client itself.
-      _clientId = mdsClient.registerFederatedClient(_clusterGroup, configs.originals());
+      _clientId = _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
-          _mdsClient.close();
+          _mdsClient.close(_mdsRequestTimeoutMs);
         }
       } catch (Exception e2) {
-        LOG.error("Failed to close the metadata service client", e2);
+        e.addSuppressed(e2);
       }
       throw e;
     }
@@ -246,7 +250,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   }
 
   private LiKafkaProducer<K, V> getOrCreateProducerForTopic(String topic) {
-    return getOrCreatePerClusterProducer(_mdsClient.getClusterForTopic(_clientId, topic));
+    return getOrCreatePerClusterProducer(_mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs));
   }
 
   private LiKafkaProducer<K, V> getOrCreatePerClusterProducer(ClusterDescriptor cluster) {

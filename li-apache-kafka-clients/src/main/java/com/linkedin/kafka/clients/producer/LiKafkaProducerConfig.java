@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
+import com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -37,11 +38,15 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String SEGMENT_SERIALIZER_CLASS_CONFIG = "segment.serializer";
   public static final String UUID_FACTORY_CLASS_CONFIG = "uuid.factory.class";
   public static final String CURRENT_PRODUCER = "current.producer";
-  public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG = "metadata.service.client";
-  public static final String CLUSTER_GROUP_CONFIG = "cluster.group";
-  public static final String CLUSTER_ENVIRONMENT_CONFIG = "cluster.environment";
+  public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_CONFIG;
+  public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG;
+  public static final String CLUSTER_GROUP_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_GROUP_CONFIG;
+  public static final String CLUSTER_ENVIRONMENT_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_CONFIG;
   public static final String MAX_REQUEST_SIZE_CONFIG = ProducerConfig.MAX_REQUEST_SIZE_CONFIG;
-  public static final String LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG = "large.message.segment.wrapping.required";
+  public static final String LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG =
+      "li.large.message.segment.wrapping.required";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +
@@ -64,11 +69,15 @@ public class LiKafkaProducerConfig extends AbstractConfig {
 
   public static final String UUID_FACTORY_CLASS_DOC = "The UUID factory class to use for UUID generation.";
 
-  public static final String METADATA_SERVICE_CLIENT_CLASS_DOC = "The metadata service client class";
+  public static final String METADATA_SERVICE_CLIENT_CLASS_DOC =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_DOC;
 
-  public static final String CLUSTER_GROUP_DOC = "The name of the cluster group";
+  public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC;
 
-  public static final String CLUSTER_ENVIRONMENT_DOC = "The location of the cluster group";
+  public static final String CLUSTER_GROUP_DOC = LiKafkaCommonClientConfigs.CLUSTER_GROUP_DOC;
+
+  public static final String CLUSTER_ENVIRONMENT_DOC = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_DOC;
 
   public static final String MAX_REQUEST_SIZE_DOC = "Maximum request size";
 
@@ -91,7 +100,10 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(CLUSTER_ENVIRONMENT_CONFIG, Type.STRING, "", Importance.MEDIUM, CLUSTER_ENVIRONMENT_DOC)
         .define(MAX_REQUEST_SIZE_CONFIG, Type.INT, 1 * 1024 * 1024, atLeast(0), Importance.MEDIUM, MAX_REQUEST_SIZE_DOC)
         .define(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, Type.BOOLEAN, "true", Importance.MEDIUM,
-            LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_DOC);
+            LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_DOC)
+        .define(METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG, Type.INT, Integer.MAX_VALUE, Importance.MEDIUM,
+            METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC);
+    ;
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {
