@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
 package com.linkedin.kafka.clients.metadataservice;
@@ -19,7 +19,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * Register a federated client with the metadata service. Called by the client to be registered.
    *
    * @param clusterGroup  The cluster group descriptor
-   * @param configs  Client configs
+   * @param configs       Client configs
    * @return The id of the registered client
    */
   public UUID registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs);
@@ -27,9 +27,16 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
   /**
    * Get the cluster name for the given topic from the given cluster group.
    *
-   * @param clientId          The id of the client
-   * @param topicName         The topic name
+   * @param clientId   The id of the client
+   * @param topicName  The topic name
    * @return The descriptor of the physical cluster where the topic is hosted
    */
   public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName);
+
+  /** Set the default timeout for each request to the metadata service in milliseconds. If this is not set, each request
+   *  will wait indefinitely.
+   *
+   * @param timeoutMs  Timeout in milliseconds
+   */
+  public void setRequestTimeoutMs(int timeoutMs);
 }

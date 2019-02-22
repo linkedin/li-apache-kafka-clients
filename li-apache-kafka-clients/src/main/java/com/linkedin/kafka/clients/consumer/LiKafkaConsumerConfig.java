@@ -38,6 +38,8 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
   public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_CONFIG;
+  public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG;
   public static final String CLUSTER_GROUP_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_GROUP_CONFIG;
   public static final String CLUSTER_ENVIRONMENT_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_CONFIG;
 
@@ -86,6 +88,9 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
 
   public static final String METADATA_SERVICE_CLIENT_CLASS_DOC =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_DOC;
+
+  public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC;
 
   public static final String CLUSTER_GROUP_DOC = LiKafkaCommonClientConfigs.CLUSTER_GROUP_DOC;
 
@@ -160,7 +165,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 Type.STRING,
                 "",
                 Importance.MEDIUM,
-                CLUSTER_ENVIRONMENT_DOC);
+                CLUSTER_ENVIRONMENT_DOC)
+        .define(METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG,
+                Type.INT,
+                Integer.MAX_VALUE,
+                Importance.MEDIUM,
+                METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC);
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
 package com.linkedin.kafka.clients.common;
@@ -11,6 +11,10 @@ package com.linkedin.kafka.clients.common;
 public final class LiKafkaCommonClientConfigs {
   public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG = "metadata.service.client";
   public static final String METADATA_SERVICE_CLIENT_CLASS_DOC = "The metadata service client class";
+
+  public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG = "metadata.service.request.timeout.ms";
+  public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC =
+      "Timeout in milliseconds for requests to the metadata service";
 
   public static final String CLUSTER_GROUP_CONFIG = "cluster.group";
   public static final String CLUSTER_GROUP_DOC = "The name of the cluster group";

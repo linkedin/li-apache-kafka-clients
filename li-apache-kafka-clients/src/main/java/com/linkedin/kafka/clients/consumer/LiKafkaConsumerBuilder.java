@@ -1,17 +1,18 @@
 /*
- * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
 package com.linkedin.kafka.clients.consumer;
 
+import java.util.Collections;
 import java.util.Map;
 
 
-public class LiKafkaConsumerBuilder<K, V> {
+class LiKafkaConsumerBuilder<K, V> {
   private Map<String, Object> _configMap;
 
   public LiKafkaConsumerBuilder() {
-    this(null);
+    this(Collections.emptyMap());
   }
 
   public LiKafkaConsumerBuilder(Map<String, Object> configMap) {
@@ -24,10 +25,7 @@ public class LiKafkaConsumerBuilder<K, V> {
   }
 
   public LiKafkaConsumer<K, V> build() {
-    if (_configMap == null) {
-      throw new IllegalStateException("Consumer config must be set");
-    }
-    // Serializers and auditor will be created using associated Consumer properties.
+    // Serializers and auditor will be created using associated consumer properties.
     return new LiKafkaConsumerImpl<K, V>(_configMap);
   }
 }

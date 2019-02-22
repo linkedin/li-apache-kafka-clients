@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
+ * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
 
 package com.linkedin.kafka.clients.consumer;
@@ -89,9 +89,13 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     try {
       // Instantiate metadata service client if necessary.
-      _mdsClient = mdsClient != null ? mdsClient :
-          configs.getConfiguredInstance(LiKafkaConsumerConfig.METADATA_SERVICE_CLIENT_CLASS_CONFIG,
-              MetadataServiceClient.class);
+      if (mdsClient == null) {
+        _mdsClient = configs.getConfiguredInstance(LiKafkaConsumerConfig.METADATA_SERVICE_CLIENT_CLASS_CONFIG,
+            MetadataServiceClient.class);
+        _mdsClient.setRequestTimeoutMs(configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG));
+      } else {
+        _mdsClient = mdsClient;
+      }
 
       // Register this federated client with the metadata service. The metadata service will assign a UUID to this
       // client, which will be used for later interaction between the metadata service and the client.
@@ -105,7 +109,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
           _mdsClient.close();
         }
       } catch (Exception e2) {
-        LOG.error("Failed to close the metadata service client", e2);
+        e.addSuppressed(e2);
       }
       throw e;
     }

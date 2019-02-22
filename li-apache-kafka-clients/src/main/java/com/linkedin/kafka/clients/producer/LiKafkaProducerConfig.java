@@ -40,6 +40,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String CURRENT_PRODUCER = "current.producer";
   public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_CONFIG;
+  public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG;
   public static final String CLUSTER_GROUP_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_GROUP_CONFIG;
   public static final String CLUSTER_ENVIRONMENT_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_CONFIG;
   public static final String MAX_REQUEST_SIZE_CONFIG = ProducerConfig.MAX_REQUEST_SIZE_CONFIG;
@@ -69,6 +71,9 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String METADATA_SERVICE_CLIENT_CLASS_DOC =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_DOC;
 
+  public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC =
+      LiKafkaCommonClientConfigs.METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC;
+
   public static final String CLUSTER_GROUP_DOC = LiKafkaCommonClientConfigs.CLUSTER_GROUP_DOC;
 
   public static final String CLUSTER_ENVIRONMENT_DOC = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_DOC;
@@ -94,7 +99,10 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(CLUSTER_ENVIRONMENT_CONFIG, Type.STRING, "", Importance.MEDIUM, CLUSTER_ENVIRONMENT_DOC)
         .define(MAX_REQUEST_SIZE_CONFIG, Type.INT, 1 * 1024 * 1024, atLeast(0), Importance.MEDIUM, MAX_REQUEST_SIZE_DOC)
         .define(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, Type.BOOLEAN, "true", Importance.MEDIUM,
-            LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_DOC);
+            LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_DOC)
+        .define(METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG, Type.INT, Integer.MAX_VALUE, Importance.MEDIUM,
+            METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC);
+    ;
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {
