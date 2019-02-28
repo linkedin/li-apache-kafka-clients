@@ -18,7 +18,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -68,11 +70,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     this(new LiKafkaConsumerConfig(props), mdsClient, consumerBuilder);
   }
 
-  public LiKafkaFederatedConsumerImpl(Map<String, Object> configs) {
+  public LiKafkaFederatedConsumerImpl(Map<String, ?> configs) {
     this(new LiKafkaConsumerConfig(configs), null, null);
   }
 
-  public LiKafkaFederatedConsumerImpl(Map<String, Object> configs, MetadataServiceClient mdsClient,
+  public LiKafkaFederatedConsumerImpl(Map<String, ?> configs, MetadataServiceClient mdsClient,
       LiKafkaConsumerBuilder<K, V> consumerBuilder) {
     this(new LiKafkaConsumerConfig(configs), mdsClient, consumerBuilder);
   }
@@ -117,7 +119,10 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public Set<TopicPartition> assignment() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    return _consumers.values().stream()
+        .map(consumer -> consumer.assignment())
+        .flatMap(Set::stream)
+        .collect(Collectors.toSet());
   }
 
   @Override
@@ -137,7 +142,18 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public void assign(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap =
+        _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
+    Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap =
+        topicPartitionToClusterMap.entrySet()
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    Map.Entry::getValue,
+                    Collectors.mapping(Map.Entry::getKey, Collectors.toSet())));
+    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
+      getOrCreatePerClusterConsumer(entry.getKey()).assign(entry.getValue());
+    }
   }
 
   @Override
@@ -349,4 +365,27 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   public void wakeup() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
+
+  public LiKafkaConsumer<K, V> getPerClusterConsumer(ClusterDescriptor cluster) {
+    return _consumers.get(cluster);
+  }
+
+  private LiKafkaConsumer<K, V> getOrCreateConsumerForTopic(String topic) {
+    return getOrCreatePerClusterConsumer(_mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs));
+  }
+
+  private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(ClusterDescriptor cluster) {
+    if (_consumers.containsKey(cluster)) {
+      return _consumers.get(cluster);
+    }
+
+    // Create per-cluster consumer config with the actual bootstrap URL of the physical cluster to connect to.
+    Map<String, Object> configMap = _commonConsumerConfigs.originals();
+    configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
+    _consumerBuilder.setConsumerConfig(configMap);
+    LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.build();
+    _consumers.put(cluster, newConsumer);
+    return newConsumer;
+  }
+
 }

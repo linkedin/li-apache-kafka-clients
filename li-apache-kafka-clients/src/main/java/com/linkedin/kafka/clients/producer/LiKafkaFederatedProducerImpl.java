@@ -4,8 +4,6 @@
 
 package com.linkedin.kafka.clients.producer;
 
-import com.linkedin.kafka.clients.auditing.AuditType;
-import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
@@ -265,43 +263,5 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     LiKafkaProducer<K, V> newProducer = _producerBuilder.build();
     _producers.put(cluster, newProducer);
     return newProducer;
-  }
-
-  private static class ErrorLoggingCallback<K, V> implements Callback {
-    private final UUID _messageId;
-    private final String _topic;
-    private final Long _timestamp;
-    private final Integer _serializedSize;
-    private final Object _auditToken;
-    private final Auditor<K, V> _auditor;
-    private final Callback _userCallback;
-
-    public ErrorLoggingCallback(UUID messageId, Object auditToken, String topic, Long timestamp, Integer serializedSize,
-        Auditor<K, V> auditor, Callback userCallback) {
-      _messageId = messageId;
-      _topic = topic;
-      _timestamp = timestamp;
-      _serializedSize = serializedSize;
-      _auditor = auditor;
-      _auditToken = auditToken;
-      _userCallback = userCallback;
-    }
-
-    @Override
-    public void onCompletion(RecordMetadata recordMetadata, Exception e) {
-      if (e != null) {
-        LOG.error(String.format("Unable to send event %s with message id %s to kafka topic %s",
-            _auditToken == null ? "[No Custom Info]" : _auditToken,
-            (_messageId != null) ? _messageId.toString().replaceAll("-", "") : "[none]", _topic), e);
-        // Audit the failure.
-        _auditor.record(_auditToken, _topic, _timestamp, 1L, _serializedSize.longValue(), AuditType.FAILURE);
-      } else {
-        // Audit the success.
-        _auditor.record(_auditToken, _topic, _timestamp, 1L, _serializedSize.longValue(), AuditType.SUCCESS);
-      }
-      if (_userCallback != null) {
-        _userCallback.onCompletion(recordMetadata, e);
-      }
-    }
   }
 }
