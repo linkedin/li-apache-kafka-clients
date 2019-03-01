@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.consumer;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -15,8 +16,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Future;
 
-import org.apache.kafka.clients.consumer.MockConsumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.MockConsumer;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
@@ -25,8 +28,10 @@ import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 import static org.testng.AssertJUnit.assertEquals;
+import static org.testng.AssertJUnit.assertFalse;
 import static org.testng.AssertJUnit.assertNotNull;
 import static org.testng.AssertJUnit.assertNull;
+import static org.testng.AssertJUnit.assertTrue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,6 +116,49 @@ public class LiKafkaFederatedConsumerImplTest {
     // Verify if assignment() returns all topic partitions.
     assertEquals("assignment() should return all topic partitions",
         new HashSet<TopicPartition>(expectedTopicPartitions), _federatedConsumer.assignment());
+
+    // Set beginning offsets for each per-cluster consumer (needed for MockConsumer).
+    HashMap<TopicPartition, Long> beginningOffsets1 = new HashMap<>();
+    beginningOffsets1.put(TOPIC_PARTITION1, 0L);
+    beginningOffsets1.put(TOPIC_PARTITION3, 0L);
+    consumer1.updateBeginningOffsets(beginningOffsets1);
+
+    HashMap<TopicPartition, Long> beginningOffsets2 = new HashMap<>();
+    beginningOffsets2.put(TOPIC_PARTITION2, 0L);
+    consumer2.updateBeginningOffsets(beginningOffsets2);
+
+    // Prepare test setup where one record for topic1, two records for topic2, and one record for topic3 are available
+    // for consumption.
+    ConsumerRecord<byte[], byte[]> record1 = new ConsumerRecord(TOPIC_PARTITION1.topic(), TOPIC_PARTITION1.partition(),
+        0, "key1", "value1");
+    ConsumerRecord<byte[], byte[]> record2 = new ConsumerRecord(TOPIC_PARTITION2.topic(), TOPIC_PARTITION2.partition(),
+        0, "key2", "value2");
+    ConsumerRecord<byte[], byte[]> record3 = new ConsumerRecord(TOPIC_PARTITION2.topic(), TOPIC_PARTITION2.partition(),
+        1, "key4", "value4");
+    ConsumerRecord<byte[], byte[]> record4 = new ConsumerRecord(TOPIC_PARTITION3.topic(), TOPIC_PARTITION3.partition(),
+        0, "key3", "value3");
+
+    consumer1.addRecord(record1);
+    consumer1.addRecord(record4);
+
+    consumer2.addRecord(record2);
+    consumer2.addRecord(record3);
+
+    // Poll the federated consumer and verify the result.
+    ConsumerRecords<byte[], byte[]> pollResult = _federatedConsumer.poll(1000);
+    assertEquals("poll should return four records", 4, pollResult.count());
+    assertEquals("poll should return one record for topic1", new ArrayList<>(Arrays.asList(record1)), pollResult.records(TOPIC_PARTITION1));
+    assertEquals("poll should return two records for topic2", new ArrayList<>(Arrays.asList(record2, record3)), pollResult.records(TOPIC_PARTITION2));
+    assertEquals("poll should return one record for topic3", new ArrayList<>(Arrays.asList(record4)), pollResult.records(TOPIC_PARTITION3));
+
+    // Verify per-cluster consumers are not in closed state.
+    assertFalse("Consumer for cluster 1 should have not been closed", consumer1.closed());
+    assertFalse("Consumer for cluster 2 should have not been closed", consumer2.closed());
+
+    // Close the federated consumer and verify both consumers are closed.
+    _federatedConsumer.close();
+    assertTrue("Consumer for cluster 1 should have been closed", consumer1.closed());
+    assertTrue("Consumer for cluster 2 should have been closed", consumer2.closed());
   }
 
   private boolean isError(Future<?> future) {
