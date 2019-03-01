@@ -10,6 +10,8 @@ import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -19,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -68,11 +71,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     this(new LiKafkaConsumerConfig(props), mdsClient, consumerBuilder);
   }
 
-  public LiKafkaFederatedConsumerImpl(Map<String, Object> configs) {
+  public LiKafkaFederatedConsumerImpl(Map<String, ?> configs) {
     this(new LiKafkaConsumerConfig(configs), null, null);
   }
 
-  public LiKafkaFederatedConsumerImpl(Map<String, Object> configs, MetadataServiceClient mdsClient,
+  public LiKafkaFederatedConsumerImpl(Map<String, ?> configs, MetadataServiceClient mdsClient,
       LiKafkaConsumerBuilder<K, V> consumerBuilder) {
     this(new LiKafkaConsumerConfig(configs), mdsClient, consumerBuilder);
   }
@@ -117,7 +120,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public Set<TopicPartition> assignment() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    Set<TopicPartition> aggregate = new HashSet<>();
+    for (LiKafkaConsumer<K, V> consumer : _consumers.values()) {
+      aggregate.addAll(consumer.assignment());
+    }
+    return aggregate;
   }
 
   @Override
@@ -137,7 +144,40 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public void assign(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    if (partitions == null) {
+      throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
+    }
+
+    // If partitions are empty, it should be treated the same as unsubscribe(). This is the vanilla Kafka consumer
+    // behavior.
+    if (partitions.isEmpty()) {
+      unsubscribe();
+      return;
+    }
+
+    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap =
+        _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
+
+    // Reverse the map so that we can have per-cluster topic partition sets.
+    Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap = new HashMap<>();
+    Set<TopicPartition> nonexistentTopicPartitions = new HashSet<>();
+    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : topicPartitionToClusterMap.entrySet()) {
+      TopicPartition topicPartition = entry.getKey();
+      ClusterDescriptor cluster = entry.getValue();
+      if (cluster == null) {
+        nonexistentTopicPartitions.add(topicPartition);
+      } else {
+        clusterToTopicPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
+      }
+    }
+
+    if (!nonexistentTopicPartitions.isEmpty()) {
+      throw new IllegalStateException("Cannot assign nonexistent partitions: " + nonexistentTopicPartitions);
+    }
+
+    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
+      getOrCreatePerClusterConsumer(entry.getKey()).assign(entry.getValue());
+    }
   }
 
   @Override
@@ -348,5 +388,43 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   @Override
   public void wakeup() {
     throw new UnsupportedOperationException("Not implemented yet");
+  }
+
+  // Intended for testing only
+  LiKafkaConsumer<K, V> getPerClusterConsumer(ClusterDescriptor cluster) {
+    return _consumers.get(cluster);
+  }
+
+  private LiKafkaConsumer<K, V> getOrCreateConsumerForTopic(String topic) {
+    if (topic == null || topic.isEmpty()) {
+      throw new IllegalArgumentException("Topic cannot be null or empty");
+    }
+
+    // TODO: Handle nonexistent topics more elegantly with auto topic creation option
+    ClusterDescriptor cluster = _mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs);
+    if (cluster == null) {
+      throw new IllegalStateException("Topic " + topic + " not found in the metadata service");
+    }
+
+    return getOrCreatePerClusterConsumer(_mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs));
+  }
+
+  // Returns null if the specified topic does not exist in the cluster group.
+  private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(ClusterDescriptor cluster) {
+    if (cluster == null) {
+      throw new IllegalArgumentException("Cluster cannot be null");
+    }
+
+    if (_consumers.containsKey(cluster)) {
+      return _consumers.get(cluster);
+    }
+
+    // Create per-cluster consumer config with the actual bootstrap URL of the physical cluster to connect to.
+    Map<String, Object> configMap = _commonConsumerConfigs.originals();
+    configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
+    _consumerBuilder.setConsumerConfig(configMap);
+    LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.build();
+    _consumers.put(cluster, newConsumer);
+    return newConsumer;
   }
 }
