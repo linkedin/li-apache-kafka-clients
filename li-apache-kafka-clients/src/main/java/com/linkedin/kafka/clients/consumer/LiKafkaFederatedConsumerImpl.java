@@ -144,6 +144,16 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public void assign(Collection<TopicPartition> partitions) {
+    if (partitions == null) {
+      throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
+    }
+
+    // If partitions are empty, it should be treated the same as unsubscribe().
+    if (partitions.isEmpty()) {
+      unsubscribe();
+      return;
+    }
+
     Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap =
         _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
 
@@ -152,10 +162,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     for (Map.Entry<TopicPartition, ClusterDescriptor> entry : topicPartitionToClusterMap.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       ClusterDescriptor cluster = entry.getValue();
-      Set<TopicPartition> newTopicPartitionSet =
-          clusterToTopicPartitionsMap.getOrDefault(cluster, new HashSet<TopicPartition>());
-      newTopicPartitionSet.add(topicPartition);
-      clusterToTopicPartitionsMap.put(cluster, newTopicPartitionSet);
+      clusterToTopicPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
     }
 
     for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
@@ -379,10 +386,25 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   private LiKafkaConsumer<K, V> getOrCreateConsumerForTopic(String topic) {
+    if (topic == null || topic.isEmpty()) {
+      throw new IllegalArgumentException("Topic cannot be null or empty");
+    }
+
+    // TODO: Handle nonexistent topics more elegantly with auto topic creation option
+    ClusterDescriptor cluster = _mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs);
+    if (cluster == null) {
+      throw new IllegalStateException("Topic " + topic + " not found in the metadata service");
+    }
+
     return getOrCreatePerClusterConsumer(_mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs));
   }
 
+  // Returns null if the specified topic does not exist in the cluster group.
   private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(ClusterDescriptor cluster) {
+    if (cluster == null) {
+      throw new IllegalArgumentException("Cluster cannot be null");
+    }
+
     if (_consumers.containsKey(cluster)) {
       return _consumers.get(cluster);
     }
@@ -395,5 +417,4 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _consumers.put(cluster, newConsumer);
     return newConsumer;
   }
-
 }

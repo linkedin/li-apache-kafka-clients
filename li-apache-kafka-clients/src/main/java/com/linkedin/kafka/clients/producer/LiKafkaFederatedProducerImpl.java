@@ -249,10 +249,23 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   }
 
   private LiKafkaProducer<K, V> getOrCreateProducerForTopic(String topic) {
-    return getOrCreatePerClusterProducer(_mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs));
+    if (topic == null || topic.isEmpty()) {
+      throw new IllegalArgumentException("Topic cannot be null or empty");
+    }
+
+    // TODO: Handle nonexistent topics more elegantly with auto topic creation option
+    ClusterDescriptor cluster = _mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs);
+    if (cluster == null) {
+      throw new IllegalStateException("Topic " + topic + " not found in the metadata service");
+    }
+    return getOrCreatePerClusterProducer(cluster);
   }
 
   private LiKafkaProducer<K, V> getOrCreatePerClusterProducer(ClusterDescriptor cluster) {
+    if (cluster == null) {
+      throw new IllegalArgumentException("Cluster cannot be null");
+    }
+
     if (_producers.containsKey(cluster)) {
       return _producers.get(cluster);
     }
