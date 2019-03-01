@@ -28,7 +28,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
   public UUID registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs, int timeoutMs);
 
   /**
-   * Get the cluster name for the given topic.
+   * Get the cluster name for the given topic. If the topic does not exist in this group, return null.
    *
    * @param clientId   The id of the client
    * @param topicName  The topic name
@@ -38,7 +38,8 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
   public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, int timeoutMs);
 
   /**
-   * Get a map from the given topic partitions to the clusters where they are hosted.
+   * Get a map from the given topic partitions to the clusters where they are hosted. For nonexistent topic partitions,
+   * the cluster will be set to null.
    *
    * @param clientId         The id of the client
    * @param topicPartitions  The topic partitions

@@ -148,7 +148,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
     }
 
-    // If partitions are empty, it should be treated the same as unsubscribe().
+    // If partitions are empty, it should be treated the same as unsubscribe(). This is the vanilla Kafka consumer
+    // behavior.
     if (partitions.isEmpty()) {
       unsubscribe();
       return;
@@ -159,10 +160,19 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     // Reverse the map so that we can have per-cluster topic partition sets.
     Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap = new HashMap<>();
+    Set<TopicPartition> nonexistentTopicPartitions = new HashSet<>();
     for (Map.Entry<TopicPartition, ClusterDescriptor> entry : topicPartitionToClusterMap.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       ClusterDescriptor cluster = entry.getValue();
-      clusterToTopicPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
+      if (cluster == null) {
+        nonexistentTopicPartitions.add(topicPartition);
+      } else {
+        clusterToTopicPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
+      }
+    }
+
+    if (!nonexistentTopicPartitions.isEmpty()) {
+      throw new IllegalStateException("Cannot assign nonexistent partitions: " + nonexistentTopicPartitions);
     }
 
     for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
