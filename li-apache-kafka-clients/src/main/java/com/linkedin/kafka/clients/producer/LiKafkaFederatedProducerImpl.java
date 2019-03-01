@@ -243,7 +243,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     throw new UnsupportedOperationException("Not supported");
   }
 
-  public LiKafkaProducer<K, V> getPerClusterProducer(ClusterDescriptor cluster) {
+  // Intended for testing only
+  LiKafkaProducer<K, V> getPerClusterProducer(ClusterDescriptor cluster) {
     return _producers.get(cluster);
   }
 

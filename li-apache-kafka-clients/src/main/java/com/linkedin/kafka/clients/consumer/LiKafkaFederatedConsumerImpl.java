@@ -10,6 +10,8 @@ import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -18,7 +20,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -119,10 +120,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public Set<TopicPartition> assignment() {
-    return _consumers.values().stream()
-        .map(consumer -> consumer.assignment())
-        .flatMap(Set::stream)
-        .collect(Collectors.toSet());
+    Set<TopicPartition> aggregate = new HashSet<>();
+    for (LiKafkaConsumer<K, V> consumer : _consumers.values()) {
+      aggregate.addAll(consumer.assignment());
+    }
+    return aggregate;
   }
 
   @Override
@@ -144,13 +146,18 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   public void assign(Collection<TopicPartition> partitions) {
     Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap =
         _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
-    Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap =
-        topicPartitionToClusterMap.entrySet()
-            .stream()
-            .collect(
-                Collectors.groupingBy(
-                    Map.Entry::getValue,
-                    Collectors.mapping(Map.Entry::getKey, Collectors.toSet())));
+
+    // Reverse the map so that we can have per-cluster topic partition sets.
+    Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap = new HashMap<>();
+    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : topicPartitionToClusterMap.entrySet()) {
+      TopicPartition topicPartition = entry.getKey();
+      ClusterDescriptor cluster = entry.getValue();
+      Set<TopicPartition> newTopicPartitionSet =
+          clusterToTopicPartitionsMap.getOrDefault(cluster, new HashSet<TopicPartition>());
+      newTopicPartitionSet.add(topicPartition);
+      clusterToTopicPartitionsMap.put(cluster, newTopicPartitionSet);
+    }
+
     for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
       getOrCreatePerClusterConsumer(entry.getKey()).assign(entry.getValue());
     }
@@ -366,7 +373,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
-  public LiKafkaConsumer<K, V> getPerClusterConsumer(ClusterDescriptor cluster) {
+  // Intended for testing only
+  LiKafkaConsumer<K, V> getPerClusterConsumer(ClusterDescriptor cluster) {
     return _consumers.get(cluster);
   }
 
