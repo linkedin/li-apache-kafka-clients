@@ -24,13 +24,23 @@ import org.apache.kafka.common.TopicPartition;
  * 3. The the exception thrown by the last problematic partition. (We just need to throw an exception to the user).
  */
 public class ConsumerRecordsProcessResult<K, V> {
-  private final Map<TopicPartition, Long> _resumeOffsets;
+  private class OffsetPair {
+    public long _currentOffset;
+    public long _resumeOffset;
+
+    public OffsetPair(long currentOffset, long resumeOffset) {
+      _currentOffset = currentOffset;
+      _resumeOffset = resumeOffset;
+    }
+  }
+
+  private final Map<TopicPartition, OffsetPair> _offsetPair;
   private final List<RecordProcessingException> _exceptions;
   private Map<TopicPartition, List<ConsumerRecord<K, V>>> _processedRecords;
 
   ConsumerRecordsProcessResult() {
     _processedRecords = new HashMap<>();
-    _resumeOffsets = new HashMap<>();
+    _offsetPair = new HashMap<>();
     _exceptions = new ArrayList<>();
   }
 
@@ -46,14 +56,14 @@ public class ConsumerRecordsProcessResult<K, V> {
     _exceptions.add(new RecordProcessingException(tp, offset, e));
     // The resume offset is the error offset + 1. i.e. if user ignore the exception thrown and poll again, the resuming
     // offset should be this one.
-    _resumeOffsets.putIfAbsent(tp, offset + 1);
+    _offsetPair.putIfAbsent(tp, new OffsetPair(offset, offset + 1));
   }
 
   public void clearRecords() {
     _processedRecords = null;
   }
 
-  boolean hasError(TopicPartition tp) {
+  public boolean hasError(TopicPartition tp) {
     return resumeOffsets().containsKey(tp);
   }
 
@@ -66,6 +76,19 @@ public class ConsumerRecordsProcessResult<K, V> {
   }
 
   public Map<TopicPartition, Long> resumeOffsets() {
-    return _resumeOffsets;
+    Map<TopicPartition, Long> resumeOffsets = new HashMap<>();
+    _offsetPair.forEach(
+        (k, v) -> resumeOffsets.put(k, v._resumeOffset)
+    );
+    return resumeOffsets;
+  }
+
+  public Map<TopicPartition, Long> currentOffsets() {
+    Map<TopicPartition, Long> currentOffsets = new HashMap<>();
+    _offsetPair.forEach(
+        (k, v) -> currentOffsets.put(k, v._currentOffset)
+    );
+    return currentOffsets;
   }
 }
+

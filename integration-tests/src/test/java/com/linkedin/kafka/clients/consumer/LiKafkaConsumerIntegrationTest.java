@@ -36,6 +36,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import kafka.server.KafkaConfig;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -973,41 +974,41 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
 
-  @Test
-  public void testExceptionInProcessing() {
-    String topic = "testExceptionInProcessing";
-    produceSyntheticMessages(topic);
+  private LiKafkaConsumer<byte[], byte[]> createConsumerForExceptionProcessingTest() {
     Properties props = new Properties();
     // All the consumers should have the same group id.
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommit");
     // Make sure we start to consume from the beginning.
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-    LiKafkaConsumer<byte[], byte[]> consumer =
-        new LiKafkaConsumerImpl<byte[], byte[]>(getConsumerProperties(props),
-            new ByteArrayDeserializer(),
-            new Deserializer<byte[]>() {
-              int numMessages = 0;
-              @Override
-              public void configure(Map<String, ?> configs, boolean isKey) {
+    return new LiKafkaConsumerImpl<>(getConsumerProperties(props),
+        new ByteArrayDeserializer(),
+        new Deserializer<byte[]>() {
+          int numMessages = 0;
+          @Override
+          public void configure(Map<String, ?> configs, boolean isKey) {
 
-              }
+          }
 
-              @Override
-              public byte[] deserialize(String topic, byte[] data) {
-                // Throw exception when deserializing the second message.
-                numMessages++;
-                if (numMessages == 2) {
-                  throw new SerializationException();
-                }
-                return data;
-              }
+          @Override
+          public byte[] deserialize(String topic, byte[] data) {
+            // Throw exception when deserializing the second message.
+            numMessages++;
+            if (numMessages == 2) {
+              throw new SerializationException();
+            }
+            return data;
+          }
 
-              @Override
-              public void close() {
+          @Override
+          public void close() {
 
-              }
-            }, new DefaultSegmentDeserializer(), new NoOpAuditor<>());
+          }
+        }, new DefaultSegmentDeserializer(), new NoOpAuditor<>());
+  }
+
+  private void testExceptionProcessingByFunction(String topic, LiKafkaConsumer<byte[], byte[]> consumer,
+      BiConsumer<LiKafkaConsumer<byte[], byte[]>, TopicPartition> testFunction) throws Exception {
     try {
       consumer.subscribe(Collections.singleton(topic));
       ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
@@ -1016,15 +1017,11 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       }
       assertEquals(records.count(), 1, "Only the first message should be returned");
       assertEquals(records.iterator().next().offset(), 2L, "The offset of the first message should be 2.");
+      assertEquals(consumer.position(new TopicPartition(topic, 0)), 4L, "The position should be 4");
+
+      testFunction.accept(consumer, new TopicPartition(topic, 0));
       assertEquals(consumer.position(new TopicPartition(topic, 0)), 5L, "The position should be 5");
 
-      try {
-        consumer.poll(1000);
-        fail("Should have thrown exception.");
-      } catch (ConsumerRecordsProcessingException crpe) {
-        // let it go
-      }
-      assertEquals(consumer.position(new TopicPartition(topic, 0)), 5L, "The position should be 5");
       records = ConsumerRecords.empty();
       while (records.isEmpty()) {
         records = consumer.poll(1000);
@@ -1034,6 +1031,90 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     } finally {
       consumer.close();
     }
+  }
+
+  @Test
+  public void testExceptionProcessing() {
+    List<BiConsumer<LiKafkaConsumer<byte[], byte[]>, TopicPartition>> testFuncList = new ArrayList<>(6);
+    testFuncList.add((consumer, tp) -> {
+      try {
+        consumer.poll(1000);
+        fail("Should have thrown exception.");
+      } catch (ConsumerRecordsProcessingException crpe) {
+        // expected
+      } catch (Exception e) {
+        fail("Unexpected exception");
+      }
+    });
+
+    testFuncList.add((consumer, tp) -> {
+      try {
+        consumer.seek(tp, 0);
+        fail("Should have thrown exception.");
+      } catch (IllegalStateException e) {
+        // expected
+      } catch (Exception e) {
+        fail("Unexpected exception");
+      }
+    });
+
+    testFuncList.add((consumer, tp) -> {
+      try {
+        consumer.seekToCommitted(Collections.singleton(tp));
+        fail("Should have thrown exception.");
+      } catch (IllegalStateException e) {
+        // expected
+      } catch (Exception e) {
+        fail("Unexpected exception");
+      }
+    });
+
+    testFuncList.add((consumer, tp) -> {
+      try {
+        consumer.seekToBeginning(Collections.singleton(tp));
+        fail("Should have thrown exception.");
+      } catch (IllegalStateException e) {
+        // expected
+      } catch (Exception e) {
+        fail("Unexpected exception");
+      }
+    });
+
+    testFuncList.add((consumer, tp) -> {
+      try {
+        consumer.seekToEnd(Collections.singleton(tp));
+        fail("Should have thrown exception.");
+      } catch (IllegalStateException e) {
+        // expected
+      } catch (Exception e) {
+        fail("Unexpected exception");
+      }
+    });
+
+    testFuncList.add((consumer, tp) -> {
+      try {
+        consumer.pause(Collections.singleton(tp));
+        fail("Should have thrown exception.");
+      } catch (IllegalStateException e) {
+        // expected
+        consumer.resume(Collections.singleton(tp));
+      } catch (Exception e) {
+        fail("Unexpected exception");
+      }
+    });
+
+    testFuncList.forEach(
+        testFunc -> {
+          String topic = UUID.randomUUID().toString();
+          produceSyntheticMessages(topic);
+          LiKafkaConsumer<byte[], byte[]> consumer = createConsumerForExceptionProcessingTest();
+          try {
+            testExceptionProcessingByFunction(topic, consumer, testFunc);
+          } catch (Exception e) {
+            fail("failed with unexpected exception");
+          }
+        }
+    );
   }
 
   @Test
@@ -1072,7 +1153,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
-    // No auto commmit
+    // No auto commit
     props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     // Not enough memory to assemble anything
     props.setProperty(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG, "" + (MAX_SEGMENT_SIZE + 1));

@@ -241,9 +241,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     long now = System.currentTimeMillis();
     long deadline = now + timeout;
     do {
-      if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
-        ConsumerRecordsProcessingException e = _lastProcessedResult.exception();
-        _lastProcessedResult = null;
+      ConsumerRecordsProcessingException e = handleRecordProcessingException(null);
+      if (e != null) {
         throw e;
       }
       if (_autoCommitEnabled && now > _lastAutoCommitMs + _autoCommitInterval) {
@@ -262,13 +261,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       // Clear the internal reference.
       _lastProcessedResult.clearRecords();
       // Rewind offset if there are processing exceptions.
-      if (_lastProcessedResult.exception() != null) {
-        for (Map.Entry<TopicPartition, Long> entry : _lastProcessedResult.resumeOffsets().entrySet()) {
-          TopicPartition tp = entry.getKey();
-          Long offset = entry.getValue();
-          _kafkaConsumer.seek(tp, offset);
-        }
-      }
+      seekToCurrentOffsetsOnRecordProcessingExceptions();
       now = System.currentTimeMillis();
     } while (processedRecords.isEmpty() && now < deadline);
     return processedRecords;
@@ -344,6 +337,12 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void seek(TopicPartition partition, long offset) {
+    // last poll() may have hit an exception that is not thrown to the user
+    ConsumerRecordsProcessingException e = handleRecordProcessingException(partition);
+    if (e != null) {
+      throw new IllegalStateException(e);
+    }
+
     // The offset seeks is a complicated case, there are four situations to be handled differently.
     // 1. Before the earliest consumed message. An OffsetNotTrackedException will be thrown in this case.
     // 2. At or after the earliest consumed message but before the first delivered message. We will seek to the earliest
@@ -399,6 +398,14 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void seekToBeginning(Collection<TopicPartition> partitions) {
+    // last poll() may have hit an exception that is not thrown to the user
+    partitions.forEach(tp -> {
+      ConsumerRecordsProcessingException e = handleRecordProcessingException(tp);
+      if (e != null) {
+        throw new IllegalStateException(e);
+      }
+    });
+
     _kafkaConsumer.seekToBeginning(partitions);
     for (TopicPartition tp : partitions) {
       _consumerRecordsProcessor.clear(tp);
@@ -409,6 +416,14 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void seekToEnd(Collection<TopicPartition> partitions) {
+    // last poll() may have hit an exception that is not thrown to the user
+    partitions.forEach(tp -> {
+      ConsumerRecordsProcessingException e = handleRecordProcessingException(tp);
+      if (e != null) {
+        throw new IllegalStateException(e);
+      }
+    });
+
     _kafkaConsumer.seekToEnd(partitions);
     for (TopicPartition tp : partitions) {
       _consumerRecordsProcessor.clear(tp);
@@ -420,6 +435,14 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void seekToCommitted(Collection<TopicPartition> partitions) {
+    // last poll() may have hit an exception that is not thrown to the user
+    partitions.forEach(tp -> {
+      ConsumerRecordsProcessingException e = handleRecordProcessingException(tp);
+      if (e != null) {
+        throw new IllegalStateException(e);
+      }
+    });
+
     for (TopicPartition tp : partitions) {
       OffsetAndMetadata offsetAndMetadata = _kafkaConsumer.committed(tp);
       if (offsetAndMetadata == null) {
@@ -457,6 +480,42 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
+      }
+    }
+  }
+
+  private ConsumerRecordsProcessingException handleRecordProcessingException(TopicPartition tp) {
+    if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
+      // if tp is null handle all exception otherwise handle exception for given tp
+      if (tp == null || _lastProcessedResult.hasError(tp)) {
+        seekToResumeOffsetsOnRecordProcessingExceptions();
+        ConsumerRecordsProcessingException e = _lastProcessedResult.exception();
+        _lastProcessedResult = null;
+        return e;
+      }
+
+    }
+    return null;
+  }
+
+  private void seekToResumeOffsetsOnRecordProcessingExceptions() {
+    // seek past the offset that had an exception
+    if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
+      for (Map.Entry<TopicPartition, Long> entry : _lastProcessedResult.resumeOffsets().entrySet()) {
+        TopicPartition tp = entry.getKey();
+        Long offset = entry.getValue();
+        _kafkaConsumer.seek(tp, offset);
+      }
+    }
+  }
+
+  private void seekToCurrentOffsetsOnRecordProcessingExceptions() {
+    // seek to offset which had an exception
+    if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
+      for (Map.Entry<TopicPartition, Long> entry : _lastProcessedResult.currentOffsets().entrySet()) {
+        TopicPartition tp = entry.getKey();
+        Long offset = entry.getValue();
+        _kafkaConsumer.seek(tp, offset);
       }
     }
   }
@@ -645,6 +704,13 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void pause(Collection<TopicPartition> partitions) {
+    // last poll() may have hit an exception that is not thrown to the user
+    partitions.forEach(tp -> {
+      ConsumerRecordsProcessingException e = handleRecordProcessingException(tp);
+      if (e != null) {
+        throw new IllegalStateException(e);
+      }
+    });
     _kafkaConsumer.pause(partitions);
   }
 
