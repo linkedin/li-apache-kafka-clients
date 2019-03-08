@@ -346,8 +346,8 @@ public class ConsumerRecordsProcessorTest {
     assertEquals(result.consumerRecords().records(tp0).size(), 2);
     assertEquals(result.consumerRecords().records(tp1).size(), 1);
     assertEquals(result.consumerRecords().records(tp2).size(), 1);
-    assertTrue(result.resumeOffsets().isEmpty());
-    assertNull(result.exception());
+    assertTrue(result.offsets().isEmpty());
+    assertFalse(result.hasException());
   }
 
   private ConsumerRecords<byte[], byte[]> getConsumerRecords() {

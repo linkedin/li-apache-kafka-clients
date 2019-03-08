@@ -980,11 +980,11 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommit");
     // Make sure we start to consume from the beginning.
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
 
     return new LiKafkaConsumerImpl<>(getConsumerProperties(props),
         new ByteArrayDeserializer(),
         new Deserializer<byte[]>() {
-          int numMessages = 0;
           @Override
           public void configure(Map<String, ?> configs, boolean isKey) {
 
@@ -992,9 +992,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
           @Override
           public byte[] deserialize(String topic, byte[] data) {
-            // Throw exception when deserializing the second message.
-            numMessages++;
-            if (numMessages == 2) {
+            // Throw exception when deserializing
+            if (new String(data).startsWith(KafkaTestUtils.EXCEPTION_MESSAGE)) {
               throw new SerializationException();
             }
             return data;
@@ -1013,94 +1012,93 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.subscribe(Collections.singleton(topic));
       ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
       while (records.isEmpty()) {
-        records = consumer.poll(1000);
+        records = consumer.poll(Duration.ofMillis(1000));
       }
-      assertEquals(records.count(), 1, "Only the first message should be returned");
+      assertEquals(records.count(), 4, "Only the first message should be returned");
       assertEquals(records.iterator().next().offset(), 2L, "The offset of the first message should be 2.");
-      assertEquals(consumer.position(new TopicPartition(topic, 0)), 4L, "The position should be 4");
+      assertEquals(consumer.position(new TopicPartition(topic, 0)), 7L, "The position should be 7");
 
       testFunction.accept(consumer, new TopicPartition(topic, 0));
-      assertEquals(consumer.position(new TopicPartition(topic, 0)), 5L, "The position should be 5");
-
-      records = ConsumerRecords.empty();
-      while (records.isEmpty()) {
-        records = consumer.poll(1000);
-      }
-      assertEquals(records.count(), 4, "There should be four messages left.");
-      assertEquals(records.iterator().next().offset(), 5L, "The first offset should 5");
     } finally {
       consumer.close();
     }
   }
 
   @Test
-  public void testExceptionProcessing() {
+  public void testExceptionHandlingAndProcessing() {
     List<BiConsumer<LiKafkaConsumer<byte[], byte[]>, TopicPartition>> testFuncList = new ArrayList<>(6);
     testFuncList.add((consumer, tp) -> {
       try {
-        consumer.poll(1000);
+        consumer.poll(Duration.ofMillis(1000));
         fail("Should have thrown exception.");
       } catch (ConsumerRecordsProcessingException crpe) {
         // expected
-      } catch (Exception e) {
-        fail("Unexpected exception");
       }
+
+      assertEquals(consumer.position(tp), 8L, "The position should be 8");
+      ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
+      while (records.isEmpty()) {
+        records = consumer.poll(1000);
+      }
+      assertEquals(records.count(), 1, "There should be four messages left.");
     });
 
     testFuncList.add((consumer, tp) -> {
+      consumer.pause(Collections.singleton(tp));
+      consumer.poll(Duration.ofMillis(1000));
+      consumer.resume(Collections.singleton(tp));
+      assertEquals(consumer.position(tp), 7L, "The position should be 7");
+
+      ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
       try {
-        consumer.seek(tp, 0);
-        fail("Should have thrown exception.");
-      } catch (IllegalStateException e) {
+        while (records.isEmpty()) {
+          records = consumer.poll(Duration.ofMillis(1000));
+        }
+      } catch (ConsumerRecordsProcessingException crpe) {
         // expected
-      } catch (Exception e) {
-        fail("Unexpected exception");
       }
+      assertEquals(consumer.position(tp), 8L, "The position should be 8");
     });
 
     testFuncList.add((consumer, tp) -> {
+      consumer.seek(tp, 6);
       try {
-        consumer.seekToCommitted(Collections.singleton(tp));
-        fail("Should have thrown exception.");
-      } catch (IllegalStateException e) {
-        // expected
+        consumer.poll(Duration.ofMillis(1000));
       } catch (Exception e) {
         fail("Unexpected exception");
       }
+      assertEquals(consumer.position(tp), 7L, "The position should be 7");
     });
 
     testFuncList.add((consumer, tp) -> {
+      consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(4L)));
+      consumer.seekToCommitted(Collections.singleton(tp));
       try {
-        consumer.seekToBeginning(Collections.singleton(tp));
-        fail("Should have thrown exception.");
-      } catch (IllegalStateException e) {
-        // expected
+        consumer.poll(Duration.ofMillis(1000));
       } catch (Exception e) {
         fail("Unexpected exception");
       }
+      assertEquals(consumer.position(tp), 7L, "The position should be 7");
     });
 
     testFuncList.add((consumer, tp) -> {
+      consumer.seekToBeginning(Collections.singleton(tp));
       try {
-        consumer.seekToEnd(Collections.singleton(tp));
-        fail("Should have thrown exception.");
-      } catch (IllegalStateException e) {
-        // expected
+        consumer.poll(Duration.ofMillis(1000));
       } catch (Exception e) {
         fail("Unexpected exception");
       }
+      assertEquals(consumer.position(tp), 7L, "The position should be 7");
     });
 
     testFuncList.add((consumer, tp) -> {
+      consumer.seekToEnd(Collections.singleton(tp));
       try {
-        consumer.pause(Collections.singleton(tp));
-        fail("Should have thrown exception.");
-      } catch (IllegalStateException e) {
-        // expected
-        consumer.resume(Collections.singleton(tp));
+        consumer.poll(Duration.ofMillis(1000));
       } catch (Exception e) {
         fail("Unexpected exception");
       }
+      assertEquals(consumer.position(tp), 10L, "The position should be 10");
     });
 
     testFuncList.forEach(
@@ -1115,6 +1113,69 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           }
         }
     );
+  }
+
+  @Test
+  public void testExceptionInProcessingLargeMessage() {
+    String topic = "testExceptionInProcessing";
+    produceSyntheticMessages(topic);
+    Properties props = new Properties();
+    // All the consumers should have the same group id.
+    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testCommit");
+    // Make sure we start to consume from the beginning.
+    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+    LiKafkaConsumer<byte[], byte[]> consumer =
+        new LiKafkaConsumerImpl<>(getConsumerProperties(props),
+            new ByteArrayDeserializer(),
+            new Deserializer<byte[]>() {
+              int numMessages = 0;
+              @Override
+              public void configure(Map<String, ?> configs, boolean isKey) {
+
+              }
+
+              @Override
+              public byte[] deserialize(String topic, byte[] data) {
+                // Throw exception when deserializing the second message.
+                numMessages++;
+                if (numMessages == 2) {
+                  throw new SerializationException();
+                }
+                return data;
+              }
+
+              @Override
+              public void close() {
+
+              }
+            }, new DefaultSegmentDeserializer(), new NoOpAuditor<>());
+    try {
+      consumer.subscribe(Collections.singleton(topic));
+      ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
+      while (records.isEmpty()) {
+        records = consumer.poll(1000);
+      }
+      assertEquals(records.count(), 1, "Only the first message should be returned");
+      assertEquals(records.iterator().next().offset(), 2L, "The offset of the first message should be 2.");
+      assertEquals(consumer.position(new TopicPartition(topic, 0)), 4L, "The position should be 4");
+
+      try {
+        consumer.poll(1000);
+        fail("Should have thrown exception.");
+      } catch (ConsumerRecordsProcessingException crpe) {
+        // let it go
+      }
+      assertEquals(consumer.position(new TopicPartition(topic, 0)), 5L, "The position should be 5");
+      records = ConsumerRecords.empty();
+      while (records.isEmpty()) {
+        records = consumer.poll(1000);
+      }
+      assertEquals(records.count(), 4, "There should be four messages left.");
+      assertEquals(records.iterator().next().offset(), 5L, "The first offset should 5");
+    } finally {
+      consumer.close();
+    }
   }
 
   @Test
@@ -1226,7 +1287,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Only fetch one record at a time.
     props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
-    // No auto commmit
+    // No auto commit
     props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     // Not enough memory to assemble anything
     props.setProperty(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG, "" + (MAX_SEGMENT_SIZE + 1));
@@ -1599,8 +1660,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     List<ProducerRecord<byte[], byte[]>> m3Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId3, message3.getBytes());
     // M4, 1 segment
     UUID messageId4 = LiKafkaClientsUtils.randomUUID();
-    String message4 = KafkaTestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
-
+    String message4 = KafkaTestUtils.getExceptionString(MAX_SEGMENT_SIZE / 2);
     List<ProducerRecord<byte[], byte[]>> m4Segs = splitter.split(topic, SYNTHETIC_PARTITION_0, messageId4, message4.getBytes());
     // M5, 2 segments
     UUID messageId5 = LiKafkaClientsUtils.randomUUID();

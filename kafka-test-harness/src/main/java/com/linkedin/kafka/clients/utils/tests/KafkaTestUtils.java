@@ -22,6 +22,7 @@ public class KafkaTestUtils {
   private final static AtomicBoolean SHUTDOWN_HOOK_INSTALLED = new AtomicBoolean(false);
   private final static Thread SHUTDOWN_HOOK;
   private final static List<File> FILES_TO_CLEAN_UP = Collections.synchronizedList(new ArrayList<>());
+  public final static String EXCEPTION_MESSAGE = "DESERIALIZATION_EXCEPTION_";
 
   static {
     SHUTDOWN_HOOK = new Thread(() -> {
@@ -120,11 +121,21 @@ public class KafkaTestUtils {
   public static String getRandomString(int length) {
     char[] chars = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
     Random random = new Random();
-    StringBuilder stringBuiler = new StringBuilder();
+    StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < length; i++) {
-      stringBuiler.append(chars[Math.abs(random.nextInt()) % 16]);
+      stringBuilder.append(chars[Math.abs(random.nextInt()) % 16]);
     }
-    return stringBuiler.toString();
+    return stringBuilder.toString();
+  }
+
+  public static String getExceptionString(int length) {
+    StringBuilder stringBuilder = new StringBuilder();
+    stringBuilder.append(EXCEPTION_MESSAGE);
+    for (int i = EXCEPTION_MESSAGE.length(); i < length; i++) {
+      stringBuilder.append('X');
+    }
+
+    return stringBuilder.toString();
   }
 
   @FunctionalInterface
