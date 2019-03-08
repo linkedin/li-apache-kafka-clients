@@ -518,7 +518,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   private void clearRecordProcessingException() {
     if (_lastProcessedResult != null && _lastProcessedResult.hasException()) {
-      LOG.trace("Clearing all Record Processing Exceptions");
+      LOG.warn("Clearing all Record Processing Exceptions");
       _lastProcessedResult = null;
     }
   }
