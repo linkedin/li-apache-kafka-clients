@@ -241,18 +241,23 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     long now = System.currentTimeMillis();
     long deadline = now + timeout;
     do {
-      if (_lastProcessedResult != null && _lastProcessedResult.exception() != null) {
-        ConsumerRecordsProcessingException e = _lastProcessedResult.exception();
-        _lastProcessedResult = null;
-        throw e;
+      ConsumerRecordsProcessingException crpe;
+
+      // throw exception to user if the current active (un-paused) topic-partitions has exceptions
+      Set<TopicPartition> unPausedTopicPartitions = new HashSet<>(_kafkaConsumer.assignment());
+      unPausedTopicPartitions.removeAll(_kafkaConsumer.paused());
+      crpe = handleRecordProcessingException(unPausedTopicPartitions);
+      if (crpe != null) {
+        throw crpe;
       }
+
       if (_autoCommitEnabled && now > _lastAutoCommitMs + _autoCommitInterval) {
         commitAsync();
         _lastAutoCommitMs = now;
       }
       ConsumerRecords<byte[], byte[]> rawRecords = ConsumerRecords.empty();
       try {
-         rawRecords = _kafkaConsumer.poll(deadline - now);
+         rawRecords = _kafkaConsumer.poll(Duration.ofMillis(deadline - now));
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
       }
@@ -262,11 +267,14 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       // Clear the internal reference.
       _lastProcessedResult.clearRecords();
       // Rewind offset if there are processing exceptions.
-      if (_lastProcessedResult.exception() != null) {
-        for (Map.Entry<TopicPartition, Long> entry : _lastProcessedResult.resumeOffsets().entrySet()) {
-          TopicPartition tp = entry.getKey();
-          Long offset = entry.getValue();
-          _kafkaConsumer.seek(tp, offset);
+      seekToCurrentOffsetsOnRecordProcessingExceptions();
+
+      // this is an optimization
+      // if no records were processed try to throw exception in current poll()
+      if (processedRecords.isEmpty()) {
+        crpe = handleRecordProcessingException(null);
+        if (crpe != null) {
+          throw crpe;
         }
       }
       now = System.currentTimeMillis();
@@ -344,6 +352,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void seek(TopicPartition partition, long offset) {
+    // current offsets are being moved so don't throw cached exceptions in poll.
+    clearRecordProcessingException();
+
     // The offset seeks is a complicated case, there are four situations to be handled differently.
     // 1. Before the earliest consumed message. An OffsetNotTrackedException will be thrown in this case.
     // 2. At or after the earliest consumed message but before the first delivered message. We will seek to the earliest
@@ -399,6 +410,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void seekToBeginning(Collection<TopicPartition> partitions) {
+    // current offsets are being moved so don't throw cached exceptions in poll.
+    clearRecordProcessingException();
+
     _kafkaConsumer.seekToBeginning(partitions);
     for (TopicPartition tp : partitions) {
       _consumerRecordsProcessor.clear(tp);
@@ -409,6 +423,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void seekToEnd(Collection<TopicPartition> partitions) {
+    // current offsets are being moved so don't throw cached exceptions in poll.
+    clearRecordProcessingException();
+
     _kafkaConsumer.seekToEnd(partitions);
     for (TopicPartition tp : partitions) {
       _consumerRecordsProcessor.clear(tp);
@@ -420,6 +437,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public void seekToCommitted(Collection<TopicPartition> partitions) {
+    // current offsets are being moved so don't throw cached exceptions in poll.
+    clearRecordProcessingException();
+
     for (TopicPartition tp : partitions) {
       OffsetAndMetadata offsetAndMetadata = _kafkaConsumer.committed(tp);
       if (offsetAndMetadata == null) {
@@ -458,6 +478,48 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
       }
+    }
+  }
+
+  private ConsumerRecordsProcessingException handleRecordProcessingException(Collection<TopicPartition> topicPartitions) {
+    if (_lastProcessedResult == null || !_lastProcessedResult.hasException()) {
+      return null;
+    }
+
+    ConsumerRecordsProcessingException crpe = null;
+    if (topicPartitions == null || topicPartitions.isEmpty()) {
+      // seek past offset for all topic-partitions that hit an exception
+      _lastProcessedResult.offsets().forEach((tp, o) -> _kafkaConsumer.seek(tp, o.getResumeOffset()));
+      crpe = _lastProcessedResult.exception();
+    } else {
+      // seek past offset for topic-partition in the collection that hit an exception
+      if (_lastProcessedResult.hasError(topicPartitions)) {
+        Map<TopicPartition, ConsumerRecordsProcessResult<K, V>.OffsetPair> offsets = _lastProcessedResult.offsets();
+        topicPartitions.forEach(tp -> {
+          if (offsets.containsKey(tp)) {
+            _kafkaConsumer.seek(tp, offsets.get(tp).getResumeOffset());
+          }
+        });
+        crpe = _lastProcessedResult.exception(topicPartitions);
+      }
+
+      // if topic-partitions don't have an exception then just drop cached exceptions and move-on
+    }
+    _lastProcessedResult = null;
+    return crpe;
+  }
+
+  private void seekToCurrentOffsetsOnRecordProcessingExceptions() {
+    // seek to offset which had an exception
+    if (_lastProcessedResult != null && _lastProcessedResult.hasException()) {
+      _lastProcessedResult.offsets().forEach((k, v) -> _kafkaConsumer.seek(k, v.getCurrentOffset()));
+    }
+  }
+
+  private void clearRecordProcessingException() {
+    if (_lastProcessedResult != null && _lastProcessedResult.hasException()) {
+      LOG.warn("Clearing all Record Processing Exceptions", _lastProcessedResult.exception());
+      _lastProcessedResult = null;
     }
   }
 
