@@ -35,7 +35,8 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @param timeoutMs  Timeout in milliseconds
    * @return The descriptor of the physical cluster where the topic is hosted
    */
-  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, int timeoutMs);
+  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, int timeoutMs)
+      throws MetadataServiceClientException;
 
   /**
    * Get a map from the given topic partitions to the clusters where they are hosted. For nonexistent topic partitions,
@@ -47,7 +48,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @return A map from topic partitions to the descriptors of the physical clusters where they are hosted
    */
   public Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(UUID clientId,
-      Collection<TopicPartition> topicPartitions, int timeoutMs);
+      Collection<TopicPartition> topicPartitions, int timeoutMs) throws MetadataServiceClientException;
 
   /**
    * Close this metadata service client with the specified timeout.

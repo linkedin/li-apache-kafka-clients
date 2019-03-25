@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.consumer;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
+import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
 import java.time.Duration;
@@ -191,8 +192,12 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       return;
     }
 
-    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap =
-        _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
+    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap = null;
+    try {
+      topicPartitionToClusterMap = _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
+    }
 
     // Reverse the map so that we can have per-cluster topic partition sets.
     Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap = new HashMap<>();

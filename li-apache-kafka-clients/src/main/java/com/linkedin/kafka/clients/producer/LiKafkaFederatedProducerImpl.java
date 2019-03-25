@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.producer;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
+import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
 import java.util.HashSet;
@@ -288,7 +289,12 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     }
 
     // TODO: Handle nonexistent topics more elegantly with auto topic creation option
-    ClusterDescriptor cluster = _mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs);
+    ClusterDescriptor cluster = null;
+    try {
+      cluster = _mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get cluster for topic " + topic + ": ", e);
+    }
     if (cluster == null) {
       throw new IllegalStateException("Topic " + topic + " not found in the metadata service");
     }

@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
+import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -85,7 +86,7 @@ public class LiKafkaFederatedConsumerImplTest {
   }
 
   @Test
-  public void testBasicWorkflow() {
+  public void testBasicWorkflow() throws MetadataServiceClientException {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
     Collection<TopicPartition> expectedTopicPartitions = Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2,
         TOPIC_PARTITION3);
