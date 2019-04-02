@@ -116,8 +116,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   private LiKafkaFederatedConsumerImpl(LiKafkaConsumerConfig configs, MetadataServiceClient mdsClient,
       LiKafkaConsumerBuilder<K, V> consumerBuilder) {
     _commonConsumerConfigs = configs;
-    _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaConsumerConfig.CLUSTER_ENVIRONMENT_CONFIG),
-        configs.getString(LiKafkaConsumerConfig.CLUSTER_GROUP_CONFIG));
+    _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaConsumerConfig.CLUSTER_GROUP_CONFIG),
+        configs.getString(LiKafkaConsumerConfig.CLUSTER_ENVIRONMENT_CONFIG));
 
     // Each per-cluster consumer and auditor will be instantiated by the passed-in consumer builder when the client
     // begins to consume from that cluster. If a null builder is passed, create a default one, which builds
@@ -194,7 +194,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap;
     try {
-      topicPartitionToClusterMap = _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
+      topicPartitionToClusterMap = _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _clusterGroup,
+          _mdsRequestTimeoutMs);
     } catch (MetadataServiceClientException e) {
       throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
     }

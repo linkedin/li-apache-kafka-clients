@@ -76,12 +76,12 @@ public class MarioMetadataServiceClientTest {
   @Test
   public void testGetClusterForTopic() throws MetadataServiceClientException {
     // Set expectations so that Mario would be queried for TOPIC1 and return CLUSTER1.
-    TopicQuery expectedQuery = new TopicQuery(true, null, new HashSet<>(Arrays.asList(CLUSTER_GROUP.name())), null,
-        new HashSet<>(Arrays.asList(CLUSTER_GROUP.environment())), new HashSet<>(Arrays.asList(TOPIC1)));
+    TopicQuery expectedQuery = new TopicQuery(true, null, new HashSet<>(Arrays.asList(CLUSTER_GROUP.getName())), null,
+        new HashSet<>(Arrays.asList(CLUSTER_GROUP.getEnvironment())), new HashSet<>(Arrays.asList(TOPIC1)));
 
     List<KafkaClusterDescriptor> expectedClustersFromMario =
-        Arrays.asList(new KafkaClusterDescriptor(CLUSTER1_ID, 0, CLUSTER1.name(), CLUSTER_GROUP.name(), "",
-            CLUSTER1.zkConnection(), CLUSTER1.bootstrapURL(), CLUSTER_GROUP.environment()));
+        Arrays.asList(new KafkaClusterDescriptor(CLUSTER1_ID, 0, CLUSTER1.getName(), CLUSTER_GROUP.getName(), "",
+            CLUSTER1.getZkConnection(), CLUSTER1.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment()));
     List<KafkaTopicModel> expectedTopicsFromMario = Arrays.asList(new KafkaTopicModel(CLUSTER1_ID, 0, TOPIC1, 1));
     TopicQueryResults expectedTopicQueryResults =
         new TopicQueryResults(expectedClustersFromMario, expectedTopicsFromMario);
@@ -90,22 +90,22 @@ public class MarioMetadataServiceClientTest {
 
     when(_marioClient.queryTopics(argThat(new TopicQueryMatcher(expectedQuery)))).thenReturn(expectedFuture);
 
-    assertEquals(CLUSTER1, _marioMetadataServiceClient.getClusterForTopic(_clientId, TOPIC1, 1000));
+    assertEquals(CLUSTER1, _marioMetadataServiceClient.getClusterForTopic(_clientId, TOPIC1, CLUSTER_GROUP, 1000));
   }
 
   @Test
   public void testGetClustersForTopicPartitions() throws MetadataServiceClientException {
     // Set expectations so that Mario would be queried for TOPIC1 and TOPIC2 and return CLUSTER1 and CLUSTER2
     // respectively.
-    TopicQuery expectedQuery = new TopicQuery(true, null, new HashSet<>(Arrays.asList(CLUSTER_GROUP.name())), null,
-        new HashSet<>(Arrays.asList(CLUSTER_GROUP.environment())), new HashSet<>(Arrays.asList(TOPIC1, TOPIC2)));
+    TopicQuery expectedQuery = new TopicQuery(true, null, new HashSet<>(Arrays.asList(CLUSTER_GROUP.getName())), null,
+        new HashSet<>(Arrays.asList(CLUSTER_GROUP.getEnvironment())), new HashSet<>(Arrays.asList(TOPIC1, TOPIC2)));
 
     List<KafkaClusterDescriptor> expectedClustersFromMario =
         Arrays.asList(
-            new KafkaClusterDescriptor(CLUSTER1_ID, 0, CLUSTER1.name(), CLUSTER_GROUP.name(), "",
-            CLUSTER1.zkConnection(), CLUSTER1.bootstrapURL(), CLUSTER_GROUP.environment()),
-            new KafkaClusterDescriptor(CLUSTER2_ID, 0, CLUSTER2.name(), CLUSTER_GROUP.name(), "",
-                CLUSTER2.zkConnection(), CLUSTER2.bootstrapURL(), CLUSTER_GROUP.environment()));
+            new KafkaClusterDescriptor(CLUSTER1_ID, 0, CLUSTER1.getName(), CLUSTER_GROUP.getName(), "",
+            CLUSTER1.getZkConnection(), CLUSTER1.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment()),
+            new KafkaClusterDescriptor(CLUSTER2_ID, 0, CLUSTER2.getName(), CLUSTER_GROUP.getName(), "",
+                CLUSTER2.getZkConnection(), CLUSTER2.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment()));
     List<KafkaTopicModel> expectedTopicsFromMario =
         Arrays.asList(new KafkaTopicModel(CLUSTER1_ID, 0, TOPIC1, 1), new KafkaTopicModel(CLUSTER2_ID, 0, TOPIC2, 1));
     CompletableFuture<TopicQueryResults> expectedFuture = new CompletableFuture();
@@ -119,6 +119,6 @@ public class MarioMetadataServiceClientTest {
     expectedResult.put(topicPartition1, CLUSTER1);
     expectedResult.put(topicPartition2, CLUSTER2);
     assertEquals(expectedResult, _marioMetadataServiceClient.getClustersForTopicPartitions(_clientId,
-        Arrays.asList(topicPartition1, topicPartition2), 1000));
+        Arrays.asList(topicPartition1, topicPartition2), CLUSTER_GROUP, 1000));
   }
 }

@@ -28,15 +28,16 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
   public UUID registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs, int timeoutMs);
 
   /**
-   * Get the cluster name for the given topic. If the topic does not exist in this group, return null.
+   * Get the cluster getName for the given topic. If the topic does not exist in this group, return null.
    *
    * @param clientId   The id of the client
-   * @param topicName  The topic name
+   * @param topicName  The topic getName
+   * @param clusterGroup  The cluster group descriptor
    * @param timeoutMs  Timeout in milliseconds
    * @return The descriptor of the physical cluster where the topic is hosted
    */
-  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, int timeoutMs)
-      throws MetadataServiceClientException;
+  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, ClusterGroupDescriptor clusterGroup,
+      int timeoutMs) throws MetadataServiceClientException;
 
   /**
    * Get a map from the given topic partitions to the clusters where they are hosted. For nonexistent topic partitions,
@@ -44,11 +45,13 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    *
    * @param clientId         The id of the client
    * @param topicPartitions  The topic partitions
+   * @param clusterGroup  The cluster group descriptor
    * @param timeoutMs        Timeout in milliseconds
    * @return A map from topic partitions to the descriptors of the physical clusters where they are hosted
    */
   public Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(UUID clientId,
-      Collection<TopicPartition> topicPartitions, int timeoutMs) throws MetadataServiceClientException;
+      Collection<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
+      throws MetadataServiceClientException;
 
   /**
    * Close this metadata service client with the specified timeout.

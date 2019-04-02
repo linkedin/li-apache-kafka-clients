@@ -33,9 +33,6 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   private final MarioClient _marioClient;
   private final int _maxRetries;
 
-  // TODO: remove this when Mario supports client registration
-  private Map<UUID, ClusterGroupDescriptor> _clientIdToClusterGroupMap;
-
   public MarioMetadataServiceClient(String serviceURI) {
     this(new MarioClient(serviceURI));
   }
@@ -47,7 +44,6 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   public MarioMetadataServiceClient(MarioClient marioClient, int maxRetries) {
     _maxRetries = maxRetries;
     _marioClient = marioClient;
-    _clientIdToClusterGroupMap = new HashMap<>();
   }
 
   @Override
@@ -60,16 +56,18 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
       throw new IllegalArgumentException("cluster group cannot be null");
     }
 
-    // This is a temporary hack until Mario supports client registration.
-    UUID clientId = UUID.randomUUID();
-    _clientIdToClusterGroupMap.put(clientId, clusterGroup);
-    return clientId;
+    return UUID.randomUUID();
   }
 
   @Override
-  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, int timeoutMs)
+  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, ClusterGroupDescriptor clusterGroup,
+      int timeoutMs)
       throws MetadataServiceClientException {
-    Set<ClusterDescriptor> clusters = getClusterMapForTopics(clientId, new HashSet<>(Arrays.asList(topicName)),
+    if (clusterGroup == null) {
+      throw new IllegalArgumentException("cluster group cannot be null");
+    }
+
+    Set<ClusterDescriptor> clusters = getClusterMapForTopics(new HashSet<>(Arrays.asList(topicName)), clusterGroup,
         timeoutMs).get(topicName);
     if (clusters == null || clusters.isEmpty()) {
       return null;
@@ -77,50 +75,51 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
     // Unless topic move is in progress, a topic must exist in only one cluster.
     if (clusters.size() > 1) {
       throw new IllegalStateException("topic " + topicName + " exists in more than one cluster " + clusters +
-          " in cluster group " + _clientIdToClusterGroupMap.get(clientId).name());
+          " in cluster group " + clusterGroup);
     }
     return clusters.iterator().next();
   }
 
   @Override
   public Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(UUID clientId,
-      Collection<TopicPartition> topicPartitions, int timeoutMs) throws MetadataServiceClientException {
+      Collection<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
+      throws MetadataServiceClientException {
+    if (clusterGroup == null) {
+      throw new IllegalArgumentException("cluster group cannot be null");
+    }
+
     // Create a set of topic names out of topicPartitions.
     Set<String> topicNames = new HashSet<>();
     for (Iterator<TopicPartition> it = topicPartitions.iterator(); it.hasNext(); ) {
       topicNames.add(it.next().topic());
     }
 
-    Map<String, Set<ClusterDescriptor>> topicToClusterMap = getClusterMapForTopics(clientId, topicNames, timeoutMs);
+    Map<String, Set<ClusterDescriptor>> topicToClusterMap = getClusterMapForTopics(topicNames, clusterGroup, timeoutMs);
     Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap = new HashMap<>();
     for (Iterator<TopicPartition> it = topicPartitions.iterator(); it.hasNext(); ) {
       TopicPartition topicPartition = it.next();
-      Set<ClusterDescriptor> cluster = topicToClusterMap.get(topicPartition.topic());
-      if (cluster == null || cluster.isEmpty()) {
+      Set<ClusterDescriptor> clusters = topicToClusterMap.get(topicPartition.topic());
+      if (clusters == null || clusters.isEmpty()) {
         continue;
       }
 
       // Unless topic move is in progress, a topic must exist in only one cluster.
-      if (cluster.size() > 1) {
-        throw new IllegalStateException("topic " + topicPartition.topic() + " exists in more than one cluster");
+      if (clusters.size() > 1) {
+        throw new IllegalStateException("topic " + topicPartition.topic() + " exists in more than one cluster " +
+            clusters + " in cluster group " + clusterGroup);
       }
 
-      topicPartitionToClusterMap.put(topicPartition, cluster.iterator().next());
+      topicPartitionToClusterMap.put(topicPartition, clusters.iterator().next());
     }
     return topicPartitionToClusterMap;
   }
 
-  // For given topic names, construct a map from topic name to cluster descriptors where the topic exists. If a topic
+  // For given topic names, construct a map from topic getName to cluster descriptors where the topic exists. If a topic
   // does not exist, there will be no entry for that topic in the return map.
-  private Map<String, Set<ClusterDescriptor>> getClusterMapForTopics(UUID clientId, Set<String> topicNames,
-    int timeoutMs) throws MetadataServiceClientException {
-    ClusterGroupDescriptor clusterGroup = _clientIdToClusterGroupMap.get(clientId);
-    if (clusterGroup == null) {
-      throw new IllegalStateException("client id " + clientId + " is not registered");
-    }
-
-    TopicQuery query = new TopicQuery(true, null, new HashSet<>(Arrays.asList(clusterGroup.name())),
-        null, new HashSet<>(Arrays.asList(clusterGroup.environment())), topicNames);
+  private Map<String, Set<ClusterDescriptor>> getClusterMapForTopics(Set<String> topicNames,
+      ClusterGroupDescriptor clusterGroup, int timeoutMs) throws MetadataServiceClientException {
+    TopicQuery query = new TopicQuery(true, null, new HashSet<>(Arrays.asList(clusterGroup.getName())),
+        null, new HashSet<>(Arrays.asList(clusterGroup.getEnvironment())), topicNames);
     TopicQueryResults queryResult = null;
     for (int count = 1; count <= _maxRetries; count++) {
       try {

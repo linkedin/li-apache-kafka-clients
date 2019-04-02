@@ -86,8 +86,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   private LiKafkaFederatedProducerImpl(LiKafkaProducerConfig configs, MetadataServiceClient mdsClient,
       LiKafkaProducerBuilder<K, V> producerBuilder) {
     _commonProducerConfigs = configs;
-    _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaProducerConfig.CLUSTER_ENVIRONMENT_CONFIG),
-        configs.getString(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG));
+    _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG),
+        configs.getString(LiKafkaProducerConfig.CLUSTER_ENVIRONMENT_CONFIG));
 
     // Each per-cluster producer and auditor will be intantiated by the passed-in producer builder when the client
     // begins to produce to that cluster. If a null builder is passed, create a default one, which builds LiKafkaProducer.
@@ -291,7 +291,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // TODO: Handle nonexistent topics more elegantly with auto topic creation option
     ClusterDescriptor cluster = null;
     try {
-      cluster = _mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs);
+      cluster = _mdsClient.getClusterForTopic(_clientId, topic, _clusterGroup, _mdsRequestTimeoutMs);
     } catch (MetadataServiceClientException e) {
       throw new KafkaException("failed to get cluster for topic " + topic + ": ", e);
     }
@@ -312,7 +312,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
     // Create per-cluster producer config with the actual bootstrap URL of the physical cluster to connect to.
     Map<String, Object> configMap = _commonProducerConfigs.originals();
-    configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
+    configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapUrl());
     _producerBuilder.setProducerConfig(configMap);
     LiKafkaProducer<K, V> newProducer = _producerBuilder.build();
     _producers.put(cluster, newProducer);
