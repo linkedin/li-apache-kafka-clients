@@ -561,6 +561,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     //                        (poll() will make sure that it won't fetch more than the federated consumer property)
     Map<String, Object> configMap = _commonConsumerConfigs.originals();
     configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
+
+    // TODO: when subscription is supported, max.poll.records for existing consumers may need to be adjusted if a new
+    // consumer talks to a new cluster.
     int maxPollRecordsPerCluster = Math.max(_maxPollRecordsForFederatedConsumer / _numClustersToConnectTo, 1);
     configMap.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecordsPerCluster);
     LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.setConsumerConfig(configMap).build();
