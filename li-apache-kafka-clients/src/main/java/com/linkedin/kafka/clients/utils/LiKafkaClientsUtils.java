@@ -7,12 +7,19 @@ package com.linkedin.kafka.clients.utils;
 import java.nio.ByteBuffer;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.Set;
 import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 /**
  * Util class for likafka-clients.
  */
 public class LiKafkaClientsUtils {
+  private static final Logger LOG = LoggerFactory.getLogger(LiKafkaClientsUtils.class);
+
   private static SecureRandom _secureRandom;
 
   static {
@@ -83,4 +90,15 @@ public class LiKafkaClientsUtils {
     return Long.toString(offset) + "," + metadata;
   }
 
+  // Dump stack traces of all live threads among the given set of threads.
+  public static void dumpStacksForAllLiveThreads(Set<Thread> threads) {
+    Set<Thread> allLiveThreads = Thread.getAllStackTraces().keySet();
+    LOG.error("currently live threads:");
+    for (Thread t : threads) {
+      if (allLiveThreads.contains(t)) {
+        LOG.error("Thread {} (state: {}):", t, t.getState());
+        t.dumpStack();
+      }
+    }
+  }
 }

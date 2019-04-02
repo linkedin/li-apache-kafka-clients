@@ -7,7 +7,9 @@ package com.linkedin.kafka.clients.producer;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -143,6 +145,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     long startTimeMs = System.currentTimeMillis();
     long deadlineTimeMs = startTimeMs + timeUnit.toMillis(timeout);
     CountDownLatch countDownLatch = new CountDownLatch(_producers.entrySet().size());
+    Set<Thread> threads = new HashSet<>();
     for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
       ClusterDescriptor cluster = entry.getKey();
       LiKafkaProducer<K, V> producer = entry.getValue();
@@ -161,10 +164,12 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
         }
        });
       t.start();
+      threads.add(t);
     }
 
     try {
       if (!countDownLatch.await(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS)) {
+        LiKafkaClientsUtils.dumpStacksForAllLiveThreads(threads);
         throw new KafkaException("Fail to flush all producers for cluster group " + _clusterGroup + " in " +
             timeout + " " + timeUnit);
       }
@@ -209,6 +214,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     long startTimeMs = System.currentTimeMillis();
     long deadlineTimeMs = startTimeMs + timeUnit.toMillis(timeout);
     CountDownLatch countDownLatch = new CountDownLatch(_producers.entrySet().size());
+    Set<Thread> threads = new HashSet<>();
     for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
       ClusterDescriptor cluster = entry.getKey();
       LiKafkaProducer<K, V> producer = entry.getValue();
@@ -227,10 +233,12 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
         }
       });
       t.start();
+      threads.add(t);
     }
 
     try {
       if (!countDownLatch.await(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS)) {
+        LiKafkaClientsUtils.dumpStacksForAllLiveThreads(threads);
         throw new KafkaException("Fail to close all producers for cluster group " + _clusterGroup + " in " +
             timeout + " " + timeUnit);
       }
