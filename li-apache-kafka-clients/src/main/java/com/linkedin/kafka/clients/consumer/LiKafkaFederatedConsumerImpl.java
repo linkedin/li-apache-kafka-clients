@@ -192,7 +192,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       return;
     }
 
-    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap = null;
+    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap;
     try {
       topicPartitionToClusterMap = _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
     } catch (MetadataServiceClientException e) {

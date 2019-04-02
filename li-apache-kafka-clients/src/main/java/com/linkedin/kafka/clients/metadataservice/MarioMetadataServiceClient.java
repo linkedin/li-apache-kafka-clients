@@ -6,7 +6,6 @@ package com.linkedin.kafka.clients.metadataservice;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
-import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.mario.client.MarioClient;
 import com.linkedin.mario.client.models.v1.TopicQuery;
 import com.linkedin.mario.common.models.v1.KafkaClusterDescriptor;
@@ -62,7 +61,7 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
     }
 
     // This is a temporary hack until Mario supports client registration.
-    UUID clientId = LiKafkaClientsUtils.randomUUID();
+    UUID clientId = UUID.randomUUID();
     _clientIdToClusterGroupMap.put(clientId, clusterGroup);
     return clientId;
   }
@@ -70,16 +69,17 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   @Override
   public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, int timeoutMs)
       throws MetadataServiceClientException {
-    Set<ClusterDescriptor> cluster = getClusterMapForTopics(clientId, new HashSet<>(Arrays.asList(topicName)),
+    Set<ClusterDescriptor> clusters = getClusterMapForTopics(clientId, new HashSet<>(Arrays.asList(topicName)),
         timeoutMs).get(topicName);
-    if (cluster == null || cluster.isEmpty()) {
+    if (clusters == null || clusters.isEmpty()) {
       return null;
     }
     // Unless topic move is in progress, a topic must exist in only one cluster.
-    if (cluster.size() > 1) {
-      throw new IllegalStateException("topic " + topicName + " exists in more than one cluster");
+    if (clusters.size() > 1) {
+      throw new IllegalStateException("topic " + topicName + " exists in more than one cluster " + clusters +
+          " in cluster group " + _clientIdToClusterGroupMap.get(clientId).name());
     }
-    return cluster.iterator().next();
+    return clusters.iterator().next();
   }
 
   @Override
