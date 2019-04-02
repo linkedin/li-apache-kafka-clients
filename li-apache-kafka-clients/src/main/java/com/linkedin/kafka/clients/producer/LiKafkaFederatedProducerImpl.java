@@ -158,7 +158,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
           }
         });
       t.setDaemon(true);
-      t.setName("LiKafkaProducer-flush-" + cluster.name());
+      t.setName("LiKafkaProducer-flush-" + cluster.getName());
       t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
         public void uncaughtException(Thread t, Throwable e) {
           throw new KafkaException("Thread " + t.getName() + " throws exception", e);
@@ -227,7 +227,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
           }
         });
       t.setDaemon(true);
-      t.setName("LiKafkaProducer-close-" + cluster.name());
+      t.setName("LiKafkaProducer-close-" + cluster.getName());
       t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
         public void uncaughtException(Thread t, Throwable e) {
           throw new KafkaException("Thread " + t.getName() + " throws exception", e);

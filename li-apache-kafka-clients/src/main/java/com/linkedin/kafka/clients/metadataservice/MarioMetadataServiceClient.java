@@ -114,7 +114,7 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
     return topicPartitionToClusterMap;
   }
 
-  // For given topic names, construct a map from topic getName to cluster descriptors where the topic exists. If a topic
+  // For given topic names, construct a map from topic name to cluster descriptors where the topic exists. If a topic
   // does not exist, there will be no entry for that topic in the return map.
   private Map<String, Set<ClusterDescriptor>> getClusterMapForTopics(Set<String> topicNames,
       ClusterGroupDescriptor clusterGroup, int timeoutMs) throws MetadataServiceClientException {

@@ -28,10 +28,10 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
   public UUID registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs, int timeoutMs);
 
   /**
-   * Get the cluster getName for the given topic. If the topic does not exist in this group, return null.
+   * Get the cluster name for the given topic. If the topic does not exist in this group, return null.
    *
    * @param clientId   The id of the client
-   * @param topicName  The topic getName
+   * @param topicName  The topic name
    * @param clusterGroup  The cluster group descriptor
    * @param timeoutMs  Timeout in milliseconds
    * @return The descriptor of the physical cluster where the topic is hosted

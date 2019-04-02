@@ -279,7 +279,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
         // There should be no overlap between topic partitions returned from different clusters.
         if (aggregatedConsumerRecords.containsKey(partition)) {
           throw new IllegalStateException("Duplicate topic partition " + partition + " exists in clusters " + cluster +
-              " and " + partitionToClusterMap.get(partition).name() + " in group " + _clusterGroup);
+              " and " + partitionToClusterMap.get(partition).getName() + " in group " + _clusterGroup);
         }
         aggregatedConsumerRecords.put(partition, pollResult.records(partition));
         partitionToClusterMap.put(partition, cluster);
@@ -501,7 +501,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
         }
       });
       t.setDaemon(true);
-      t.setName("LiKafkaConsumer-close-" + cluster.name());
+      t.setName("LiKafkaConsumer-close-" + cluster.getName());
       t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
         public void uncaughtException(Thread t, Throwable e) {
           throw new KafkaException("Thread " + t.getName() + " throws exception", e);
@@ -566,7 +566,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     //                        if the federated consumer property < the number of clusters in the group, set it to 1
     //                        (poll() will make sure that it won't fetch more than the federated consumer property)
     Map<String, Object> configMap = _commonConsumerConfigs.originals();
-    configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
+    configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapUrl());
 
     // TODO: when subscription is supported, max.poll.records for existing consumers may need to be adjusted if a new
     // consumer talks to a new cluster.
