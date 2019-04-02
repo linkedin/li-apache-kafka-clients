@@ -18,6 +18,8 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
+
 /**
  * The configuration class for LiKafkaConsumer
  */
@@ -36,6 +38,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String ENABLE_AUTO_COMMIT_CONFIG = ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
+  public static final String MAX_POLL_RECORDS_CONFIG = ConsumerConfig.MAX_POLL_RECORDS_CONFIG;
   public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_CONFIG;
   public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG =
@@ -85,6 +88,8 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
       + "<ul><li>earliest: automatically reset the offset to the earliest offset<li>latest: automatically reset "
       + "the offset to the latest offset</li><li>none: throw exception to the consumer if no previous offset is found "
       + "for the consumer's group</li><li>anything else: throw exception to the consumer.</li></ul>";
+
+  private static final String MAX_POLL_RECORDS_DOC = "The maximum number of records returned in a single call to poll().";
 
   public static final String METADATA_SERVICE_CLIENT_CLASS_DOC =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_DOC;
@@ -156,6 +161,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 "none",
                 Importance.MEDIUM,
                 AUTO_OFFSET_RESET_DOC)
+        .define(MAX_POLL_RECORDS_CONFIG,
+                Type.INT,
+                500,
+                atLeast(1),
+                Importance.MEDIUM,
+                MAX_POLL_RECORDS_DOC)
         .define(CLUSTER_GROUP_CONFIG,
                 Type.STRING,
                 "",

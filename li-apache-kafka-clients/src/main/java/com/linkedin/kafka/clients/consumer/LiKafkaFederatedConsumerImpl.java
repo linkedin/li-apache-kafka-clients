@@ -7,8 +7,10 @@ package com.linkedin.kafka.clients.consumer;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -17,16 +19,18 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
@@ -37,10 +41,11 @@ import org.slf4j.LoggerFactory;
 
 /**
  * This is a consumer implementation that works with a federated Kafka cluster, which consists of one or more physical
- * Kafka clusters.
+ * Kafka clusters. This class is not thread-safe.
  */
 public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaFederatedConsumerImpl.class);
+  private static final int CONSUMER_CLOSE_MAX_TIMEOUT_SECS = 10 * 60;
 
   // The cluster group this client is talking to
   private ClusterGroupDescriptor _clusterGroup;
@@ -54,14 +59,40 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // The id of this client assigned by the metadata service
   private UUID _clientId;
 
+  private class ClusterConsumerPair<K, V> {
+    private final ClusterDescriptor _cluster;
+    private final LiKafkaConsumer<K, V> _consumer;
+
+    public ClusterConsumerPair(ClusterDescriptor cluster, LiKafkaConsumer<K, V> consumer) {
+      _cluster = cluster;
+      _consumer = consumer;
+    }
+
+    public ClusterDescriptor getCluster() {
+      return _cluster;
+    }
+
+    public LiKafkaConsumer<K, V> getConsumer() {
+      return _consumer;
+    }
+ }
+
   // Per cluster Consumers
-  private Map<ClusterDescriptor, LiKafkaConsumer<K, V>> _consumers;
+  private volatile List<ClusterConsumerPair<K, V>> _consumers;
 
   // Consumer builder for creating per-cluster LiKafkaConsumer
   private LiKafkaConsumerBuilder<K, V> _consumerBuilder;
 
   // Consumer configs common to all clusters
   private LiKafkaConsumerConfig _commonConsumerConfigs;
+
+  // max.poll.records for the federated consumer
+  private int _maxPollRecordsForFederatedConsumer;
+
+  // The number of clusters in this cluster group to connect to for the current assignment/subscription
+  private int _numClustersToConnectTo;
+
+  private int _nextClusterIndexToPoll;
 
   public LiKafkaFederatedConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null);
@@ -90,10 +121,13 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // Each per-cluster consumer and auditor will be instantiated by the passed-in consumer builder when the client
     // begins to consume from that cluster. If a null builder is passed, create a default one, which builds
     // LiKafkaConsumer.
-    _consumers = new ConcurrentHashMap<ClusterDescriptor, LiKafkaConsumer<K, V>>();
+
+    _consumers = new ArrayList<>();
     _consumerBuilder = consumerBuilder != null ? consumerBuilder : new LiKafkaConsumerBuilder<K, V>();
 
     _mdsRequestTimeoutMs = configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
+    _maxPollRecordsForFederatedConsumer = configs.getInt(LiKafkaConsumerConfig.MAX_POLL_RECORDS_CONFIG);
+    _nextClusterIndexToPoll = 0;
 
     try {
       // Instantiate metadata service client if necessary.
@@ -120,9 +154,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public Set<TopicPartition> assignment() {
+    // Get an immutable copy of the current set of consumers.
+    List<ClusterConsumerPair<K, V>> consumers = _consumers;
     Set<TopicPartition> aggregate = new HashSet<>();
-    for (LiKafkaConsumer<K, V> consumer : _consumers.values()) {
-      aggregate.addAll(consumer.assignment());
+    for (ClusterConsumerPair<K, V> entry : consumers) {
+      aggregate.addAll(entry.getConsumer().assignment());
     }
     return aggregate;
   }
@@ -175,9 +211,21 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       throw new IllegalStateException("Cannot assign nonexistent partitions: " + nonexistentTopicPartitions);
     }
 
-    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
-      getOrCreatePerClusterConsumer(entry.getKey()).assign(entry.getValue());
+    // This assignment should replace the previous assignment. Since max.poll.records should be reset for consumers
+    // for the new assignment, close all existing consumers first.
+    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+    if (!consumers.isEmpty()) {
+      LOG.debug("closing all existing LiKafkaConsumers due to assignment change");
+      close();
+      consumers.clear();
     }
+
+    _numClustersToConnectTo = clusterToTopicPartitionsMap.size();
+    _nextClusterIndexToPoll = 0;
+    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
+      getOrCreatePerClusterConsumer(consumers, entry.getKey()).assign(entry.getValue());
+    }
+    _consumers = consumers;
   }
 
   @Override
@@ -197,12 +245,56 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public ConsumerRecords<K, V> poll(long timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    // Get an immutable copy of the current set of consumers.
+    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+
+    if (consumers.isEmpty()) {
+      return ConsumerRecords.empty();
+    }
+
+    long deadlineMs = System.currentTimeMillis() + timeout;
+    Map<TopicPartition, List<ConsumerRecord<K, V>>> aggregatedConsumerRecords = new HashMap<>();
+    Map<TopicPartition, ClusterDescriptor> partitionToClusterMap = new HashMap<>();
+    int numRecordsReceived = 0;
+    for (int i = 0; i < consumers.size(); i++) {
+      ClusterConsumerPair<K, V> entry = consumers.get(_nextClusterIndexToPoll);
+      ClusterDescriptor cluster = entry.getCluster();
+      LiKafkaConsumer<K, V> consumer = entry.getConsumer();
+
+      // For the last consumer in the list, poll with the remaining timeout. Otherwise, poll with a zero timeout.
+      ConsumerRecords<K, V> pollResult;
+      if (i == consumers.size() - 1) {
+        pollResult = consumer.poll(Math.max(deadlineMs - System.currentTimeMillis(), 0));
+      } else {
+        pollResult = consumer.poll(0);
+      }
+
+      for (TopicPartition partition : pollResult.partitions()) {
+        // There should be no overlap between topic partitions returned from different clusters.
+        if (aggregatedConsumerRecords.containsKey(partition)) {
+          throw new IllegalStateException("Duplicate topic partition " + partition + " exists in clusters " + cluster +
+              " and " + partitionToClusterMap.get(partition).name() + " in group " + _clusterGroup);
+        }
+        aggregatedConsumerRecords.put(partition, pollResult.records(partition));
+        partitionToClusterMap.put(partition, cluster);
+      }
+      numRecordsReceived += pollResult.count();
+      _nextClusterIndexToPoll = (_nextClusterIndexToPoll + 1) % consumers.size();
+
+      // If we have received the maximum number of records allowed for this federated consumer (in case where the number
+      // of clusters in the group >= max.poll.records for the federated consumer) or the timeout has already passed
+      // before finishing the iteration, stop here.
+      if (numRecordsReceived == _maxPollRecordsForFederatedConsumer || System.currentTimeMillis() > deadlineMs) {
+        break;
+      }
+    }
+
+    return new ConsumerRecords<K, V>(aggregatedConsumerRecords);
   }
 
   @Override
   public ConsumerRecords<K, V> poll(Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    return poll(timeout.toMillis());
   }
 
   @Override
@@ -372,17 +464,64 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public void close() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    close(CONSUMER_CLOSE_MAX_TIMEOUT_SECS, TimeUnit.SECONDS);
   }
 
   @Override
   public void close(long timeout, TimeUnit timeUnit) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    // Get an immutable copy of the current set of consumers.
+    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+
+    if (consumers.isEmpty()) {
+      LOG.info("no consumers to close for cluster group {}", _clusterGroup);
+      return;
+    }
+
+    LOG.debug("closing {} LiKafkaConsumers for cluster group {} in {} {}...", consumers.size(), _clusterGroup, timeout,
+        timeUnit);
+
+    long startTimeMs = System.currentTimeMillis();
+    long deadlineTimeMs = startTimeMs + timeUnit.toMillis(timeout);
+    CountDownLatch countDownLatch = new CountDownLatch(consumers.size());
+    Set<Thread> threads = new HashSet<>();
+    for (ClusterConsumerPair<K, V> entry : consumers) {
+      ClusterDescriptor cluster = entry.getCluster();
+      LiKafkaConsumer<K, V> consumer = entry.getConsumer();
+      Thread t = new Thread(() -> {
+        try {
+          consumer.close(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
+        } finally {
+          countDownLatch.countDown();
+        }
+      });
+      t.setDaemon(true);
+      t.setName("LiKafkaConsumer-close-" + cluster.name());
+      t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+        public void uncaughtException(Thread t, Throwable e) {
+          throw new KafkaException("Thread " + t.getName() + " throws exception", e);
+        }
+      });
+      t.start();
+      threads.add(t);
+    }
+
+    try {
+      if (!countDownLatch.await(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS)) {
+        LiKafkaClientsUtils.dumpStacksForAllLiveThreads(threads);
+        throw new KafkaException("Fail to close all consumers for cluster group " + _clusterGroup + " in " +
+            timeout + " " + timeUnit);
+      }
+    } catch (InterruptedException e) {
+      throw new KafkaException("Fail to close all consumers for cluster group " + _clusterGroup, e);
+    }
+
+    LOG.info("closing {} LiKafkaConsumers for cluster group {} complete in {} milliseconds", consumers.size(),
+        _clusterGroup, (System.currentTimeMillis() - startTimeMs));
   }
 
   @Override
   public void close(Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    close(timeout.toMillis(), TimeUnit.MILLISECONDS);
   }
 
   @Override
@@ -392,39 +531,43 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   // Intended for testing only
   LiKafkaConsumer<K, V> getPerClusterConsumer(ClusterDescriptor cluster) {
-    return _consumers.get(cluster);
-  }
-
-  private LiKafkaConsumer<K, V> getOrCreateConsumerForTopic(String topic) {
-    if (topic == null || topic.isEmpty()) {
-      throw new IllegalArgumentException("Topic cannot be null or empty");
+    // Get an immutable copy of the current set of consumers.
+    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+    for (ClusterConsumerPair<K, V> entry : consumers) {
+      if (entry.getCluster().equals(cluster)) {
+        return entry.getConsumer();
+      }
     }
-
-    // TODO: Handle nonexistent topics more elegantly with auto topic creation option
-    ClusterDescriptor cluster = _mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs);
-    if (cluster == null) {
-      throw new IllegalStateException("Topic " + topic + " not found in the metadata service");
-    }
-
-    return getOrCreatePerClusterConsumer(_mdsClient.getClusterForTopic(_clientId, topic, _mdsRequestTimeoutMs));
+    return null;
   }
 
   // Returns null if the specified topic does not exist in the cluster group.
-  private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(ClusterDescriptor cluster) {
+  private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(List<ClusterConsumerPair<K, V>> consumers,
+      ClusterDescriptor cluster) {
     if (cluster == null) {
       throw new IllegalArgumentException("Cluster cannot be null");
     }
 
-    if (_consumers.containsKey(cluster)) {
-      return _consumers.get(cluster);
+    for (ClusterConsumerPair<K, V> entry : consumers) {
+      if (entry.getCluster().equals(cluster)) {
+        return entry.getConsumer();
+      }
     }
 
-    // Create per-cluster consumer config with the actual bootstrap URL of the physical cluster to connect to.
+    // Create per-cluster consumer config where the following cluster-specific properties:
+    //   - bootstrap.server - the actual bootstrap URL of the physical cluster to connect to
+    //   - max.poll.records - the property value set for the federated consumer / the number of clusters in this cluster group
+    //                        if the federated consumer property < the number of clusters in the group, set it to 1
+    //                        (poll() will make sure that it won't fetch more than the federated consumer property)
     Map<String, Object> configMap = _commonConsumerConfigs.originals();
     configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
-    _consumerBuilder.setConsumerConfig(configMap);
-    LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.build();
-    _consumers.put(cluster, newConsumer);
+
+    // TODO: when subscription is supported, max.poll.records for existing consumers may need to be adjusted if a new
+    // consumer talks to a new cluster.
+    int maxPollRecordsPerCluster = Math.max(_maxPollRecordsForFederatedConsumer / _numClustersToConnectTo, 1);
+    configMap.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecordsPerCluster);
+    LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.setConsumerConfig(configMap).build();
+    consumers.add(new ClusterConsumerPair<K, V>(cluster, newConsumer));
     return newConsumer;
   }
 }
