@@ -5,7 +5,9 @@
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
+import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
+import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -52,6 +54,7 @@ public class LiKafkaFederatedConsumerImplTest {
   private static final TopicPartition TOPIC_PARTITION3 = new TopicPartition(TOPIC3, 0);
   private static final ClusterDescriptor CLUSTER1 = new ClusterDescriptor("cluster1", "url1", "zk1");
   private static final ClusterDescriptor CLUSTER2 = new ClusterDescriptor("cluster2", "url2", "zk2");
+  private static final ClusterGroupDescriptor CLUSTER_GROUP = new ClusterGroupDescriptor("group", "env");
 
   private MetadataServiceClient _mdsClient;
   private LiKafkaFederatedConsumerImpl<byte[], byte[]> _federatedConsumer;
@@ -76,8 +79,8 @@ public class LiKafkaFederatedConsumerImplTest {
     when(_mdsClient.registerFederatedClient(anyObject(), anyObject(), anyInt())).thenReturn(CLIENT_ID);
 
     Map<String, String> consumerConfig = new HashMap<>();
-    consumerConfig.put(LiKafkaConsumerConfig.CLUSTER_ENVIRONMENT_CONFIG, "env");
-    consumerConfig.put(LiKafkaConsumerConfig.CLUSTER_GROUP_CONFIG, "group");
+    consumerConfig.put(LiKafkaConsumerConfig.CLUSTER_GROUP_CONFIG, CLUSTER_GROUP.getName());
+    consumerConfig.put(LiKafkaConsumerConfig.CLUSTER_ENVIRONMENT_CONFIG, CLUSTER_GROUP.getEnvironment());
     consumerConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArrayDeserializer");
     consumerConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArrayDeserializer");
 
@@ -85,7 +88,7 @@ public class LiKafkaFederatedConsumerImplTest {
   }
 
   @Test
-  public void testBasicWorkflow() {
+  public void testBasicWorkflow() throws MetadataServiceClientException {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
     Collection<TopicPartition> expectedTopicPartitions = Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2,
         TOPIC_PARTITION3);
@@ -95,8 +98,8 @@ public class LiKafkaFederatedConsumerImplTest {
           put(TOPIC_PARTITION2, CLUSTER2);
           put(TOPIC_PARTITION3, CLUSTER1);
     }};
-    when(_mdsClient.getClustersForTopicPartitions(eq(CLIENT_ID), eq(expectedTopicPartitions), anyInt()))
-        .thenReturn(topicPartitionsToClusterMapToReturn);
+    when(_mdsClient.getClustersForTopicPartitions(eq(CLIENT_ID), eq(expectedTopicPartitions), eq(CLUSTER_GROUP),
+        anyInt())).thenReturn(topicPartitionsToClusterMapToReturn);
 
     // Make sure we start with a clean slate
     assertNull("Consumer for cluster 1 should have not been created yet",

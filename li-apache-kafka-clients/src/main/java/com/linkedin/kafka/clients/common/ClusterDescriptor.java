@@ -4,33 +4,35 @@
 
 package com.linkedin.kafka.clients.common;
 
+import java.util.Objects;
+
 
 // A generic descriptor for a cluster
 public class ClusterDescriptor {
   private final String _name;
-  private final String _bootstrapURL;
+  private final String _bootstrapUrl;
   private final String _zkConnection;
 
-  public ClusterDescriptor(String name, String bootstrapURL, String zkConnection) {
+  public ClusterDescriptor(String name, String bootstrapUrl, String zkConnection) {
     _name = name;
-    _bootstrapURL = bootstrapURL;
+    _bootstrapUrl = bootstrapUrl;
     _zkConnection = zkConnection;
   }
 
-  public String name() {
+  public String getName() {
     return _name;
   }
 
-  public String bootstrapURL() {
-    return _bootstrapURL;
+  public String getBootstrapUrl() {
+    return _bootstrapUrl;
   }
 
-  public String zkConnection() {
+  public String getZkConnection() {
     return _zkConnection;
   }
 
   public String toString() {
-    return "name: " + _name + ", bootstrapURL: " + _bootstrapURL + ", zkConnection: " + _zkConnection;
+    return "getName: " + _name + ", getBootstrapUrl: " + _bootstrapUrl + ", getZkConnection: " + _zkConnection;
   }
 
   @Override
@@ -42,11 +44,12 @@ public class ClusterDescriptor {
       return false;
     }
     ClusterDescriptor other = (ClusterDescriptor) o;
-    return _name == other.name() && _bootstrapURL == other.bootstrapURL() && _zkConnection == other.zkConnection();
+    return _name == other.getName() && _bootstrapUrl == other.getBootstrapUrl() &&
+        _zkConnection == other.getZkConnection();
   }
 
   @Override
   public int hashCode() {
-    return toString().hashCode();
+    return Objects.hash(_name, _bootstrapUrl, _zkConnection);
   }
 }

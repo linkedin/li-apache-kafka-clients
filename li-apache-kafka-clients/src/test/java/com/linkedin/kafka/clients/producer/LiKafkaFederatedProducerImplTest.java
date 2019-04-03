@@ -5,7 +5,9 @@
 package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
+import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
+import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,6 +48,7 @@ public class LiKafkaFederatedProducerImplTest {
   private static final String TOPIC3 = "topic3";
   private static final ClusterDescriptor CLUSTER1 = new ClusterDescriptor("cluster1", "url1", "zk1");
   private static final ClusterDescriptor CLUSTER2 = new ClusterDescriptor("cluster2", "url2", "zk2");
+  private static final ClusterGroupDescriptor CLUSTER_GROUP = new ClusterGroupDescriptor("group", "env");
 
   private MetadataServiceClient _mdsClient;
   private LiKafkaFederatedProducerImpl<byte[], byte[]> _federatedProducer;
@@ -63,8 +66,8 @@ public class LiKafkaFederatedProducerImplTest {
     when(_mdsClient.registerFederatedClient(anyObject(), anyObject(), anyInt())).thenReturn(CLIENT_ID);
 
     Map<String, String> producerConfig = new HashMap<>();
-    producerConfig.put(LiKafkaProducerConfig.CLUSTER_ENVIRONMENT_CONFIG, "env");
-    producerConfig.put(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG, "group");
+    producerConfig.put(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG, CLUSTER_GROUP.getName());
+    producerConfig.put(LiKafkaProducerConfig.CLUSTER_ENVIRONMENT_CONFIG, CLUSTER_GROUP.getEnvironment());
     producerConfig.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
     producerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.ByteArraySerializer");
 
@@ -72,11 +75,11 @@ public class LiKafkaFederatedProducerImplTest {
   }
 
   @Test
-  public void testBasicWorkflow() {
+  public void testBasicWorkflow() throws MetadataServiceClientException {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC1), anyInt())).thenReturn(CLUSTER1);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC2), anyInt())).thenReturn(CLUSTER2);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC3), anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC1), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC2), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER2);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC3), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
 
     // Make sure we start with a clean slate
     assertNull("Producer for cluster 1 should have not been created yet",

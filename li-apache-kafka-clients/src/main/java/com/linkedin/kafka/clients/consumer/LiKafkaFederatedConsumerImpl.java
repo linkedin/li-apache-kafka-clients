@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.consumer;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
+import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
 import java.time.Duration;
@@ -115,8 +116,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   private LiKafkaFederatedConsumerImpl(LiKafkaConsumerConfig configs, MetadataServiceClient mdsClient,
       LiKafkaConsumerBuilder<K, V> consumerBuilder) {
     _commonConsumerConfigs = configs;
-    _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaConsumerConfig.CLUSTER_ENVIRONMENT_CONFIG),
-        configs.getString(LiKafkaConsumerConfig.CLUSTER_GROUP_CONFIG));
+    _clusterGroup = new ClusterGroupDescriptor(configs.getString(LiKafkaConsumerConfig.CLUSTER_GROUP_CONFIG),
+        configs.getString(LiKafkaConsumerConfig.CLUSTER_ENVIRONMENT_CONFIG));
 
     // Each per-cluster consumer and auditor will be instantiated by the passed-in consumer builder when the client
     // begins to consume from that cluster. If a null builder is passed, create a default one, which builds
@@ -191,8 +192,13 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       return;
     }
 
-    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap =
-        _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _mdsRequestTimeoutMs);
+    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap;
+    try {
+      topicPartitionToClusterMap = _mdsClient.getClustersForTopicPartitions(_clientId, partitions, _clusterGroup,
+          _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
+    }
 
     // Reverse the map so that we can have per-cluster topic partition sets.
     Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap = new HashMap<>();
@@ -273,7 +279,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
         // There should be no overlap between topic partitions returned from different clusters.
         if (aggregatedConsumerRecords.containsKey(partition)) {
           throw new IllegalStateException("Duplicate topic partition " + partition + " exists in clusters " + cluster +
-              " and " + partitionToClusterMap.get(partition).name() + " in group " + _clusterGroup);
+              " and " + partitionToClusterMap.get(partition).getName() + " in group " + _clusterGroup);
         }
         aggregatedConsumerRecords.put(partition, pollResult.records(partition));
         partitionToClusterMap.put(partition, cluster);
@@ -495,7 +501,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
         }
       });
       t.setDaemon(true);
-      t.setName("LiKafkaConsumer-close-" + cluster.name());
+      t.setName("LiKafkaConsumer-close-" + cluster.getName());
       t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
         public void uncaughtException(Thread t, Throwable e) {
           throw new KafkaException("Thread " + t.getName() + " throws exception", e);
@@ -560,7 +566,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     //                        if the federated consumer property < the number of clusters in the group, set it to 1
     //                        (poll() will make sure that it won't fetch more than the federated consumer property)
     Map<String, Object> configMap = _commonConsumerConfigs.originals();
-    configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.bootstrapURL());
+    configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapUrl());
 
     // TODO: when subscription is supported, max.poll.records for existing consumers may need to be adjusted if a new
     // consumer talks to a new cluster.
