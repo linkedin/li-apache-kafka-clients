@@ -32,7 +32,7 @@ public class ClusterDescriptor {
   }
 
   public String toString() {
-    return "getName: " + _name + ", getBootstrapUrl: " + _bootstrapUrl + ", getZkConnection: " + _zkConnection;
+    return _name + " (bootstrap: " + _bootstrapUrl + ", zk: " + _zkConnection + ")";
   }
 
   @Override
@@ -44,8 +44,8 @@ public class ClusterDescriptor {
       return false;
     }
     ClusterDescriptor other = (ClusterDescriptor) o;
-    return _name == other.getName() && _bootstrapUrl == other.getBootstrapUrl() &&
-        _zkConnection == other.getZkConnection();
+    return _name.equals(other.getName()) && _bootstrapUrl.equals(other.getBootstrapUrl()) &&
+        _zkConnection.equals(other.getZkConnection());
   }
 
   @Override

@@ -34,7 +34,7 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   private final int _maxRetries;
 
   public MarioMetadataServiceClient(String serviceURI) {
-    this(new MarioClient(serviceURI));
+    this(new MarioClient(serviceURI, false));
   }
 
   public MarioMetadataServiceClient(MarioClient marioClient) {

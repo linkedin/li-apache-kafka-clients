@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.producer;
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
+
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.Configurable;
@@ -96,6 +97,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(VALUE_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, VALUE_SERIALIZER_CLASS_DOC)
         .define(SEGMENT_SERIALIZER_CLASS_CONFIG, Type.CLASS, DefaultSegmentSerializer.class.getName(), Importance.MEDIUM, SEGMENT_SERIALIZER_CLASS_DOC)
         .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactory.DefaultUUIDFactory.class.getName(), Importance.LOW, UUID_FACTORY_CLASS_DOC)
+        .define(METADATA_SERVICE_CLIENT_CLASS_CONFIG, Type.CLASS, null, Importance.MEDIUM, METADATA_SERVICE_CLIENT_CLASS_DOC)
         .define(CLUSTER_GROUP_CONFIG, Type.STRING, "", Importance.MEDIUM, CLUSTER_GROUP_DOC)
         .define(CLUSTER_ENVIRONMENT_CONFIG, Type.STRING, "", Importance.MEDIUM, CLUSTER_ENVIRONMENT_DOC)
         .define(MAX_REQUEST_SIZE_CONFIG, Type.INT, 1 * 1024 * 1024, atLeast(0), Importance.MEDIUM, MAX_REQUEST_SIZE_DOC)

@@ -262,8 +262,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     Map<TopicPartition, List<ConsumerRecord<K, V>>> aggregatedConsumerRecords = new HashMap<>();
     Map<TopicPartition, ClusterDescriptor> partitionToClusterMap = new HashMap<>();
     int numRecordsReceived = 0;
+    int currentClusterIndex = _nextClusterIndexToPoll;
     for (int i = 0; i < consumers.size(); i++) {
-      ClusterConsumerPair<K, V> entry = consumers.get(_nextClusterIndexToPoll);
+      ClusterConsumerPair<K, V> entry = consumers.get(currentClusterIndex);
       ClusterDescriptor cluster = entry.getCluster();
       LiKafkaConsumer<K, V> consumer = entry.getConsumer();
 
@@ -285,7 +286,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
         partitionToClusterMap.put(partition, cluster);
       }
       numRecordsReceived += pollResult.count();
-      _nextClusterIndexToPoll = (_nextClusterIndexToPoll + 1) % consumers.size();
+      currentClusterIndex = (currentClusterIndex + 1) % consumers.size();
 
       // If we have received the maximum number of records allowed for this federated consumer (in case where the number
       // of clusters in the group >= max.poll.records for the federated consumer) or the timeout has already passed
@@ -294,6 +295,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
         break;
       }
     }
+
+    _nextClusterIndexToPoll = (_nextClusterIndexToPoll + 1) % consumers.size();
 
     return new ConsumerRecords<K, V>(aggregatedConsumerRecords);
   }
