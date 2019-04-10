@@ -4,9 +4,10 @@
 
 package com.linkedin.kafka.clients.consumer;
 
+import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
-import com.linkedin.kafka.clients.auditing.NoOpAuditor;
+
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
@@ -167,6 +168,11 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 atLeast(1),
                 Importance.MEDIUM,
                 MAX_POLL_RECORDS_DOC)
+        .define(METADATA_SERVICE_CLIENT_CLASS_CONFIG,
+                Type.CLASS,
+                null,
+                Importance.MEDIUM,
+                METADATA_SERVICE_CLIENT_CLASS_DOC)
         .define(CLUSTER_GROUP_CONFIG,
                 Type.STRING,
                 "",
