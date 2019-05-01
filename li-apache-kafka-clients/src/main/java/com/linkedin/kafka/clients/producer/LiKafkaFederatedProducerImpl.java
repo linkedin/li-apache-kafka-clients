@@ -10,6 +10,7 @@ import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -211,7 +212,19 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   @Override
   public Map<MetricName, ? extends Metric> metrics() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    // Get an immutable copy of the current set of producers.
+    Map<ClusterDescriptor, LiKafkaProducer<K, V>> producers = _producers;
+
+    // Aggregate metric from clusters in the group. Since a different client id
+    // is used for each cluster, there should be no metric name collision.
+    Map<MetricName, Metric> aggregate = new HashMap<>();
+    for (LiKafkaProducer<K, V> producer : producers.values()) {
+        Map<MetricName, ? extends Metric> metrics = producer.metrics();
+        if (metrics != null) {
+            aggregate.putAll(producer.metrics());
+        }
+    }
+    return aggregate;
   }
 
   @Override
