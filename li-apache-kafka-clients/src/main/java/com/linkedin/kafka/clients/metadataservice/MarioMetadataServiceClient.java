@@ -28,21 +28,13 @@ import org.apache.kafka.common.TopicPartition;
 
 // This is a client for Mario metadata service.
 public class MarioMetadataServiceClient implements MetadataServiceClient {
-  private static final int DEFAULT_MAX_RETRIES = 3;
-
   private final MarioClient _marioClient;
-  private final int _maxRetries;
 
   public MarioMetadataServiceClient(String serviceURI) {
     this(new MarioClient(serviceURI, false));
   }
 
   public MarioMetadataServiceClient(MarioClient marioClient) {
-    this(marioClient, DEFAULT_MAX_RETRIES);
-  }
-
-  public MarioMetadataServiceClient(MarioClient marioClient, int maxRetries) {
-    _maxRetries = maxRetries;
     _marioClient = marioClient;
   }
 
@@ -121,18 +113,13 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
     TopicQuery query = new TopicQuery(true, null, new HashSet<>(Arrays.asList(clusterGroup.getName())),
         null, new HashSet<>(Arrays.asList(clusterGroup.getEnvironment())), topicNames);
     TopicQueryResults queryResult = null;
-    for (int count = 1; count <= _maxRetries; count++) {
-      try {
-        queryResult = _marioClient.queryTopics(query).get(timeoutMs, TimeUnit.MILLISECONDS);
-        break;
-      } catch (TimeoutException e) {
-        if (count == _maxRetries) {
-          throw new MetadataServiceClientException("topic query to mario failed after retrying " + _maxRetries +
-              "times with timeout " + timeoutMs + " " + TimeUnit.MILLISECONDS + ": ", e);
-        }
-      } catch (Exception e) {
-        throw new MetadataServiceClientException("topic query to mario failed: ", e);
-      }
+    try {
+      queryResult = _marioClient.queryTopics(query).get(timeoutMs, TimeUnit.MILLISECONDS);
+    } catch (TimeoutException e) {
+      throw new MetadataServiceClientException("topic query to mario failed with timeout " + timeoutMs + " " +
+          TimeUnit.MILLISECONDS + ": ", e);
+    } catch (Exception e) {
+      throw new MetadataServiceClientException("topic query to mario failed: ", e);
     }
 
     HashMap<UUID, ClusterDescriptor> clusterIdToClusterMap = new HashMap<>();
