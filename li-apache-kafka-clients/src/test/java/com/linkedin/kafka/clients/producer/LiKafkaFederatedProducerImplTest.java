@@ -14,7 +14,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.Future;
 
 import org.apache.kafka.clients.producer.MockProducer;
@@ -42,7 +41,6 @@ import org.slf4j.LoggerFactory;
 public class LiKafkaFederatedProducerImplTest {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaFederatedProducerImplTest.class);
 
-  private static final UUID CLIENT_ID = new UUID(0, 0);
   private static final String TOPIC1 = "topic1";
   private static final String TOPIC2 = "topic2";
   private static final String TOPIC3 = "topic3";
@@ -63,7 +61,6 @@ public class LiKafkaFederatedProducerImplTest {
   @BeforeMethod
   public void setup() {
     _mdsClient = Mockito.mock(MetadataServiceClient.class);
-    when(_mdsClient.registerFederatedClient(anyObject(), anyObject(), anyInt())).thenReturn(CLIENT_ID);
 
     Map<String, String> producerConfig = new HashMap<>();
     producerConfig.put(LiKafkaProducerConfig.CLUSTER_GROUP_CONFIG, CLUSTER_GROUP.getName());
@@ -77,9 +74,9 @@ public class LiKafkaFederatedProducerImplTest {
   @Test
   public void testBasicWorkflow() throws MetadataServiceClientException {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC1), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC2), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER2);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC3), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC1), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC2), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER2);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC3), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
 
     // Make sure we start with a clean slate
     assertNull("Producer for cluster 1 should have not been created yet",

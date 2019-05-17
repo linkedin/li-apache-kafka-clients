@@ -15,7 +15,7 @@ plugins {
 dependencies {
     compile "org.apache.httpcomponents:httpclient:4.5.7"
     compile "org.apache.kafka:kafka-clients:${rootProject.ext.kafkaVersion}"
-    compile "com.linkedin.mario:mario-client:0.0.5"
+    compile "com.linkedin.mario:mario-client:0.0.6"
     testCompile "org.mockito:mockito-core:2.24.0"
 }
 

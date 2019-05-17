@@ -6,16 +6,17 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
+import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -54,9 +55,6 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   // Timeout in milliseconds for metadata service requests.
   private int _mdsRequestTimeoutMs;
 
-  // The id of this client assigned by the metadata service
-  private UUID _federatedClientId;
-
   // Per cluster producers
   private Map<ClusterDescriptor, LiKafkaProducer<K, V>> _producers;
 
@@ -73,6 +71,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   // If user set the client.id property for the federated client, it will be used as the prefix. If not, a new prefix
   // is generated.
   private String _clientIdPrefix;
+
+  private Set<FederatedClientCommandCallback> _federatedProducerCommandCallbacks;
 
   public LiKafkaFederatedProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null);
@@ -112,6 +112,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     }
     _clientIdPrefix = clientIdPrefix;
 
+    _federatedProducerCommandCallbacks = Collections.emptySet();
+
     try {
       // Instantiate metadata service client if necessary.
       _mdsClient = mdsClient != null ? mdsClient :
@@ -122,7 +124,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       //
       // Registration may also return further information such as the metadata server version and any protocol settings.
       // We assume that such information will be kept and used by the metadata service client itself.
-      _federatedClientId = _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
+      _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _federatedProducerCommandCallbacks,
+          _mdsRequestTimeoutMs);
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
@@ -307,7 +310,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // TODO: Handle nonexistent topics more elegantly with auto topic creation option
     ClusterDescriptor cluster = null;
     try {
-      cluster = _mdsClient.getClusterForTopic(_federatedClientId, topic, _clusterGroup, _mdsRequestTimeoutMs);
+      cluster = _mdsClient.getClusterForTopic(topic, _clusterGroup, _mdsRequestTimeoutMs);
     } catch (MetadataServiceClientException e) {
       throw new KafkaException("failed to get cluster for topic " + topic + ": ", e);
     }
