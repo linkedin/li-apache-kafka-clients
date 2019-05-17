@@ -7,8 +7,10 @@ package com.linkedin.kafka.clients.utils;
 import java.nio.ByteBuffer;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.temporal.ChronoUnit;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,6 +101,28 @@ public class LiKafkaClientsUtils {
         LOG.error("Thread {} (state: {}):", t, t.getState());
         t.dumpStack();
       }
+    }
+  }
+
+  // Java 9's TimeUnit#toChronoUnit() will replace this.
+  public static ChronoUnit convertTimeUnitToChronoUnit(TimeUnit timeUnit) {
+    switch (timeUnit) {
+      case DAYS:
+        return ChronoUnit.DAYS;
+      case HOURS:
+        return ChronoUnit.HOURS;
+      case MICROSECONDS:
+        return ChronoUnit.MICROS;
+      case MILLISECONDS:
+        return ChronoUnit.MILLIS;
+      case MINUTES:
+        return ChronoUnit.MINUTES;
+      case NANOSECONDS:
+        return ChronoUnit.NANOS;
+      case SECONDS:
+        return ChronoUnit.SECONDS;
+      default:
+        throw new IllegalArgumentException("Invalid TimeUnit value: " + timeUnit);
     }
   }
 }
