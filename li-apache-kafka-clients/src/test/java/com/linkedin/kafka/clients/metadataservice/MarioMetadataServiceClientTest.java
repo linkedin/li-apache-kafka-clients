@@ -76,7 +76,7 @@ public class MarioMetadataServiceClientTest {
   }
 
   @Test
-  public void testRegusterFederatedClient() throws MetadataServiceClientException {
+  public void testRegisterFederatedClient() throws MetadataServiceClientException {
     Map<String, String> configs = new HashMap<>();
     configs.put("K1", "V1");
     configs.put("K2", "V2");
