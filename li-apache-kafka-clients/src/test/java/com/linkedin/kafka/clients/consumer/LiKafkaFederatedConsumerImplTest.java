@@ -13,6 +13,7 @@ import com.linkedin.mario.common.websockets.MsgType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -25,6 +26,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.MockConsumer;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
@@ -93,14 +95,22 @@ public class LiKafkaFederatedConsumerImplTest {
     Set<TopicPartition> expectedTopicPartitions = new HashSet<>(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2,
         TOPIC_PARTITION3));
 
+    Collection<TopicPartition> topicPartitions = Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2,
+        TOPIC_PARTITION3);
     Map<TopicPartition, ClusterDescriptor> topicPartitionsToClusterMapToReturn =
         new HashMap<TopicPartition, ClusterDescriptor>() {{
           put(TOPIC_PARTITION1, CLUSTER1);
           put(TOPIC_PARTITION2, CLUSTER2);
           put(TOPIC_PARTITION3, CLUSTER1);
     }};
-    when(_mdsClient.getClustersForTopicPartitions(eq(expectedTopicPartitions), eq(CLUSTER_GROUP), anyInt()))
-        .thenReturn(topicPartitionsToClusterMapToReturn);
+    when(_mdsClient.getClustersForTopicPartitions(eq(CLIENT_ID), eq(topicPartitions), eq(CLUSTER_GROUP),
+        anyInt())).thenReturn(topicPartitionsToClusterMapToReturn);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC1), eq(CLUSTER_GROUP),
+        anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC2), eq(CLUSTER_GROUP),
+        anyInt())).thenReturn(CLUSTER2);
+    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC3), eq(CLUSTER_GROUP),
+        anyInt())).thenReturn(CLUSTER1);
 
     _federatedConsumer = new LiKafkaFederatedConsumerImpl<>(_consumerConfig, _mdsClient, new MockConsumerBuilder());
 
@@ -121,17 +131,20 @@ public class LiKafkaFederatedConsumerImplTest {
 
     // Verify if assignment() returns all topic partitions.
     assertEquals("assignment() should return all topic partitions",
-        new HashSet<TopicPartition>(expectedTopicPartitions), _federatedConsumer.assignment());
+        new HashSet<TopicPartition>(topicPartitions), _federatedConsumer.assignment());
 
-    // Set beginning offsets for each per-cluster consumer (needed for MockConsumer).
+    // Update partition info and set beginning offsets for each per-cluster consumer (needed for MockConsumer).
     HashMap<TopicPartition, Long> beginningOffsets1 = new HashMap<>();
     beginningOffsets1.put(TOPIC_PARTITION1, 0L);
     beginningOffsets1.put(TOPIC_PARTITION3, 0L);
     consumer1.updateBeginningOffsets(beginningOffsets1);
+    consumer1.updatePartitions(TOPIC1, Collections.singletonList(new PartitionInfo(TOPIC1, TOPIC_PARTITION1.partition(), null, null, null)));
+    consumer1.updatePartitions(TOPIC3, Collections.singletonList(new PartitionInfo(TOPIC3, TOPIC_PARTITION3.partition(), null, null, null)));
 
     HashMap<TopicPartition, Long> beginningOffsets2 = new HashMap<>();
     beginningOffsets2.put(TOPIC_PARTITION2, 0L);
     consumer2.updateBeginningOffsets(beginningOffsets2);
+    consumer2.updatePartitions(TOPIC2, Collections.singletonList(new PartitionInfo(TOPIC2, TOPIC_PARTITION2.partition(), null, null, null)));
 
     // Prepare test setup where one record for topic1, two records for topic2, and one record for topic3 are available
     // for consumption.
@@ -156,6 +169,22 @@ public class LiKafkaFederatedConsumerImplTest {
     assertEquals("poll should return one record for topic1", new ArrayList<>(Arrays.asList(record1)), pollResult.records(TOPIC_PARTITION1));
     assertEquals("poll should return two records for topic2", new ArrayList<>(Arrays.asList(record2, record3)), pollResult.records(TOPIC_PARTITION2));
     assertEquals("poll should return one record for topic3", new ArrayList<>(Arrays.asList(record4)), pollResult.records(TOPIC_PARTITION3));
+
+    assertEquals("There should be no prior offset commit for topic1 partition 0", null, _federatedConsumer.committed(TOPIC_PARTITION1));
+    assertEquals("There should be no prior offset commit for topic2 partition 0", null, _federatedConsumer.committed(TOPIC_PARTITION2));
+    assertEquals("There should be no prior offset commit for topic3 partition 0", null, _federatedConsumer.committed(TOPIC_PARTITION3));
+
+    _federatedConsumer.commitSync();
+    assertEquals("Commit offset for topic1 partition 0 should be 1", 1, _federatedConsumer.committed(TOPIC_PARTITION1).offset());
+    assertEquals("Commit offset for topic2 partition 0 should be 2", 2, _federatedConsumer.committed(TOPIC_PARTITION2).offset());
+    assertEquals("Commit offset for topic3 partition 0 should be 1", 1, _federatedConsumer.committed(TOPIC_PARTITION3).offset());
+
+    HashMap<TopicPartition, Long> federatedBeginningOffsets = new HashMap<>(beginningOffsets1);
+    federatedBeginningOffsets.putAll(beginningOffsets2);
+    assertEquals("", federatedBeginningOffsets, _federatedConsumer.beginningOffsets(topicPartitions));
+
+    assertEquals("ListTopic should return topic1, topic2, and topic3",
+        new HashSet<String>(Arrays.asList(TOPIC1, TOPIC2, TOPIC3)), _federatedConsumer.listTopics().keySet());
 
     // Verify per-cluster consumers are not in closed state.
     assertFalse("Consumer for cluster 1 should have not been closed", consumer1.closed());
