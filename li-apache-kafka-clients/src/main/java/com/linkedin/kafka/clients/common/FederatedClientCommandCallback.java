@@ -14,5 +14,5 @@ import java.util.UUID;
 public interface FederatedClientCommandCallback {
   public FederatedClientCommandType getCommandType();
 
-  public void onReceivingCommand(UUID commandRequestId, Map<String, String> args);
+  void onReceivingCommand(UUID commandRequestId, Map<String, String> args);
 }

@@ -12,11 +12,16 @@ import com.linkedin.mario.common.websockets.Messages;
 import java.util.Collection;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 // This is a callback implementation that will be called from MarioClient side when it receives a command execution
 // request from Mario server. It will identify the matching federated client callback for the request and invoke it
 // with command-specific arguments.
 class MarioCommandCallbackImpl implements MarioCommandCallback {
+  private static final Logger LOG = LoggerFactory.getLogger(MarioCommandCallbackImpl.class);
+
   private Map<FederatedClientCommandType, FederatedClientCommandCallback> _federatedClientCommandCallbacks;
 
   MarioCommandCallbackImpl(Collection<FederatedClientCommandCallback> callbacks) {
@@ -31,6 +36,7 @@ class MarioCommandCallbackImpl implements MarioCommandCallback {
     switch (marioCommandMessage.getMsgType()) {
       default:
         // No current support at the moment
+        LOG.warn("command {} is unsupported", marioCommandMessage.getMsgType());
     }
   }
 }
