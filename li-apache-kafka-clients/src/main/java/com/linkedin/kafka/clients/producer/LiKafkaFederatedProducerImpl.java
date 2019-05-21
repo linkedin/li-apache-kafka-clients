@@ -124,6 +124,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       //
       // Registration may also return further information such as the metadata server version and any protocol settings.
       // We assume that such information will be kept and used by the metadata service client itself.
+      //
+      // TODO: make sure this is not blocking indefinitely and also works when Mario is not available.
       _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _federatedProducerCommandCallbacks,
           _mdsRequestTimeoutMs);
     } catch (Exception e) {
