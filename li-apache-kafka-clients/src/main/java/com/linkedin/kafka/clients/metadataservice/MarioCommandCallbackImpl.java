@@ -37,6 +37,7 @@ class MarioCommandCallbackImpl implements MarioCommandCallback {
       default:
         // No current support at the moment
         LOG.warn("command {} is unsupported", marioCommandMessage.getMsgType());
+        break;
     }
   }
 }
