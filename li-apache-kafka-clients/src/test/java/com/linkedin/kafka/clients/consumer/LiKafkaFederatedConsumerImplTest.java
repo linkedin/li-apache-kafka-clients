@@ -76,7 +76,6 @@ public class LiKafkaFederatedConsumerImplTest {
   @BeforeMethod
   public void setup() {
     _mdsClient = Mockito.mock(MetadataServiceClient.class);
-    when(_mdsClient.registerFederatedClient(anyObject(), anyObject(), anyInt())).thenReturn(CLIENT_ID);
 
     Map<String, String> consumerConfig = new HashMap<>();
     consumerConfig.put(LiKafkaConsumerConfig.CLUSTER_GROUP_CONFIG, CLUSTER_GROUP.getName());
@@ -98,8 +97,8 @@ public class LiKafkaFederatedConsumerImplTest {
           put(TOPIC_PARTITION2, CLUSTER2);
           put(TOPIC_PARTITION3, CLUSTER1);
     }};
-    when(_mdsClient.getClustersForTopicPartitions(eq(CLIENT_ID), eq(expectedTopicPartitions), eq(CLUSTER_GROUP),
-        anyInt())).thenReturn(topicPartitionsToClusterMapToReturn);
+    when(_mdsClient.getClustersForTopicPartitions(eq(expectedTopicPartitions), eq(CLUSTER_GROUP), anyInt()))
+        .thenReturn(topicPartitionsToClusterMapToReturn);
 
     // Make sure we start with a clean slate
     assertNull("Consumer for cluster 1 should have not been created yet",

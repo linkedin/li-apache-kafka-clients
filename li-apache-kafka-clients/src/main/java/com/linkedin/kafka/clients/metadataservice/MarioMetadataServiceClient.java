@@ -6,11 +6,14 @@ package com.linkedin.kafka.clients.metadataservice;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
+import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
 import com.linkedin.mario.client.MarioClient;
 import com.linkedin.mario.client.models.v1.TopicQuery;
+import com.linkedin.mario.client.util.MarioClusterGroupDescriptor;
 import com.linkedin.mario.common.models.v1.KafkaClusterDescriptor;
 import com.linkedin.mario.common.models.v1.KafkaTopicModel;
 import com.linkedin.mario.common.models.v1.TopicQueryResults;
+import com.linkedin.mario.common.websockets.MarioCommandCallback;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -43,17 +46,20 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   }
 
   @Override
-  public UUID registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs, int timeoutMs) {
+  public void registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs,
+      Collection<FederatedClientCommandCallback> callbacks, int timeoutMs) {
     if (clusterGroup == null) {
       throw new IllegalArgumentException("cluster group cannot be null");
     }
 
-    return UUID.randomUUID();
+    MarioClusterGroupDescriptor marioClusterGroup = new MarioClusterGroupDescriptor(clusterGroup.getName(),
+        clusterGroup.getEnvironment());
+    MarioCommandCallback marioCommandCallback = new MarioCommandCallbackImpl(callbacks);
+    _marioClient.registerFederatedClient(marioClusterGroup, (Map<String, String>) configs, timeoutMs, marioCommandCallback);
   }
 
   @Override
-  public ClusterDescriptor getClusterForTopic(UUID clientId, String topicName, ClusterGroupDescriptor clusterGroup,
-      int timeoutMs)
+  public ClusterDescriptor getClusterForTopic(String topicName, ClusterGroupDescriptor clusterGroup, int timeoutMs)
       throws MetadataServiceClientException {
     if (clusterGroup == null) {
       throw new IllegalArgumentException("cluster group cannot be null");
@@ -73,7 +79,7 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   }
 
   @Override
-  public Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(UUID clientId,
+  public Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(
       Collection<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
       throws MetadataServiceClientException {
     if (clusterGroup == null) {

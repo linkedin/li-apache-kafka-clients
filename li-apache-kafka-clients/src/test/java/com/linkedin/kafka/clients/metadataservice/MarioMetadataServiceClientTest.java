@@ -6,11 +6,14 @@ package com.linkedin.kafka.clients.metadataservice;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
+import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
 import com.linkedin.mario.client.MarioClient;
 import com.linkedin.mario.client.models.v1.TopicQuery;
+import com.linkedin.mario.client.util.MarioClusterGroupDescriptor;
 import com.linkedin.mario.common.models.v1.KafkaClusterDescriptor;
 import com.linkedin.mario.common.models.v1.KafkaTopicModel;
 import com.linkedin.mario.common.models.v1.TopicQueryResults;
+import com.linkedin.mario.common.websockets.MarioCommandCallback;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -18,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.kafka.common.TopicPartition;
@@ -49,7 +53,6 @@ public class MarioMetadataServiceClientTest {
 
   private MarioClient _marioClient;
   private MarioMetadataServiceClient _marioMetadataServiceClient;
-  private UUID _clientId;
 
   private class TopicQueryMatcher implements ArgumentMatcher<TopicQuery> {
     private TopicQuery _query;
@@ -70,7 +73,23 @@ public class MarioMetadataServiceClientTest {
   public void setup() {
     _marioClient = Mockito.mock(MarioClient.class);
     _marioMetadataServiceClient = new MarioMetadataServiceClient(_marioClient);
-    _clientId = _marioMetadataServiceClient.registerFederatedClient(CLUSTER_GROUP, null, 1000);
+  }
+
+  @Test
+  public void testRegisterFederatedClient() throws MetadataServiceClientException {
+    Map<String, String> configs = new HashMap<>();
+    configs.put("K1", "V1");
+    configs.put("K2", "V2");
+
+    Set<FederatedClientCommandCallback> callbacks = new HashSet<>();
+
+    _marioMetadataServiceClient.registerFederatedClient(CLUSTER_GROUP, configs, callbacks, 100);
+
+    // For now, simply verify the corresponding MarioClient method is called once with expected arguments.
+    MarioClusterGroupDescriptor expectedMarioClusterGroup = new MarioClusterGroupDescriptor(CLUSTER_GROUP.getName(),
+        CLUSTER_GROUP.getEnvironment());
+    verify(_marioClient, times(1)).registerFederatedClient(eq(expectedMarioClusterGroup), eq(configs), eq(100),
+        any(MarioCommandCallback.class));
   }
 
   @Test
@@ -90,7 +109,7 @@ public class MarioMetadataServiceClientTest {
 
     when(_marioClient.queryTopics(argThat(new TopicQueryMatcher(expectedQuery)))).thenReturn(expectedFuture);
 
-    assertEquals(CLUSTER1, _marioMetadataServiceClient.getClusterForTopic(_clientId, TOPIC1, CLUSTER_GROUP, 1000));
+    assertEquals(CLUSTER1, _marioMetadataServiceClient.getClusterForTopic(TOPIC1, CLUSTER_GROUP, 1000));
   }
 
   @Test
@@ -118,7 +137,7 @@ public class MarioMetadataServiceClientTest {
     Map<TopicPartition, ClusterDescriptor> expectedResult = new HashMap<>();
     expectedResult.put(topicPartition1, CLUSTER1);
     expectedResult.put(topicPartition2, CLUSTER2);
-    assertEquals(expectedResult, _marioMetadataServiceClient.getClustersForTopicPartitions(_clientId,
+    assertEquals(expectedResult, _marioMetadataServiceClient.getClustersForTopicPartitions(
         Arrays.asList(topicPartition1, topicPartition2), CLUSTER_GROUP, 1000));
   }
 }

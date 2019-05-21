@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
+import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
@@ -13,13 +14,13 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -59,9 +60,6 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   // Timeout in milliseconds for metadata service requests.
   private int _mdsRequestTimeoutMs;
-
-  // The id of this client assigned by the metadata service
-  private UUID _federatedClientId;
 
   private class ClusterConsumerPair<K, V> {
     private final ClusterDescriptor _cluster;
@@ -106,6 +104,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // is generated.
   private String _clientIdPrefix;
 
+  private Set<FederatedClientCommandCallback> _federatedConsumerCommandCallbacks;
+
   public LiKafkaFederatedConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null);
   }
@@ -147,6 +147,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     }
     _clientIdPrefix = clientIdPrefix;
 
+    _federatedConsumerCommandCallbacks = Collections.emptySet();
+
     try {
       // Instantiate metadata service client if necessary.
       _mdsClient = mdsClient != null ? mdsClient :
@@ -157,7 +159,10 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       //
       // Registration may also return further information such as the metadata server version and any protocol settings.
       // We assume that such information will be kept and used by the metadata service client itself.
-      _federatedClientId = _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
+      //
+      // TODO: make sure this is not blocking indefinitely and also works when Mario is not available.
+      _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _federatedConsumerCommandCallbacks,
+          _mdsRequestTimeoutMs);
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
@@ -211,7 +216,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap;
     try {
-      topicPartitionToClusterMap = _mdsClient.getClustersForTopicPartitions(_federatedClientId, partitions, _clusterGroup,
+      topicPartitionToClusterMap = _mdsClient.getClustersForTopicPartitions(partitions, _clusterGroup,
           _mdsRequestTimeoutMs);
     } catch (MetadataServiceClientException e) {
       throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
