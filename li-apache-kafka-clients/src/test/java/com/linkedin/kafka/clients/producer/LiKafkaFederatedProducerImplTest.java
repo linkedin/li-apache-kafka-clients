@@ -9,11 +9,13 @@ import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 
+import com.linkedin.mario.common.websockets.MsgType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Future;
 
 import org.apache.kafka.clients.producer.MockProducer;
@@ -137,6 +139,78 @@ public class LiKafkaFederatedProducerImplTest {
     _federatedProducer.close();
     assertTrue("Producer for cluster 1 should have been closed", producer1.closed());
     assertTrue("Producer for cluster 2 should have been closed", producer2.closed());
+  }
+
+  @Test
+  public void testReloadConfigCommand() throws MetadataServiceClientException {
+    // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
+    when(_mdsClient.getClusterForTopic(eq(TOPIC1), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC2), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER2);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC3), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
+
+    // Make sure we start with a clean slate
+    assertNull("Producer for cluster 1 should have not been created yet",
+        _federatedProducer.getPerClusterProducer(CLUSTER1));
+    assertNull("Producer for cluster 2 should have not been created yet",
+        _federatedProducer.getPerClusterProducer(CLUSTER2));
+
+    // Produce to all three topics to instantiate per-cluster producers
+    ProducerRecord<byte[], byte[]> record1 = new ProducerRecord<>(TOPIC1, 0, 0L, "key1".getBytes(), "value1".getBytes());
+    ProducerRecord<byte[], byte[]> record2 = new ProducerRecord<>(TOPIC2, 0, 0L, "key2".getBytes(), "value2".getBytes());
+    ProducerRecord<byte[], byte[]> record3 = new ProducerRecord<>(TOPIC3, 0, 0L, "key3".getBytes(), "value3".getBytes());
+
+    _federatedProducer.send(record1);
+    _federatedProducer.send(record2);
+    _federatedProducer.send(record3);
+
+    _federatedProducer.flush();
+
+    Map<String, String> newConfigs = new HashMap<>();
+    newConfigs.put("K1", "V1");
+    newConfigs.put("K2", "V2");
+    UUID commandId = UUID.randomUUID();
+
+    _federatedProducer.reloadConfig(newConfigs, commandId);
+
+    // verify corresponding marioClient method is only called once
+    verify(_mdsClient, times(1)).reportCommandExecutionComplete(commandId, newConfigs, MsgType.RELOAD_CONFIG_RESPONSE);
+    verify(_mdsClient, times(1)).reRegisterFederatedClient(newConfigs);
+
+    // verify per-cluster producers have been cleared after reloadConfig
+    assertNull("Producer for cluster 1 should have been cleared",
+        _federatedProducer.getPerClusterProducer(CLUSTER1));
+    assertNull("Producer for cluster 2 should have been cleared",
+        _federatedProducer.getPerClusterProducer(CLUSTER2));
+
+    // verify after reload config, the common producer configs contains the new configs from config reload command
+    assertTrue(_federatedProducer.getCommonProducerConfigs().originals().containsKey("K1"));
+    assertTrue(_federatedProducer.getCommonProducerConfigs().originals().containsKey("K2"));
+
+    // verify send is still successful after reload config
+    Future<RecordMetadata> metadata1 = _federatedProducer.send(record1);
+    Future<RecordMetadata> metadata2 = _federatedProducer.send(record2);
+    Future<RecordMetadata> metadata3 = _federatedProducer.send(record3);
+
+    _federatedProducer.flush();
+
+    MockProducer producer1 = ((MockLiKafkaProducer) _federatedProducer.getPerClusterProducer(CLUSTER1)).getDelegate();
+    MockProducer producer2 = ((MockLiKafkaProducer) _federatedProducer.getPerClusterProducer(CLUSTER2)).getDelegate();
+
+    assertTrue("Producer for cluster 1 should have been flushed", producer1.flushed());
+    assertTrue("Producer for cluster 2 should have been flushed", producer2.flushed());
+
+    assertFalse("Producer for cluster 1 should have not been closed", producer1.closed());
+    assertFalse("Producer for cluster 2 should have not been closed", producer2.closed());
+
+    // All sends should have completed without errors.
+    assertTrue("Send for topic 1 should be immediately completed", metadata1.isDone());
+    assertFalse("Send for topic 1 should be successful", isError(metadata1));
+
+    assertTrue("Send for topic 2 should be immediately completed", metadata2.isDone());
+    assertFalse("Send for topic 2 should be successful", isError(metadata2));
+
+    assertTrue("Send for topic 3 should be immediately completed", metadata3.isDone());
+    assertFalse("Send for topic 3 should be successful", isError(metadata3));
   }
 
   private boolean isError(Future<?> future) {

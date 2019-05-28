@@ -6,11 +6,13 @@ package com.linkedin.kafka.clients.metadataservice;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
-import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
 
+import com.linkedin.mario.common.websockets.MsgType;
 import java.util.Collection;
 import java.util.Map;
 
+import java.util.UUID;
 import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.TopicPartition;
 
@@ -20,14 +22,13 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
   /**
    * Register a federated client with the metadata service. Called by the client to be registered.
    *
-   * @param clusterGroup  The cluster group descriptor
-   * @param configs       Client configs
-   * @param callbacks     A collection of callbacks supported by the client which will be called upon receiving command
-   *                      execution requests from the metadata service
-   * @param timeoutMs     Timeout in milliseconds
+   * @param federatedClient The client being registered
+   * @param clusterGroup    The cluster group descriptor
+   * @param configs         Client configs
+   * @param timeoutMs       Timeout in milliseconds
    */
-  public void registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs,
-      Collection<FederatedClientCommandCallback> callbacks, int timeoutMs);
+  void registerFederatedClient(LiKafkaFederatedClient federatedClient, ClusterGroupDescriptor clusterGroup,
+      Map<String, ?> configs, int timeoutMs);
 
   /**
    * Get the cluster name for the given topic. If the topic does not exist in this group, return null.
@@ -37,7 +38,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @param timeoutMs  Timeout in milliseconds
    * @return The descriptor of the physical cluster where the topic is hosted
    */
-  public ClusterDescriptor getClusterForTopic(String topicName, ClusterGroupDescriptor clusterGroup, int timeoutMs)
+  ClusterDescriptor getClusterForTopic(String topicName, ClusterGroupDescriptor clusterGroup, int timeoutMs)
       throws MetadataServiceClientException;
 
   /**
@@ -49,21 +50,35 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @param timeoutMs        Timeout in milliseconds
    * @return A map from topic partitions to the descriptors of the physical clusters where they are hosted
    */
-  public Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(
+  Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(
       Collection<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
       throws MetadataServiceClientException;
+
+  /**
+   * Report to mario server that command execution for commandId is completed
+   * @param commandId    UUID identifying the completed command
+   * @param configs      config diff before and after the command
+   * @param messageType  response message type to mario server
+   */
+  void reportCommandExecutionComplete(UUID commandId, Map<String, String> configs, MsgType messageType);
+
+  /**
+   * Re-register federated client with new set of configs
+   * @param configs  config diff from original for current federated client
+   */
+  void reRegisterFederatedClient(Map<String, String> configs);
 
   /**
    * Close this metadata service client with the specified timeout.
    *
    * @param timeoutMs  Timeout in milliseconds
    */
-  public void close(int timeoutMs);
+  void close(int timeoutMs);
 
   /**
    * Close this metadata service client with the maximum timeout.
    */
-  default public void close() {
+  default void close() {
     close(Integer.MAX_VALUE);
   }
 }

@@ -6,7 +6,7 @@ package com.linkedin.kafka.clients.metadataservice;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
-import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
 import com.linkedin.mario.client.MarioClient;
 import com.linkedin.mario.client.models.v1.TopicQuery;
 import com.linkedin.mario.client.util.MarioClusterGroupDescriptor;
@@ -21,7 +21,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.kafka.common.TopicPartition;
@@ -81,9 +80,8 @@ public class MarioMetadataServiceClientTest {
     configs.put("K1", "V1");
     configs.put("K2", "V2");
 
-    Set<FederatedClientCommandCallback> callbacks = new HashSet<>();
-
-    _marioMetadataServiceClient.registerFederatedClient(CLUSTER_GROUP, configs, callbacks, 100);
+    LiKafkaFederatedClient federatedClient = Mockito.mock(LiKafkaFederatedClient.class);
+    _marioMetadataServiceClient.registerFederatedClient(federatedClient, CLUSTER_GROUP, configs, 100);
 
     // For now, simply verify the corresponding MarioClient method is called once with expected arguments.
     MarioClusterGroupDescriptor expectedMarioClusterGroup = new MarioClusterGroupDescriptor(CLUSTER_GROUP.getName(),

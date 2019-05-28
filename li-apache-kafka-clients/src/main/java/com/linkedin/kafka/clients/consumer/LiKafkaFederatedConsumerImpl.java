@@ -6,7 +6,8 @@ package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
-import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClientType;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
@@ -14,7 +15,6 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -46,7 +46,7 @@ import org.slf4j.LoggerFactory;
  * This is a consumer implementation that works with a federated Kafka cluster, which consists of one or more physical
  * Kafka clusters. This class is not thread-safe.
  */
-public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
+public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>, LiKafkaFederatedClient {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaFederatedConsumerImpl.class);
   private static final int CONSUMER_CLOSE_MAX_TIMEOUT_SECS = 10 * 60;
   private static final AtomicInteger FEDERATED_CONSUMER_CLIENT_ID_SEQUENCE = new AtomicInteger(1);
@@ -104,7 +104,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // is generated.
   private String _clientIdPrefix;
 
-  private Set<FederatedClientCommandCallback> _federatedConsumerCommandCallbacks;
+  private volatile boolean _closed;
 
   public LiKafkaFederatedConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null);
@@ -147,7 +147,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     }
     _clientIdPrefix = clientIdPrefix;
 
-    _federatedConsumerCommandCallbacks = Collections.emptySet();
+    _closed = false;
 
     try {
       // Instantiate metadata service client if necessary.
@@ -161,8 +161,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       // We assume that such information will be kept and used by the metadata service client itself.
       //
       // TODO: make sure this is not blocking indefinitely and also works when Mario is not available.
-      _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _federatedConsumerCommandCallbacks,
-          _mdsRequestTimeoutMs);
+      _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
@@ -176,7 +175,14 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public Set<TopicPartition> assignment() {
+  public LiKafkaFederatedClientType getClientType() {
+    return LiKafkaFederatedClientType.FEDERATED_CONSUMER;
+  }
+
+  @Override
+  synchronized public Set<TopicPartition> assignment() {
+    ensureOpen();
+
     // Get an immutable copy of the current set of consumers.
     List<ClusterConsumerPair<K, V>> consumers = _consumers;
     Set<TopicPartition> aggregate = new HashSet<>();
@@ -187,22 +193,23 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public Set<String> subscription() {
+  synchronized public Set<String> subscription() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public void subscribe(Collection<String> topics) {
+  synchronized public void subscribe(Collection<String> topics) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public void subscribe(Collection<String> topics, ConsumerRebalanceListener callback) {
+  synchronized public void subscribe(Collection<String> topics, ConsumerRebalanceListener callback) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public void assign(Collection<TopicPartition> partitions) {
+  synchronized public void assign(Collection<TopicPartition> partitions) {
+    ensureOpen();
     if (partitions == null) {
       throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
     }
@@ -216,8 +223,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap;
     try {
-      topicPartitionToClusterMap = _mdsClient.getClustersForTopicPartitions(partitions, _clusterGroup,
-          _mdsRequestTimeoutMs);
+      topicPartitionToClusterMap =
+          _mdsClient.getClustersForTopicPartitions(partitions, _clusterGroup, _mdsRequestTimeoutMs);
     } catch (MetadataServiceClientException e) {
       throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
     }
@@ -257,22 +264,23 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public void subscribe(Pattern pattern, ConsumerRebalanceListener callback) {
+  synchronized public void subscribe(Pattern pattern, ConsumerRebalanceListener callback) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public void subscribe(Pattern pattern) {
+  synchronized public void subscribe(Pattern pattern) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public void unsubscribe() {
+  synchronized public void unsubscribe() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public ConsumerRecords<K, V> poll(long timeout) {
+  synchronized public ConsumerRecords<K, V> poll(long timeout) {
+    ensureOpen();
     // Get an immutable copy of the current set of consumers.
     List<ClusterConsumerPair<K, V>> consumers = _consumers;
 
@@ -301,8 +309,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       for (TopicPartition partition : pollResult.partitions()) {
         // There should be no overlap between topic partitions returned from different clusters.
         if (aggregatedConsumerRecords.containsKey(partition)) {
-          throw new IllegalStateException("Duplicate topic partition " + partition + " exists in clusters " + cluster +
-              " and " + partitionToClusterMap.get(partition).getName() + " in group " + _clusterGroup);
+          throw new IllegalStateException(
+              "Duplicate topic partition " + partition + " exists in clusters " +
+                  cluster + " and " + partitionToClusterMap.get(partition).getName() + " in group " + _clusterGroup);
         }
         aggregatedConsumerRecords.put(partition, pollResult.records(partition));
         partitionToClusterMap.put(partition, cluster);
@@ -324,17 +333,17 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public ConsumerRecords<K, V> poll(Duration timeout) {
+  synchronized public ConsumerRecords<K, V> poll(Duration timeout) {
     return poll(timeout.toMillis());
   }
 
   @Override
-  public void commitSync() {
+  synchronized public void commitSync() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public void commitSync(Duration timeout) {
+  synchronized public void commitSync(Duration timeout) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -344,7 +353,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
+  synchronized public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -354,7 +363,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public void commitAsync(OffsetCommitCallback callback) {
+  synchronized public void commitAsync(OffsetCommitCallback callback) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -364,7 +373,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public void seek(TopicPartition partition, long offset) {
+  synchronized public void seek(TopicPartition partition, long offset) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -379,87 +388,87 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public void seekToCommitted(Collection<TopicPartition> partitions) {
+  synchronized public void seekToCommitted(Collection<TopicPartition> partitions) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public long position(TopicPartition partition) {
+  synchronized public long position(TopicPartition partition) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public long position(TopicPartition partition, Duration timeout) {
+  synchronized public long position(TopicPartition partition, Duration timeout) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public OffsetAndMetadata committed(TopicPartition partition) {
+  synchronized public OffsetAndMetadata committed(TopicPartition partition) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public OffsetAndMetadata committed(TopicPartition partition, Duration timeout) {
+  synchronized public OffsetAndMetadata committed(TopicPartition partition, Duration timeout) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Long committedSafeOffset(TopicPartition tp) {
+  synchronized public Long committedSafeOffset(TopicPartition tp) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<MetricName, ? extends Metric> metrics() {
+  synchronized public Map<MetricName, ? extends Metric> metrics() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public List<PartitionInfo> partitionsFor(String topic) {
+  synchronized public List<PartitionInfo> partitionsFor(String topic) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public List<PartitionInfo> partitionsFor(String topic, Duration timeout) {
+  synchronized public List<PartitionInfo> partitionsFor(String topic, Duration timeout) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<String, List<PartitionInfo>> listTopics() {
+  synchronized public Map<String, List<PartitionInfo>> listTopics() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<String, List<PartitionInfo>> listTopics(Duration timeout) {
+  synchronized public Map<String, List<PartitionInfo>> listTopics(Duration timeout) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Set<TopicPartition> paused() {
+  synchronized public Set<TopicPartition> paused() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public void pause(Collection<TopicPartition> partitions) {
+  synchronized public void pause(Collection<TopicPartition> partitions) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public void resume(Collection<TopicPartition> partitions) {
+  synchronized public void resume(Collection<TopicPartition> partitions) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
+  synchronized public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch, Duration timeout) {
+  synchronized public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch, Duration timeout) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
+  synchronized public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -469,27 +478,27 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
+  synchronized public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions, Duration timeout) {
+  synchronized public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions, Duration timeout) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Long safeOffset(TopicPartition tp, long messageOffset) {
+  synchronized public Long safeOffset(TopicPartition tp, long messageOffset) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Long safeOffset(TopicPartition tp) {
+  synchronized public Long safeOffset(TopicPartition tp) {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<TopicPartition, Long> safeOffsets() {
+  synchronized public Map<TopicPartition, Long> safeOffsets() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -499,7 +508,13 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public void close(long timeout, TimeUnit timeUnit) {
+  synchronized public void close(long timeout, TimeUnit timeUnit) {
+    if (_closed) {
+      return;
+    }
+
+    _closed = true;
+
     // Get an immutable copy of the current set of consumers.
     List<ClusterConsumerPair<K, V>> consumers = _consumers;
 
@@ -508,8 +523,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       return;
     }
 
-    LOG.debug("closing {} LiKafkaConsumers for cluster group {} in {} {}...", consumers.size(), _clusterGroup, timeout,
-        timeUnit);
+    LOG.debug("closing {} LiKafkaConsumers for cluster group {} in {} {}...", consumers.size(), _clusterGroup,
+        timeout, timeUnit);
 
     long startTimeMs = System.currentTimeMillis();
     long deadlineTimeMs = startTimeMs + timeUnit.toMillis(timeout);
@@ -539,8 +554,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     try {
       if (!countDownLatch.await(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS)) {
         LiKafkaClientsUtils.dumpStacksForAllLiveThreads(threads);
-        throw new KafkaException("Fail to close all consumers for cluster group " + _clusterGroup + " in " +
-            timeout + " " + timeUnit);
+        throw new KafkaException(
+            "Fail to close all consumers for cluster group " + _clusterGroup + " in " + timeout + " " + timeUnit);
       }
     } catch (InterruptedException e) {
       throw new KafkaException("Fail to close all consumers for cluster group " + _clusterGroup, e);
@@ -551,13 +566,18 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public void close(Duration timeout) {
+  synchronized public void close(Duration timeout) {
     close(timeout.toMillis(), TimeUnit.MILLISECONDS);
   }
 
   @Override
-  public void wakeup() {
+  synchronized public void wakeup() {
     throw new UnsupportedOperationException("Not implemented yet");
+  }
+
+  synchronized public void reloadConfig(Map<String, Object> newConfigs) {
+    ensureOpen();
+    // TODO: Go over each consumer, close, and recreate them
   }
 
   // Intended for testing only
@@ -601,5 +621,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.setConsumerConfig(configMap).build();
     consumers.add(new ClusterConsumerPair<K, V>(cluster, newConsumer));
     return newConsumer;
+  }
+
+  private void ensureOpen() {
+    if (_closed) {
+      throw new IllegalStateException("this federated consumer has already been closed");
+    }
   }
 }

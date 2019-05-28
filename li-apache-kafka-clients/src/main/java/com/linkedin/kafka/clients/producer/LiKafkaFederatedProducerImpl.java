@@ -6,17 +6,21 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
-import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClientType;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
-import java.util.Collections;
+import com.linkedin.mario.common.websockets.MsgType;
+
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -42,9 +46,10 @@ import org.slf4j.LoggerFactory;
  * This is a producer implementation that works with a federated Kafka cluster, which consists of one or more physical
  * Kafka clusters.
  */
-public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V> {
+public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>, LiKafkaFederatedClient {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaFederatedProducerImpl.class);
   private static final AtomicInteger FEDERATED_PRODUCER_CLIENT_ID_SEQUENCE = new AtomicInteger(1);
+  private static final Duration RELOAD_CONFIG_EXECUTION_TIME_OUT = Duration.ofMinutes(10);
 
   // The cluster group this client is talking to
   private ClusterGroupDescriptor _clusterGroup;
@@ -72,7 +77,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   // is generated.
   private String _clientIdPrefix;
 
-  private Set<FederatedClientCommandCallback> _federatedProducerCommandCallbacks;
+  private volatile boolean _closed;
 
   public LiKafkaFederatedProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null);
@@ -112,7 +117,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     }
     _clientIdPrefix = clientIdPrefix;
 
-    _federatedProducerCommandCallbacks = Collections.emptySet();
+    _closed = false;
 
     try {
       // Instantiate metadata service client if necessary.
@@ -126,8 +131,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       // We assume that such information will be kept and used by the metadata service client itself.
       //
       // TODO: make sure this is not blocking indefinitely and also works when Mario is not available.
-      _mdsClient.registerFederatedClient(_clusterGroup, configs.originals(), _federatedProducerCommandCallbacks,
-          _mdsRequestTimeoutMs);
+      _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
@@ -141,12 +145,17 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   }
 
   @Override
+  public LiKafkaFederatedClientType getClientType() {
+    return LiKafkaFederatedClientType.FEDERATED_PRODUCER;
+  }
+
+  @Override
   public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord) {
     return send(producerRecord, null);
   }
 
   @Override
-  public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
+  synchronized public Future<RecordMetadata> send(ProducerRecord<K, V> producerRecord, Callback callback) {
     return getOrCreateProducerForTopic(producerRecord.topic()).send(producerRecord, callback);
   }
 
@@ -156,11 +165,17 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   }
 
   @Override
-  public void flush(long timeout, TimeUnit timeUnit) {
+  synchronized public void flush(long timeout, TimeUnit timeUnit) {
+    flushNoLock(timeout, timeUnit);
+  }
+
+  void flushNoLock(long timeout, TimeUnit timeUnit) {
     if (_producers.isEmpty()) {
       LOG.info("no producers to flush for cluster group {}", _clusterGroup);
       return;
     }
+
+    ensureOpen();
 
     LOG.info("flushing LiKafkaProducer for cluster group {} in {} {}...", _clusterGroup, timeout, timeUnit);
 
@@ -172,19 +187,19 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       ClusterDescriptor cluster = entry.getKey();
       LiKafkaProducer<K, V> producer = entry.getValue();
       Thread t = new Thread(() -> {
-          try {
-            producer.flush(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
-          } finally {
-            countDownLatch.countDown();
-          }
-        });
+        try {
+          producer.flush(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
+        } finally {
+          countDownLatch.countDown();
+        }
+      });
       t.setDaemon(true);
       t.setName("LiKafkaProducer-flush-" + cluster.getName());
       t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
         public void uncaughtException(Thread t, Throwable e) {
           throw new KafkaException("Thread " + t.getName() + " throws exception", e);
         }
-       });
+      });
       t.start();
       threads.add(t);
     }
@@ -204,18 +219,18 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   }
 
   @Override
-  public List<PartitionInfo> partitionsFor(String topic) {
+  synchronized public List<PartitionInfo> partitionsFor(String topic) {
     return getOrCreateProducerForTopic(topic).partitionsFor(topic);
   }
 
   @Override
-  public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
+  synchronized public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
     // TODO: come back here when upstream API settles
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
-  public Map<MetricName, ? extends Metric> metrics() {
+  synchronized public Map<MetricName, ? extends Metric> metrics() {
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -225,11 +240,21 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   }
 
   @Override
-  public void close(long timeout, TimeUnit timeUnit) {
+  synchronized public void close(long timeout, TimeUnit timeUnit) {
+    closeNoLock(timeout, timeUnit);
+  }
+
+  void closeNoLock(long timeout, TimeUnit timeUnit) {
     if (_producers.isEmpty()) {
       LOG.info("no producers to close for cluster group {}", _clusterGroup);
       return;
     }
+
+    if (_closed) {
+      return;
+    }
+
+    _closed = true;
 
     LOG.info("closing LiKafkaProducer for cluster group {} in {} {}...", _clusterGroup, timeout, timeUnit);
 
@@ -241,12 +266,12 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       ClusterDescriptor cluster = entry.getKey();
       LiKafkaProducer<K, V> producer = entry.getValue();
       Thread t = new Thread(() -> {
-          try {
-            producer.close(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
-          } finally {
-            countDownLatch.countDown();
-          }
-        });
+        try {
+          producer.close(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
+        } finally {
+          countDownLatch.countDown();
+        }
+      });
       t.setDaemon(true);
       t.setName("LiKafkaProducer-close-" + cluster.getName());
       t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
@@ -299,6 +324,55 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     throw new UnsupportedOperationException("Not supported");
   }
 
+  public LiKafkaProducerConfig getCommonProducerConfigs() {
+    return _commonProducerConfigs;
+  }
+
+  public void reloadConfig(Map<String, String> newConfigs, UUID commandId) {
+    // Go over each producer, flush and close. Since each per-cluster producer will be instantiated when the client began
+    // producing to that cluster, we just need to clear the mappings and update the configs
+    // since this method is invoked by marioClient, it should be non-blocking, so we create another thread doing above
+    LOG.info("Starting reloadConfig for LiKafkaProducers in clusterGroup {} with new configs {}", _clusterGroup, newConfigs);
+    Thread t = new Thread(() -> {
+        flushAndCloseExistingProducers(newConfigs, commandId);
+    });
+    t.setDaemon(true);
+    t.setName("LiKafkaProducer-reloadConfig-" + _clusterGroup.getName());
+    t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+      public void uncaughtException(Thread t, Throwable e) {
+        throw new KafkaException("Thread " + t.getName() + " throws exception", e);
+      }
+    });
+
+    t.start();
+  }
+
+  // Do synchronization on the method that will be flushing and closing the producers since it will be handled by a different thread
+  synchronized void flushAndCloseExistingProducers(Map<String, String> newConfigs, UUID commandId) {
+    ensureOpen();
+
+    flushNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
+    closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
+
+    // update existing configs with newConfigs
+    Map<String, Object> configMap = _commonProducerConfigs.originals();
+    configMap.putAll(newConfigs);
+    _commonProducerConfigs = new LiKafkaProducerConfig(configMap);
+
+    // reset the state of _producers and _closed so that subsequent send will try to instantiate the producers with new configs
+    _producers.clear();
+    _closed = false;
+
+    // Only sent the diff of configs to mario server
+    // report reload config execution complete to mario server
+    _mdsClient.reportCommandExecutionComplete(commandId, newConfigs, MsgType.RELOAD_CONFIG_RESPONSE);
+
+    // re-register federated client with updated configs
+    _mdsClient.reRegisterFederatedClient(newConfigs);
+
+    LOG.info("Successfully restarted LiKafkaProducers in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
+  }
+
   // Intended for testing only
   LiKafkaProducer<K, V> getPerClusterProducer(ClusterDescriptor cluster) {
     return _producers.get(cluster);
@@ -308,6 +382,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     if (topic == null || topic.isEmpty()) {
       throw new IllegalArgumentException("Topic cannot be null or empty");
     }
+
+    ensureOpen();
 
     // TODO: Handle nonexistent topics more elegantly with auto topic creation option
     ClusterDescriptor cluster = null;
@@ -327,6 +403,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       throw new IllegalArgumentException("Cluster cannot be null");
     }
 
+    ensureOpen();
+
     if (_producers.containsKey(cluster)) {
       return _producers.get(cluster);
     }
@@ -340,5 +418,11 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     LiKafkaProducer<K, V> newProducer = _producerBuilder.build();
     _producers.put(cluster, newProducer);
     return newProducer;
+  }
+
+  private void ensureOpen() {
+    if (_closed) {
+      throw new IllegalStateException("this federated producer has already been closed");
+    }
   }
 }
