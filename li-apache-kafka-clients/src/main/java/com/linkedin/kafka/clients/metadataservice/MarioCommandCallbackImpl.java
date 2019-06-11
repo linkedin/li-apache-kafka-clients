@@ -38,12 +38,13 @@ class MarioCommandCallbackImpl implements MarioCommandCallback {
         if (_federatedClient.getClientType() == LiKafkaFederatedClientType.FEDERATED_PRODUCER) {
           // Call producer reload config method
           ((LiKafkaFederatedProducerImpl) _federatedClient).reloadConfig(reloadConfigMsg.getConfigs(), reloadConfigMsg.getCommandId());
+        } else {
+          throw new UnsupportedOperationException("Consumer config reload is not supported currently");
         }
         break;
       default:
         // No current support at the moment
-        LOG.warn("command {} is unsupported", marioCommandMessage.getMsgType());
-        break;
+        throw new UnsupportedOperationException("command " + marioCommandMessage.getMsgType() + " is not supported");
     }
   }
 }

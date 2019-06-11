@@ -15,6 +15,7 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.mario.common.websockets.MsgType;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -246,7 +247,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   void closeNoLock(long timeout, TimeUnit timeUnit) {
     if (_producers.isEmpty()) {
-      LOG.info("no producers to close for cluster group {}", _clusterGroup);
+      LOG.debug("no producers to close for cluster group {}", _clusterGroup);
       return;
     }
 
@@ -355,6 +356,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
 
     // update existing configs with newConfigs
+    // originals() would return a copy of the internal producer configs, put in new configs and update existing configs
     Map<String, Object> configMap = _commonProducerConfigs.originals();
     configMap.putAll(newConfigs);
     _commonProducerConfigs = new LiKafkaProducerConfig(configMap);
@@ -363,9 +365,13 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     _producers.clear();
     _closed = false;
 
-    // Only sent the diff of configs to mario server
+    // Convert the updated configs from Map<String, Object> to Map<String, String> and send the new config to mario server
     // report reload config execution complete to mario server
-    _mdsClient.reportCommandExecutionComplete(commandId, newConfigs, MsgType.RELOAD_CONFIG_RESPONSE);
+    Map<String, String> convertedConfig = new HashMap<>();
+    for (Map.Entry<String, Object> entry : configMap.entrySet()) {
+      convertedConfig.put(entry.getKey(), String.valueOf(entry.getValue()));
+    }
+    _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MsgType.RELOAD_CONFIG_RESPONSE);
 
     // re-register federated client with updated configs
     _mdsClient.reRegisterFederatedClient(newConfigs);
