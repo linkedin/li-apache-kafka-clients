@@ -22,6 +22,7 @@ import org.apache.kafka.clients.producer.MockProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.mockito.Matchers;
 import org.mockito.Mockito;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -173,8 +174,8 @@ public class LiKafkaFederatedProducerImplTest {
     _federatedProducer.reloadConfig(newConfigs, commandId);
 
     // verify corresponding marioClient method is only called once
-    verify(_mdsClient, times(1)).reportCommandExecutionComplete(commandId, newConfigs, MsgType.RELOAD_CONFIG_RESPONSE);
-    verify(_mdsClient, times(1)).reRegisterFederatedClient(newConfigs);
+    verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MsgType.RELOAD_CONFIG_RESPONSE));
+    verify(_mdsClient, times(1)).reRegisterFederatedClient(any());
 
     // verify per-cluster producers have been cleared after reloadConfig
     assertNull("Producer for cluster 1 should have been cleared",
