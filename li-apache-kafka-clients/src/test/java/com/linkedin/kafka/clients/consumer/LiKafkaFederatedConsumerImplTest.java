@@ -220,6 +220,10 @@ public class LiKafkaFederatedConsumerImplTest {
     // verify after reload config, the common consumer configs contains the new configs from config reload command
     assertTrue(_federatedConsumer.getCommonConsumerConfigs().originals().containsKey("K1"));
     assertTrue(_federatedConsumer.getCommonConsumerConfigs().originals().containsKey("K2"));
+
+    // Verify per-cluster consumers are not in closed state.
+    assertFalse("Consumer for cluster 1 should have not been closed", newConsumer1.closed());
+    assertFalse("Consumer for cluster 2 should have not been closed", newConsumer2.closed());
   }
 
   private boolean isError(Future<?> future) {
