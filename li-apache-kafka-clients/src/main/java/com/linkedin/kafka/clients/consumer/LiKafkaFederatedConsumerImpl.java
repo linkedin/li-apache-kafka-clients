@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -451,6 +450,46 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
         }, timeout);
   }
 
+  // A wrapper callback for async offset commits, which will call the user-provided callback only after all per-cluster
+  // consumers finish commit and call this callback. If multiple consumers encounter exceptions while commiting offsets,
+  // one of them will be passed to the user-provided callback.
+  private class WrapperOffsetCommitCallback implements OffsetCommitCallback {
+    private AtomicInteger _pendingCommitCount;
+    // An aggregate of all offsets passed to each callback
+    private Map<TopicPartition, OffsetAndMetadata> _allOffsets;
+    private volatile Exception _exception;
+    private OffsetCommitCallback _userCallback;
+
+    public WrapperOffsetCommitCallback(AtomicInteger pendingCommitCount,
+        Map<TopicPartition, OffsetAndMetadata> allOffsets, Exception exception, OffsetCommitCallback userCallback) {
+      _pendingCommitCount = pendingCommitCount;
+      _allOffsets = allOffsets;
+      _exception = exception;
+      _userCallback = userCallback;
+    }
+
+    @Override
+    public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception exception) {
+      synchronized (_allOffsets) {
+        _allOffsets.putAll(offsets);
+      }
+      if (exception != null) {
+        _exception = exception;
+      }
+      if (_pendingCommitCount.decrementAndGet() == 0) {
+        if (_userCallback == null) {
+          // Copies what DefaultOffsetCommitCallback does, which is used by upstream consumer when a null callback is
+          // passed.
+          if (_exception != null) {
+              LOG.error("Offset commit with offsets {} failed", _allOffsets, _exception);
+          }
+        } else {
+          _userCallback.onComplete(_allOffsets, _exception);
+        }
+      }
+    }
+  }
+
   @Override
   synchronized public void commitAsync() {
     commitAsync(null);
@@ -458,17 +497,28 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   synchronized public void commitAsync(OffsetCommitCallback callback) {
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
+    AtomicInteger pendingCommitCount = new AtomicInteger(consumers.size());
+    Map<TopicPartition, OffsetAndMetadata> allOffsets = new HashMap<>();
+    Exception exception = null;
+    OffsetCommitCallback wrapperCallback = new WrapperOffsetCommitCallback(pendingCommitCount, allOffsets, exception,
+        callback);
     for (ClusterConsumerPair<K, V> entry : getImmutableConsumerList()) {
-      entry.getConsumer().commitAsync(callback);
+      entry.getConsumer().commitAsync(wrapperCallback);
     }
   }
 
   @Override
   public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
     List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
-    for (Map.Entry<ClusterDescriptor, Map<TopicPartition, OffsetAndMetadata>> entry :
-        getPartitionValueMapByCluster(offsets).entrySet()) {
-      getOrCreatePerClusterConsumer(consumers, entry.getKey()).commitAsync(entry.getValue(), callback);
+    Map<ClusterDescriptor, Map<TopicPartition, OffsetAndMetadata>> perClusterPartitions =
+        getPartitionValueMapByCluster(offsets);
+    AtomicInteger pendingCommitCount = new AtomicInteger(perClusterPartitions.size());
+    Map<TopicPartition, OffsetAndMetadata> allOffsets = new HashMap<>();
+    Exception exception = null;
+    OffsetCommitCallback wrapperCallback = new WrapperOffsetCommitCallback(pendingCommitCount, allOffsets, exception, callback);
+    for (Map.Entry<ClusterDescriptor, Map<TopicPartition, OffsetAndMetadata>> entry : perClusterPartitions.entrySet()) {
+      getOrCreatePerClusterConsumer(consumers, entry.getKey()).commitAsync(entry.getValue(), wrapperCallback);
     }
   }
 

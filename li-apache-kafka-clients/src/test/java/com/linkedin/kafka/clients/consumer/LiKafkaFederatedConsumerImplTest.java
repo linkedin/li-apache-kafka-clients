@@ -103,14 +103,11 @@ public class LiKafkaFederatedConsumerImplTest {
           put(TOPIC_PARTITION2, CLUSTER2);
           put(TOPIC_PARTITION3, CLUSTER1);
     }};
-    when(_mdsClient.getClustersForTopicPartitions(eq(CLIENT_ID), eq(topicPartitions), eq(CLUSTER_GROUP),
-        anyInt())).thenReturn(topicPartitionsToClusterMapToReturn);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC1), eq(CLUSTER_GROUP),
-        anyInt())).thenReturn(CLUSTER1);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC2), eq(CLUSTER_GROUP),
-        anyInt())).thenReturn(CLUSTER2);
-    when(_mdsClient.getClusterForTopic(eq(CLIENT_ID), eq(TOPIC3), eq(CLUSTER_GROUP),
-        anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClustersForTopicPartitions(eq(topicPartitions), eq(CLUSTER_GROUP), anyInt()))
+        .thenReturn(topicPartitionsToClusterMapToReturn);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC1), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC2), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER2);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC3), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
 
     _federatedConsumer = new LiKafkaFederatedConsumerImpl<>(_consumerConfig, _mdsClient, new MockConsumerBuilder());
 
