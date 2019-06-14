@@ -371,7 +371,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   synchronized public ConsumerRecords<K, V> poll(long timeout) {
     ensureOpen();
     // Get an immutable copy of the current set of consumers.
-    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
 
     if (consumers.isEmpty()) {
       return ConsumerRecords.empty();
