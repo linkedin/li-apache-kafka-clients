@@ -381,7 +381,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
     _latchForTest.countDown();
 
-    LOG.info("Successfully restarted LiKafkaProducers in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
+    LOG.info("Successfully updated LiKafkaProducers configs in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
   }
 
   // For testing only, wait for reload config command to finish since it's being executed by a different thread

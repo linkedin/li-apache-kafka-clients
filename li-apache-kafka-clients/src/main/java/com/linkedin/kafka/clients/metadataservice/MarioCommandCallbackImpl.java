@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.metadataservice;
 
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClientType;
+import com.linkedin.kafka.clients.consumer.LiKafkaFederatedConsumerImpl;
 import com.linkedin.kafka.clients.producer.LiKafkaFederatedProducerImpl;
 import com.linkedin.mario.common.websockets.MarioCommandCallback;
 import com.linkedin.mario.common.websockets.Messages;
@@ -39,7 +40,8 @@ class MarioCommandCallbackImpl implements MarioCommandCallback {
           // Call producer reload config method
           ((LiKafkaFederatedProducerImpl) _federatedClient).reloadConfig(reloadConfigMsg.getConfigs(), reloadConfigMsg.getCommandId());
         } else {
-          throw new UnsupportedOperationException("Consumer config reload is not supported currently");
+          // call consumer reload config method
+          ((LiKafkaFederatedConsumerImpl) _federatedClient).reloadConfig(reloadConfigMsg.getConfigs(), reloadConfigMsg.getCommandId());
         }
         break;
       default:

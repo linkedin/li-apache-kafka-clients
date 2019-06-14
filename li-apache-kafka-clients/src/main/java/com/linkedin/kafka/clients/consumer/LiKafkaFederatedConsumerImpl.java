@@ -11,8 +11,8 @@ import com.linkedin.kafka.clients.common.LiKafkaFederatedClientType;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-
 import com.linkedin.mario.common.websockets.MsgType;
+
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -610,6 +610,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   // Do synchronization on the method that will be closing the consumers since it will be handled by a different thread
   synchronized void closeExistingConsumers(Map<String, String> newConfigs, UUID commandId) {
+    // TODO: ensureOpen() would throw an exception if consumers are already closed. In this case, we might want to send
+    // an error message to notify mario that the config reload command fails due to consumer/producer already closed and
+    // let mario decide what to do next (re-send the configs etc).
     ensureOpen();
 
     closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
@@ -637,7 +640,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     _latchForTest.countDown();
 
-    LOG.info("Successfully restarted LiKafkaConsumers in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
+    LOG.info("Successfully updated LiKafkaConsumers configs in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
   }
 
   // For testing only, wait for reload config command to finish since it's being executed by a different thread
