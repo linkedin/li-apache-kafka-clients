@@ -6,7 +6,7 @@ package com.linkedin.kafka.clients.metadataservice;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
-import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
 import com.linkedin.mario.client.MarioClient;
 import com.linkedin.mario.client.models.v1.TopicQuery;
 import com.linkedin.mario.client.util.MarioClusterGroupDescriptor;
@@ -15,6 +15,9 @@ import com.linkedin.mario.common.models.v1.KafkaTopicModel;
 import com.linkedin.mario.common.models.v1.TopicQueryResults;
 import com.linkedin.mario.common.websockets.MarioCommandCallback;
 
+import com.linkedin.mario.common.websockets.Messages;
+import com.linkedin.mario.common.websockets.MsgType;
+import com.linkedin.mario.common.websockets.ReloadConfigResponseMessages;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -46,15 +49,15 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   }
 
   @Override
-  public void registerFederatedClient(ClusterGroupDescriptor clusterGroup, Map<String, ?> configs,
-      Collection<FederatedClientCommandCallback> callbacks, int timeoutMs) {
+  public void registerFederatedClient(LiKafkaFederatedClient federatedClient, ClusterGroupDescriptor clusterGroup,
+      Map<String, ?> configs, int timeoutMs) {
     if (clusterGroup == null) {
       throw new IllegalArgumentException("cluster group cannot be null");
     }
 
     MarioClusterGroupDescriptor marioClusterGroup = new MarioClusterGroupDescriptor(clusterGroup.getName(),
         clusterGroup.getEnvironment());
-    MarioCommandCallback marioCommandCallback = new MarioCommandCallbackImpl(callbacks);
+    MarioCommandCallback marioCommandCallback = new MarioCommandCallbackImpl(federatedClient);
     _marioClient.registerFederatedClient(marioClusterGroup, (Map<String, String>) configs, timeoutMs, marioCommandCallback);
   }
 
@@ -143,6 +146,25 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
       topicToClusterMap.computeIfAbsent(topic.getName(), k -> new HashSet<>()).add(cluster);
     }
     return topicToClusterMap;
+  }
+
+  @Override
+  public void reportCommandExecutionComplete(UUID commandId, Map<String, String> configs, MsgType messageType) {
+    Messages messageToSent;
+    switch (messageType) {
+      case RELOAD_CONFIG_RESPONSE:
+        messageToSent = new ReloadConfigResponseMessages(configs, commandId);
+        break;
+      default:
+        throw new UnsupportedOperationException("Message type " + messageType + " is not supported right now");
+    }
+
+    _marioClient.reportCommandExecutionComplete(commandId, messageToSent);
+  }
+
+  @Override
+  public void reRegisterFederatedClient(Map<String, String> configs) {
+    _marioClient.reRegisterFederatedClient(configs);
   }
 
   @Override

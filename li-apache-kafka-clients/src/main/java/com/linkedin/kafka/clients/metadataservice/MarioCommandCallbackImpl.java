@@ -4,14 +4,13 @@
 
 package com.linkedin.kafka.clients.metadataservice;
 
-import com.linkedin.kafka.clients.common.FederatedClientCommandCallback;
-import com.linkedin.kafka.clients.common.FederatedClientCommandType;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
+import com.linkedin.kafka.clients.common.LiKafkaFederatedClientType;
+import com.linkedin.kafka.clients.producer.LiKafkaFederatedProducerImpl;
 import com.linkedin.mario.common.websockets.MarioCommandCallback;
 import com.linkedin.mario.common.websockets.Messages;
 
-import java.util.Collection;
-import java.util.Map;
-
+import com.linkedin.mario.common.websockets.ReloadConfigRequestMessages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,22 +21,30 @@ import org.slf4j.LoggerFactory;
 class MarioCommandCallbackImpl implements MarioCommandCallback {
   private static final Logger LOG = LoggerFactory.getLogger(MarioCommandCallbackImpl.class);
 
-  private Map<FederatedClientCommandType, FederatedClientCommandCallback> _federatedClientCommandCallbacks;
+  private LiKafkaFederatedClient _federatedClient;
 
-  MarioCommandCallbackImpl(Collection<FederatedClientCommandCallback> callbacks) {
-    for (FederatedClientCommandCallback callback : callbacks) {
-      _federatedClientCommandCallbacks.put(callback.getCommandType(), callback);
-    }
+  MarioCommandCallbackImpl(LiKafkaFederatedClient federatedClient) {
+    _federatedClient = federatedClient;
   }
 
   public void onReceivingCommand(Messages marioCommandMessage) {
     // Find a federate client callback that matches the given Mario command message type and execute it with arguments
     // included in the message.
+
     switch (marioCommandMessage.getMsgType()) {
+      case RELOAD_CONFIG_REQUEST:
+        ReloadConfigRequestMessages reloadConfigMsg = (ReloadConfigRequestMessages) marioCommandMessage;
+
+        if (_federatedClient.getClientType() == LiKafkaFederatedClientType.FEDERATED_PRODUCER) {
+          // Call producer reload config method
+          ((LiKafkaFederatedProducerImpl) _federatedClient).reloadConfig(reloadConfigMsg.getConfigs(), reloadConfigMsg.getCommandId());
+        } else {
+          throw new UnsupportedOperationException("Consumer config reload is not supported currently");
+        }
+        break;
       default:
         // No current support at the moment
-        LOG.warn("command {} is unsupported", marioCommandMessage.getMsgType());
-        break;
+        throw new UnsupportedOperationException("command " + marioCommandMessage.getMsgType() + " is not supported");
     }
   }
 }
