@@ -12,6 +12,7 @@ import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
+import com.linkedin.mario.common.websockets.MsgType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -50,6 +52,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaFederatedConsumerImpl.class);
   private static final int CONSUMER_CLOSE_MAX_TIMEOUT_SECS = 10 * 60;
   private static final AtomicInteger FEDERATED_CONSUMER_CLIENT_ID_SEQUENCE = new AtomicInteger(1);
+  private static final Duration RELOAD_CONFIG_EXECUTION_TIME_OUT = Duration.ofMinutes(10);
 
 
   // The cluster group this client is talking to
@@ -105,6 +108,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   private String _clientIdPrefix;
 
   private volatile boolean _closed;
+
+  // Only used for testing
+  private CountDownLatch _latchForTest = new CountDownLatch(1);
 
   public LiKafkaFederatedConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null);
@@ -333,7 +339,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  synchronized public ConsumerRecords<K, V> poll(Duration timeout) {
+  public ConsumerRecords<K, V> poll(Duration timeout) {
     return poll(timeout.toMillis());
   }
 
@@ -507,8 +513,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     close(CONSUMER_CLOSE_MAX_TIMEOUT_SECS, TimeUnit.SECONDS);
   }
 
-  @Override
-  synchronized public void close(long timeout, TimeUnit timeUnit) {
+  void closeNoLock(long timeout, TimeUnit timeUnit) {
     if (_closed) {
       return;
     }
@@ -566,8 +571,13 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
+  synchronized public void close(long timeout, TimeUnit timeUnit) {
+    closeNoLock(timeout, timeUnit);
+  }
+
+  @Override
   synchronized public void close(Duration timeout) {
-    close(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    closeNoLock(timeout.toMillis(), TimeUnit.MILLISECONDS);
   }
 
   @Override
@@ -575,9 +585,64 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
-  synchronized public void reloadConfig(Map<String, Object> newConfigs) {
+  public LiKafkaConsumerConfig getCommonConsumerConfigs() {
+    return _commonConsumerConfigs;
+  }
+
+  public void reloadConfig(Map<String, String> newConfigs, UUID commandId) {
+    // Go over each consumer, close them, and update existing configs with newConfigs. Since each per-cluster consumer will be
+    // instantiated when the client began consuming from that cluster, we just need to clear the mappings and update the configs.
+    // since this method is invoked by marioClient, it should be non-blocking, so we create another thread doing above
+    LOG.info("Starting reloadConfig for LiKafkaConsumers in clusterGroup {} with new configs {}", _clusterGroup, newConfigs);
+    Thread t = new Thread(() -> {
+      closeExistingConsumers(newConfigs, commandId);
+    });
+    t.setDaemon(true);
+    t.setName("LiKafkaConsumer-reloadConfig-" + _clusterGroup.getName());
+    t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+      public void uncaughtException(Thread t, Throwable e) {
+        throw new KafkaException("Thread " + t.getName() + " throws exception", e);
+      }
+    });
+
+    t.start();
+  }
+
+  // Do synchronization on the method that will be closing the consumers since it will be handled by a different thread
+  synchronized void closeExistingConsumers(Map<String, String> newConfigs, UUID commandId) {
     ensureOpen();
-    // TODO: Go over each consumer, close, and recreate them
+
+    closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
+
+    // update existing configs with newConfigs
+    // originals() would return a copy of the internal consumer configs, put in new configs and update existing configs
+    Map<String, Object> configMap = _commonConsumerConfigs.originals();
+    configMap.putAll(newConfigs);
+    _commonConsumerConfigs = new LiKafkaConsumerConfig(configMap);
+
+    // reset the state of _consumers and _closed so that subsequent calls will try to instantiate the consumers with new configs
+    _consumers.clear();
+    _closed = false;
+
+    // Convert the updated configs from Map<String, Object> to Map<String, String> and send the new config to mario server
+    // report reload config execution complete to mario server
+    Map<String, String> convertedConfig = new HashMap<>();
+    for (Map.Entry<String, Object> entry : configMap.entrySet()) {
+      convertedConfig.put(entry.getKey(), String.valueOf(entry.getValue()));
+    }
+    _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MsgType.RELOAD_CONFIG_RESPONSE);
+
+    // re-register federated client with updated configs
+    _mdsClient.reRegisterFederatedClient(newConfigs);
+
+    _latchForTest.countDown();
+
+    LOG.info("Successfully restarted LiKafkaConsumers in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
+  }
+
+  // For testing only, wait for reload config command to finish since it's being executed by a different thread
+  void waitForReloadConfigFinish() throws InterruptedException {
+    _latchForTest.await(1, TimeUnit.MINUTES);
   }
 
   // Intended for testing only

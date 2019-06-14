@@ -80,6 +80,9 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   private volatile boolean _closed;
 
+  // Only used for testing
+  private CountDownLatch _latchForTest = new CountDownLatch(1);
+
   public LiKafkaFederatedProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null);
   }
@@ -376,7 +379,14 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // re-register federated client with updated configs
     _mdsClient.reRegisterFederatedClient(newConfigs);
 
+    _latchForTest.countDown();
+
     LOG.info("Successfully restarted LiKafkaProducers in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
+  }
+
+  // For testing only, wait for reload config command to finish since it's being executed by a different thread
+  void waitForReloadConfigFinish() throws InterruptedException {
+    _latchForTest.await(1, TimeUnit.MINUTES);
   }
 
   // Intended for testing only
