@@ -9,6 +9,7 @@ import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 
+import com.linkedin.mario.common.websockets.MsgType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -161,6 +162,68 @@ public class LiKafkaFederatedConsumerImplTest {
     _federatedConsumer.close();
     assertTrue("Consumer for cluster 1 should have been closed", consumer1.closed());
     assertTrue("Consumer for cluster 2 should have been closed", consumer2.closed());
+  }
+
+  @Test
+  public void testConsumerReloadConfigCommand() throws MetadataServiceClientException, InterruptedException {
+    // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
+    Collection<TopicPartition> expectedTopicPartitions = Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2,
+        TOPIC_PARTITION3);
+    Map<TopicPartition, ClusterDescriptor> topicPartitionsToClusterMapToReturn =
+        new HashMap<TopicPartition, ClusterDescriptor>() {{
+          put(TOPIC_PARTITION1, CLUSTER1);
+          put(TOPIC_PARTITION2, CLUSTER2);
+          put(TOPIC_PARTITION3, CLUSTER1);
+        }};
+    when(_mdsClient.getClustersForTopicPartitions(eq(expectedTopicPartitions), eq(CLUSTER_GROUP), anyInt()))
+        .thenReturn(topicPartitionsToClusterMapToReturn);
+
+    // Assign topic partitions from all three topics
+    _federatedConsumer.assign(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2, TOPIC_PARTITION3));
+
+    // Verify consumers for both clusters have been created.
+    MockConsumer consumer1 = ((MockLiKafkaConsumer) _federatedConsumer.getPerClusterConsumer(CLUSTER1)).getDelegate();
+    MockConsumer consumer2 = ((MockLiKafkaConsumer) _federatedConsumer.getPerClusterConsumer(CLUSTER2)).getDelegate();
+    assertNotNull("Consumer for cluster 1 should have been created", consumer1);
+    assertNotNull("Consumer for cluster 2 should have been created", consumer2);
+
+    // send reload config command
+    Map<String, String> newConfigs = new HashMap<>();
+    newConfigs.put("K1", "V1");
+    newConfigs.put("K2", "V2");
+    UUID commandId = UUID.randomUUID();
+
+    _federatedConsumer.reloadConfig(newConfigs, commandId);
+
+    // wait for reload config to finish
+    _federatedConsumer.waitForReloadConfigFinish();
+
+    // verify corresponding marioClient method is only called once
+    verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MsgType.RELOAD_CONFIG_RESPONSE));
+    verify(_mdsClient, times(1)).reRegisterFederatedClient(any());
+
+    // Verify per-cluster consumers have been cleared after reload config command
+    assertNull("Consumer for cluster 1 should have been cleared",
+        _federatedConsumer.getPerClusterConsumer(CLUSTER1));
+    assertNull("Consumer for cluster 2 should have been cleared",
+        _federatedConsumer.getPerClusterConsumer(CLUSTER2));
+
+    // assing partitions again in order to create per-cluster consumers
+    _federatedConsumer.assign(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2, TOPIC_PARTITION3));
+
+    // Verify consumers for both clusters have been created.
+    MockConsumer newConsumer1 = ((MockLiKafkaConsumer) _federatedConsumer.getPerClusterConsumer(CLUSTER1)).getDelegate();
+    MockConsumer newConsumer2 = ((MockLiKafkaConsumer) _federatedConsumer.getPerClusterConsumer(CLUSTER2)).getDelegate();
+    assertNotNull("Consumer for cluster 1 should have been created", newConsumer1);
+    assertNotNull("Consumer for cluster 2 should have been created", newConsumer2);
+
+    // verify after reload config, the common consumer configs contains the new configs from config reload command
+    assertTrue(_federatedConsumer.getCommonConsumerConfigs().originals().containsKey("K1"));
+    assertTrue(_federatedConsumer.getCommonConsumerConfigs().originals().containsKey("K2"));
+
+    // Verify per-cluster consumers are not in closed state.
+    assertFalse("Consumer for cluster 1 should have not been closed", newConsumer1.closed());
+    assertFalse("Consumer for cluster 2 should have not been closed", newConsumer2.closed());
   }
 
   private boolean isError(Future<?> future) {

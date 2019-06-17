@@ -142,7 +142,7 @@ public class LiKafkaFederatedProducerImplTest {
   }
 
   @Test
-  public void testReloadConfigCommand() throws MetadataServiceClientException {
+  public void testReloadConfigCommand() throws MetadataServiceClientException, InterruptedException {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
     when(_mdsClient.getClusterForTopic(eq(TOPIC1), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
     when(_mdsClient.getClusterForTopic(eq(TOPIC2), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER2);
@@ -171,6 +171,9 @@ public class LiKafkaFederatedProducerImplTest {
     UUID commandId = UUID.randomUUID();
 
     _federatedProducer.reloadConfig(newConfigs, commandId);
+
+    // wait for reload config finish
+    _federatedProducer.waitForReloadConfigFinish();
 
     // verify corresponding marioClient method is only called once
     verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MsgType.RELOAD_CONFIG_RESPONSE));
