@@ -80,8 +80,8 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   private volatile boolean _closed;
 
-  // Only used for testing
-  private CountDownLatch _latchForTest = new CountDownLatch(1);
+  // Number of config reload operations executed
+  private volatile int _numConfigReloads;
 
   public LiKafkaFederatedProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null);
@@ -122,6 +122,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     _clientIdPrefix = clientIdPrefix;
 
     _closed = false;
+    _numConfigReloads = 0;
 
     try {
       // Instantiate metadata service client if necessary.
@@ -344,7 +345,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     t.setName("LiKafkaProducer-reloadConfig-" + _clusterGroup.getName());
     t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
       public void uncaughtException(Thread t, Throwable e) {
-        throw new KafkaException("Thread " + t.getName() + " throws exception", e);
+        LOG.error("Thread {} throws exception {}", t.getName(), e);
       }
     });
 
@@ -379,14 +380,17 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // re-register federated client with updated configs
     _mdsClient.reRegisterFederatedClient(newConfigs);
 
-    _latchForTest.countDown();
+    _numConfigReloads++;
 
     LOG.info("Successfully updated LiKafkaProducers configs in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
   }
 
   // For testing only, wait for reload config command to finish since it's being executed by a different thread
   void waitForReloadConfigFinish() throws InterruptedException {
-    _latchForTest.await(1, TimeUnit.MINUTES);
+    long endWaitTime = System.currentTimeMillis() + Duration.ofMinutes(1).toMillis();
+    while (_numConfigReloads == 0 && System.currentTimeMillis() < endWaitTime) {
+      TimeUnit.MILLISECONDS.sleep(200);
+    }
   }
 
   // Intended for testing only
