@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -491,7 +492,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  synchronized public void commitAsync() {
+  public void commitAsync() {
     commitAsync(null);
   }
 
@@ -509,7 +510,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
+  synchronized public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
     List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
     Map<ClusterDescriptor, Map<TopicPartition, OffsetAndMetadata>> perClusterPartitions =
         getPartitionValueMapByCluster(offsets);
@@ -592,7 +593,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  synchronized public Map<String, List<PartitionInfo>> listTopics() {
+  public Map<String, List<PartitionInfo>> listTopics() {
     return listTopics(Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
@@ -632,7 +633,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  synchronized public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
+  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
     return offsetsForTimes(timestampsToSearch, Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
@@ -648,7 +649,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  synchronized public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
+  public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
     return beginningOffsets(partitions, Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
@@ -663,7 +664,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  synchronized public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
+  public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
     return endOffsets(partitions, Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
