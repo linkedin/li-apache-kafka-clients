@@ -376,29 +376,26 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // TODO : send an error back to Mario
     // _producers should be filled when reload config happens
     Map<ClusterDescriptor, LiKafkaProducer<K, V>> newProducers = new ConcurrentHashMap<>();
-    boolean recreateSucceeded = false;
 
     try {
       for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
-        getOrCreatePerClusterProducer(entry.getKey(), newProducers);
+        LiKafkaProducer<K, V> curProducer = createPerClusterProducer(entry.getKey());
+        newProducers.put(entry.getKey(), curProducer);
       }
 
-      recreateSucceeded = true;
-    } catch (Exception e) {
-      LOG.error("Failed to recreate per-cluster producers with new configs, exception ", e);
-    }
-
-    if (recreateSucceeded) {
       // replace _producers with newly created producers
       _producers.clear();
       _producers = newProducers;
-    } else {
+    } catch (Exception e) {
+      LOG.error("Failed to recreate per-cluster producers with new configs with exception, restore to previous producers ", e);
+
       // recreate failed, restore to previous configured producers
       newProducers.clear();
       _commonProducerConfigs = new LiKafkaProducerConfig(originalConfig);
 
       for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
-        getOrCreatePerClusterProducer(entry.getKey(), newProducers);
+        LiKafkaProducer<K, V> curProducer = createPerClusterProducer(entry.getKey());
+        newProducers.put(entry.getKey(), curProducer);
       }
 
       _producers = newProducers;
@@ -452,19 +449,33 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     if (cluster == null) {
       throw new IllegalStateException("Topic " + topic + " not found in the metadata service");
     }
-    return getOrCreatePerClusterProducer(cluster, _producers);
+    return getOrCreatePerClusterProducer(cluster);
   }
 
-  private LiKafkaProducer<K, V> getOrCreatePerClusterProducer(ClusterDescriptor cluster, Map<ClusterDescriptor, LiKafkaProducer<K, V>> producers) {
+  private LiKafkaProducer<K, V> getOrCreatePerClusterProducer(ClusterDescriptor cluster) {
     if (cluster == null) {
       throw new IllegalArgumentException("Cluster cannot be null");
     }
 
     ensureOpen();
 
-    if (producers.containsKey(cluster)) {
-      return producers.get(cluster);
+    if (_producers.containsKey(cluster)) {
+      return _producers.get(cluster);
     }
+
+    LiKafkaProducer<K, V> newProducer = createPerClusterProducer(cluster);
+    // always update _producers map to avoid creating multiple producers when calling this method
+    // multiple times
+    _producers.put(cluster, newProducer);
+    return newProducer;
+  }
+
+  private LiKafkaProducer<K, V> createPerClusterProducer(ClusterDescriptor cluster) {
+    if (cluster == null) {
+      throw new IllegalArgumentException("Cluster cannot be null");
+    }
+
+    ensureOpen();
 
     // Create per-cluster producer config
     Map<String, Object> configMap = _commonProducerConfigs.originals();
@@ -473,7 +484,6 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
     _producerBuilder.setProducerConfig(configMap);
     LiKafkaProducer<K, V> newProducer = _producerBuilder.build();
-    producers.put(cluster, newProducer);
     return newProducer;
   }
 

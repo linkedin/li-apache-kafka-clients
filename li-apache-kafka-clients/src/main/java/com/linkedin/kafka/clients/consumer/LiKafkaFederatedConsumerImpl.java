@@ -265,7 +265,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _numClustersToConnectTo = clusterToTopicPartitionsMap.size();
     _nextClusterIndexToPoll = 0;
     for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
-      getOrCreatePerClusterConsumer(consumers, entry.getKey()).assign(entry.getValue());
+      LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getKey());
+      curConsumer.assign(entry.getValue());
+      consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), curConsumer));
     }
     _consumers = consumers;
   }
@@ -633,30 +635,27 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // TODO : send an error back to Mario
     // _consumers should be filled when reload config happens
     List<ClusterConsumerPair<K, V>> newConsumers = new ArrayList<>();
-    boolean recreateSucceeded = false;
 
     try {
       for (ClusterConsumerPair<K, V> entry : _consumers) {
-        getOrCreatePerClusterConsumer(newConsumers, entry.getCluster());
+        LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getCluster());
+        newConsumers.add(new ClusterConsumerPair<K, V>(entry.getCluster(), curConsumer));
       }
 
-      recreateSucceeded = true;
-    } catch (Exception e) {
-      // if any exception occurs, re-create per-cluster consumers with last-known-good configs
-      LOG.error("Failed to recreate per-cluster consumers with new configs, exception ", e);
-    }
-
-    if (recreateSucceeded) {
       // replace _consumers with newly created consumers
       _consumers.clear();
       _consumers = newConsumers;
-    } else {
+    } catch (Exception e) {
+      // if any exception occurs, re-create per-cluster consumers with last-known-good configs
+      LOG.error("Failed to recreate per-cluster consumers with new config with exception, restore to previous consumers ", e);
+
       // recreate failed, restore to previous configured consumers
       newConsumers.clear();
       _commonConsumerConfigs = new LiKafkaConsumerConfig(originalConfigs);
 
       for (ClusterConsumerPair<K, V> entry : _consumers) {
-        getOrCreatePerClusterConsumer(newConsumers, entry.getCluster());
+        LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getCluster());
+        newConsumers.add(new ClusterConsumerPair<K, V>(entry.getCluster(), curConsumer));
       }
 
       _consumers = newConsumers;
@@ -703,18 +702,25 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   // Returns null if the specified topic does not exist in the cluster group.
-  private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(List<ClusterConsumerPair<K, V>> consumers,
-      ClusterDescriptor cluster) {
+  private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(ClusterDescriptor cluster) {
     if (cluster == null) {
       throw new IllegalArgumentException("Cluster cannot be null");
     }
 
-    for (ClusterConsumerPair<K, V> entry : consumers) {
+    for (ClusterConsumerPair<K, V> entry : _consumers) {
       if (entry.getCluster().equals(cluster)) {
         return entry.getConsumer();
       }
     }
 
+    LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(cluster);
+    // always update the _consumers map to avoid creating the same consumer multiple times when calling
+    // this method
+    _consumers.add(new ClusterConsumerPair<K, V>(cluster, curConsumer));
+    return curConsumer;
+  }
+
+  private LiKafkaConsumer<K, V> createPerClusterConsumer(ClusterDescriptor cluster) {
     // Create per-cluster consumer config where the following cluster-specific properties:
     //   - bootstrap.server - the actual bootstrap URL of the physical cluster to connect to
     //   - max.poll.records - the property value set for the federated consumer / the number of clusters in this cluster group
@@ -729,7 +735,6 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     int maxPollRecordsPerCluster = Math.max(_maxPollRecordsForFederatedConsumer / _numClustersToConnectTo, 1);
     configMap.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecordsPerCluster);
     LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.setConsumerConfig(configMap).build();
-    consumers.add(new ClusterConsumerPair<K, V>(cluster, newConsumer));
     return newConsumer;
   }
 
