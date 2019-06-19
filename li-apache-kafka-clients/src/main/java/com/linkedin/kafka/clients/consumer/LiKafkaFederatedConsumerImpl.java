@@ -596,7 +596,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // since this method is invoked by marioClient, it should be non-blocking, so we create another thread doing above
     LOG.info("Starting reloadConfig for LiKafkaConsumers in clusterGroup {} with new configs {}", _clusterGroup, newConfigs);
     Thread t = new Thread(() -> {
-      closeExistingConsumers(newConfigs, commandId);
+      recreateConsumers(newConfigs, commandId);
     });
     t.setDaemon(true);
     t.setName("LiKafkaConsumer-reloadConfig-" + _clusterGroup.getName());
@@ -610,7 +610,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   // Do synchronization on the method that will be closing the consumers since it will be handled by a different thread
-  synchronized void closeExistingConsumers(Map<String, String> newConfigs, UUID commandId) {
+  synchronized void recreateConsumers(Map<String, String> newConfigs, UUID commandId) {
     // TODO: ensureOpen() would throw an exception if consumers are already closed. In this case, we might want to send
     // an error message to notify mario that the config reload command fails due to consumer/producer already closed and
     // let mario decide what to do next (re-send the configs etc).
@@ -618,22 +618,60 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
 
+    // save the original configs in case re-create consumers with new configs failed, we need to re-create
+    // with the original configs
+    Map<String, Object> originalConfigs = _commonConsumerConfigs.originals();
+
     // update existing configs with newConfigs
     // originals() would return a copy of the internal consumer configs, put in new configs and update existing configs
     Map<String, Object> configMap = _commonConsumerConfigs.originals();
     configMap.putAll(newConfigs);
     _commonConsumerConfigs = new LiKafkaConsumerConfig(configMap);
 
-    // reset the state of _consumers and _closed so that subsequent calls will try to instantiate the consumers with new configs
-    _consumers.clear();
+    // re-create per-cluster consumers with new set of configs
+    // if any error occurs, recreate all per-cluster consumers with previous last-known-good configs and
+    // TODO : send an error back to Mario
+    // _consumers should be filled when reload config happens
+    List<ClusterConsumerPair<K, V>> newConsumers = new ArrayList<>();
+    boolean recreateSucceeded = false;
+
+    try {
+      for (ClusterConsumerPair<K, V> entry : _consumers) {
+        getOrCreatePerClusterConsumer(newConsumers, entry.getCluster());
+      }
+
+      recreateSucceeded = true;
+    } catch (Exception e) {
+      // if any exception occurs, re-create per-cluster consumers with last-known-good configs
+      LOG.error("Failed to recreate per-cluster consumers with new configs, exception ", e);
+    }
+
+    if (recreateSucceeded) {
+      // replace _consumers with newly created consumers
+      _consumers.clear();
+      _consumers = newConsumers;
+    } else {
+      // recreate failed, restore to previous configured consumers
+      newConsumers.clear();
+      _commonConsumerConfigs = new LiKafkaConsumerConfig(originalConfigs);
+
+      for (ClusterConsumerPair<K, V> entry : _consumers) {
+        getOrCreatePerClusterConsumer(newConsumers, entry.getCluster());
+      }
+
+      _consumers = newConsumers;
+    }
+
     _closed = false;
 
     // Convert the updated configs from Map<String, Object> to Map<String, String> and send the new config to mario server
     // report reload config execution complete to mario server
     Map<String, String> convertedConfig = new HashMap<>();
-    for (Map.Entry<String, Object> entry : configMap.entrySet()) {
+    // Send the actually used configs to Mario
+    for (Map.Entry<String, Object> entry : _commonConsumerConfigs.originals().entrySet()) {
       convertedConfig.put(entry.getKey(), String.valueOf(entry.getValue()));
     }
+    // TODO: Add a flag in RELOAD_CONFIG_RESPONSE message to indicate whether re-creating per-cluster consumers is successful
     _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MsgType.RELOAD_CONFIG_RESPONSE);
 
     // re-register federated client with updated configs
@@ -641,7 +679,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     _numConfigReloads++;
 
-    LOG.info("Successfully updated LiKafkaConsumers configs in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
+    LOG.info("Successfully recreated LiKafkaConsumers in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
   }
 
   // For testing only, wait for reload config command to finish since it's being executed by a different thread

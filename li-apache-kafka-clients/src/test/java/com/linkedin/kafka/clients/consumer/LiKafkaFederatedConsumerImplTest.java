@@ -202,15 +202,6 @@ public class LiKafkaFederatedConsumerImplTest {
     verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MsgType.RELOAD_CONFIG_RESPONSE));
     verify(_mdsClient, times(1)).reRegisterFederatedClient(any());
 
-    // Verify per-cluster consumers have been cleared after reload config command
-    assertNull("Consumer for cluster 1 should have been cleared",
-        _federatedConsumer.getPerClusterConsumer(CLUSTER1));
-    assertNull("Consumer for cluster 2 should have been cleared",
-        _federatedConsumer.getPerClusterConsumer(CLUSTER2));
-
-    // assing partitions again in order to create per-cluster consumers
-    _federatedConsumer.assign(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2, TOPIC_PARTITION3));
-
     // Verify consumers for both clusters have been created.
     MockConsumer newConsumer1 = ((MockLiKafkaConsumer) _federatedConsumer.getPerClusterConsumer(CLUSTER1)).getDelegate();
     MockConsumer newConsumer2 = ((MockLiKafkaConsumer) _federatedConsumer.getPerClusterConsumer(CLUSTER2)).getDelegate();
