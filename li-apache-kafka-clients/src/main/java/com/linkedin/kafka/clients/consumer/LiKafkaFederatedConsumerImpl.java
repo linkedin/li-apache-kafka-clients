@@ -677,6 +677,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _closed = false;
 
     // keep previous partition assignment after config reload
+    // TODO: after subscribe() is supported, we need to also keep the original subscription
     Map<ClusterDescriptor, Set<TopicPartition>> perClusterTopicPartitionSet = getPerClusterTopicPartitionSet(curPartitions);
 
     for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : perClusterTopicPartitionSet.entrySet()) {
