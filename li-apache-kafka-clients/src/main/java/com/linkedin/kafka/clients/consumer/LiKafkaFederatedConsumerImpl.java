@@ -16,6 +16,7 @@ import com.linkedin.mario.common.websockets.MsgType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -214,55 +215,59 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
-  private Map<ClusterDescriptor, Set<TopicPartition>> getPerClusterTopicPartitionSet(Collection<TopicPartition> partitions) {
+  private Map<ClusterDescriptor, Collection<TopicPartition>> getPartitionsByCluster(Collection<TopicPartition> partitions) {
     ensureOpen();
     if (partitions == null) {
-      throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
+      throw new IllegalArgumentException("partitions cannot be null");
     }
 
-    // If partitions are empty, it should be treated the same as unsubscribe(). This is the vanilla Kafka consumer
-    // behavior.
     if (partitions.isEmpty()) {
-      unsubscribe();
-      return null;
+      return Collections.emptyMap();
     }
 
-    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap;
+    Map<TopicPartition, ClusterDescriptor> partitionToClusterMap;
     try {
-      topicPartitionToClusterMap =
+      partitionToClusterMap =
           _mdsClient.getClustersForTopicPartitions(partitions, _clusterGroup, _mdsRequestTimeoutMs);
     } catch (MetadataServiceClientException e) {
       throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
     }
 
     // Reverse the map so that we can have per-cluster topic partition sets.
-    Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap = new HashMap<>();
-    Set<TopicPartition> nonexistentTopicPartitions = new HashSet<>();
-    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : topicPartitionToClusterMap.entrySet()) {
+    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap = new HashMap<>();
+    Set<TopicPartition> nonexistentPartitions = new HashSet<>();
+    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : partitionToClusterMap.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       ClusterDescriptor cluster = entry.getValue();
       if (cluster == null) {
-        nonexistentTopicPartitions.add(topicPartition);
+        nonexistentPartitions.add(topicPartition);
       } else {
-        clusterToTopicPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
+        clusterToPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
       }
     }
 
-    if (!nonexistentTopicPartitions.isEmpty()) {
-      throw new IllegalStateException("Cannot assign nonexistent partitions: " + nonexistentTopicPartitions);
+    if (!nonexistentPartitions.isEmpty()) {
+      throw new IllegalStateException("found nonexistent partitions: " + nonexistentPartitions);
     }
 
-    return clusterToTopicPartitionsMap;
+    return clusterToPartitionsMap;
   }
 
   @Override
   synchronized public void assign(Collection<TopicPartition> partitions) {
-    Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap = getPerClusterTopicPartitionSet(partitions);
+    ensureOpen();
+    if (partitions == null) {
+      throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
+    }
 
-    if (clusterToTopicPartitionsMap == null || clusterToTopicPartitionsMap.isEmpty()) {
-      LOG.debug("per-cluster topic partition set is empty, nothing to assign");
+    // if partitions are empty, it should be treated the same as unsubscribe(). This
+    // is the vanilla Kafka consumer behavior.
+    if (partitions.isEmpty()) {
+      unsubscribe();
       return;
     }
+
+    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToTopicPartitionsMap = getPartitionsByCluster(partitions);
 
     // This assignment should replace the previous assignment. Since max.poll.records should be reset for consumers
     // for the new assignment, close all existing consumers first.
@@ -275,7 +280,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     _numClustersToConnectTo = clusterToTopicPartitionsMap.size();
     _nextClusterIndexToPoll = 0;
-    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
       LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getKey());
       curConsumer.assign(entry.getValue());
       consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), curConsumer));
@@ -629,7 +634,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // let mario decide what to do next (re-send the configs etc).
     ensureOpen();
 
-    Set<TopicPartition> curPartitions = assignment();
+    // Store the original per-cluster topicPartition assignment
+    Map<ClusterDescriptor, Collection<TopicPartition>> perClusterTopicPartitionSet = new HashMap<>();
+    for (ClusterConsumerPair<K, V> entry : _consumers) {
+      perClusterTopicPartitionSet.put(entry.getCluster(), entry.getConsumer().assignment());
+    }
 
     closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
 
@@ -678,12 +687,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     // keep previous partition assignment after config reload
     // TODO: after subscribe() is supported, we need to also keep the original subscription
-    Map<ClusterDescriptor, Set<TopicPartition>> perClusterTopicPartitionSet = getPerClusterTopicPartitionSet(curPartitions);
-
-    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : perClusterTopicPartitionSet.entrySet()) {
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : perClusterTopicPartitionSet.entrySet()) {
       getOrCreatePerClusterConsumer(entry.getKey()).assign(entry.getValue());
     }
-
 
     // Convert the updated configs from Map<String, Object> to Map<String, String> and send the new config to mario server
     // report reload config execution complete to mario server
