@@ -179,10 +179,10 @@ public class LiKafkaFederatedProducerImplTest {
     verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MsgType.RELOAD_CONFIG_RESPONSE));
     verify(_mdsClient, times(1)).reRegisterFederatedClient(any());
 
-    // verify per-cluster producers have been cleared after reloadConfig
-    assertNull("Producer for cluster 1 should have been cleared",
+    // verify per-cluster producers have been recreated after reloadConfig
+    assertNotNull("Producer for cluster 1 should have been cleared",
         _federatedProducer.getPerClusterProducer(CLUSTER1));
-    assertNull("Producer for cluster 2 should have been cleared",
+    assertNotNull("Producer for cluster 2 should have been cleared",
         _federatedProducer.getPerClusterProducer(CLUSTER2));
 
     // verify after reload config, the common producer configs contains the new configs from config reload command

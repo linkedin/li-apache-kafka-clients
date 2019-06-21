@@ -16,6 +16,7 @@ import com.linkedin.mario.common.websockets.MsgType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -214,6 +215,44 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
+  private Map<ClusterDescriptor, Collection<TopicPartition>> getPartitionsByCluster(Collection<TopicPartition> partitions) {
+    ensureOpen();
+    if (partitions == null) {
+      throw new IllegalArgumentException("partitions cannot be null");
+    }
+
+    if (partitions.isEmpty()) {
+      return Collections.emptyMap();
+    }
+
+    Map<TopicPartition, ClusterDescriptor> partitionToClusterMap;
+    try {
+      partitionToClusterMap =
+          _mdsClient.getClustersForTopicPartitions(partitions, _clusterGroup, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
+    }
+
+    // Reverse the map so that we can have per-cluster topic partition sets.
+    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap = new HashMap<>();
+    Set<TopicPartition> nonexistentPartitions = new HashSet<>();
+    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : partitionToClusterMap.entrySet()) {
+      TopicPartition topicPartition = entry.getKey();
+      ClusterDescriptor cluster = entry.getValue();
+      if (cluster == null) {
+        nonexistentPartitions.add(topicPartition);
+      } else {
+        clusterToPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
+      }
+    }
+
+    if (!nonexistentPartitions.isEmpty()) {
+      throw new IllegalStateException("found nonexistent partitions: " + nonexistentPartitions);
+    }
+
+    return clusterToPartitionsMap;
+  }
+
   @Override
   synchronized public void assign(Collection<TopicPartition> partitions) {
     ensureOpen();
@@ -221,37 +260,14 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
     }
 
-    // If partitions are empty, it should be treated the same as unsubscribe(). This is the vanilla Kafka consumer
-    // behavior.
+    // if partitions are empty, it should be treated the same as unsubscribe(). This
+    // is the vanilla Kafka consumer behavior.
     if (partitions.isEmpty()) {
       unsubscribe();
       return;
     }
 
-    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap;
-    try {
-      topicPartitionToClusterMap =
-          _mdsClient.getClustersForTopicPartitions(partitions, _clusterGroup, _mdsRequestTimeoutMs);
-    } catch (MetadataServiceClientException e) {
-      throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
-    }
-
-    // Reverse the map so that we can have per-cluster topic partition sets.
-    Map<ClusterDescriptor, Set<TopicPartition>> clusterToTopicPartitionsMap = new HashMap<>();
-    Set<TopicPartition> nonexistentTopicPartitions = new HashSet<>();
-    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : topicPartitionToClusterMap.entrySet()) {
-      TopicPartition topicPartition = entry.getKey();
-      ClusterDescriptor cluster = entry.getValue();
-      if (cluster == null) {
-        nonexistentTopicPartitions.add(topicPartition);
-      } else {
-        clusterToTopicPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
-      }
-    }
-
-    if (!nonexistentTopicPartitions.isEmpty()) {
-      throw new IllegalStateException("Cannot assign nonexistent partitions: " + nonexistentTopicPartitions);
-    }
+    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToTopicPartitionsMap = getPartitionsByCluster(partitions);
 
     // This assignment should replace the previous assignment. Since max.poll.records should be reset for consumers
     // for the new assignment, close all existing consumers first.
@@ -264,8 +280,10 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     _numClustersToConnectTo = clusterToTopicPartitionsMap.size();
     _nextClusterIndexToPoll = 0;
-    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
-      getOrCreatePerClusterConsumer(consumers, entry.getKey()).assign(entry.getValue());
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
+      LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getKey());
+      curConsumer.assign(entry.getValue());
+      consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), curConsumer));
     }
     _consumers = consumers;
   }
@@ -596,7 +614,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // since this method is invoked by marioClient, it should be non-blocking, so we create another thread doing above
     LOG.info("Starting reloadConfig for LiKafkaConsumers in clusterGroup {} with new configs {}", _clusterGroup, newConfigs);
     Thread t = new Thread(() -> {
-      closeExistingConsumers(newConfigs, commandId);
+      recreateConsumers(newConfigs, commandId);
     });
     t.setDaemon(true);
     t.setName("LiKafkaConsumer-reloadConfig-" + _clusterGroup.getName());
@@ -610,13 +628,23 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   // Do synchronization on the method that will be closing the consumers since it will be handled by a different thread
-  synchronized void closeExistingConsumers(Map<String, String> newConfigs, UUID commandId) {
+  synchronized void recreateConsumers(Map<String, String> newConfigs, UUID commandId) {
     // TODO: ensureOpen() would throw an exception if consumers are already closed. In this case, we might want to send
     // an error message to notify mario that the config reload command fails due to consumer/producer already closed and
     // let mario decide what to do next (re-send the configs etc).
     ensureOpen();
 
+    // Store the original per-cluster topicPartition assignment
+    Map<ClusterDescriptor, Collection<TopicPartition>> perClusterTopicPartitionSet = new HashMap<>();
+    for (ClusterConsumerPair<K, V> entry : _consumers) {
+      perClusterTopicPartitionSet.put(entry.getCluster(), entry.getConsumer().assignment());
+    }
+
     closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
+
+    // save the original configs in case re-create consumers with new configs failed, we need to re-create
+    // with the original configs
+    Map<String, Object> originalConfigs = _commonConsumerConfigs.originals();
 
     // update existing configs with newConfigs
     // originals() would return a copy of the internal consumer configs, put in new configs and update existing configs
@@ -624,16 +652,53 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     configMap.putAll(newConfigs);
     _commonConsumerConfigs = new LiKafkaConsumerConfig(configMap);
 
-    // reset the state of _consumers and _closed so that subsequent calls will try to instantiate the consumers with new configs
-    _consumers.clear();
+    // re-create per-cluster consumers with new set of configs
+    // if any error occurs, recreate all per-cluster consumers with previous last-known-good configs and
+    // TODO : send an error back to Mario
+    // _consumers should be filled when reload config happens
+    List<ClusterConsumerPair<K, V>> newConsumers = new ArrayList<>();
+
+    try {
+      for (ClusterConsumerPair<K, V> entry : _consumers) {
+        LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getCluster());
+        newConsumers.add(new ClusterConsumerPair<K, V>(entry.getCluster(), curConsumer));
+      }
+
+      // replace _consumers with newly created consumers
+      _consumers.clear();
+      _consumers = newConsumers;
+    } catch (Exception e) {
+      // if any exception occurs, re-create per-cluster consumers with last-known-good configs
+      LOG.error("Failed to recreate per-cluster consumers with new config with exception, restore to previous consumers ", e);
+
+      // recreate failed, restore to previous configured consumers
+      newConsumers.clear();
+      _commonConsumerConfigs = new LiKafkaConsumerConfig(originalConfigs);
+
+      for (ClusterConsumerPair<K, V> entry : _consumers) {
+        LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getCluster());
+        newConsumers.add(new ClusterConsumerPair<K, V>(entry.getCluster(), curConsumer));
+      }
+
+      _consumers = newConsumers;
+    }
+
     _closed = false;
+
+    // keep previous partition assignment after config reload
+    // TODO: after subscribe() is supported, we need to also keep the original subscription
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : perClusterTopicPartitionSet.entrySet()) {
+      getOrCreatePerClusterConsumer(entry.getKey()).assign(entry.getValue());
+    }
 
     // Convert the updated configs from Map<String, Object> to Map<String, String> and send the new config to mario server
     // report reload config execution complete to mario server
     Map<String, String> convertedConfig = new HashMap<>();
-    for (Map.Entry<String, Object> entry : configMap.entrySet()) {
+    // Send the actually used configs to Mario
+    for (Map.Entry<String, Object> entry : _commonConsumerConfigs.originals().entrySet()) {
       convertedConfig.put(entry.getKey(), String.valueOf(entry.getValue()));
     }
+    // TODO: Add a flag in RELOAD_CONFIG_RESPONSE message to indicate whether re-creating per-cluster consumers is successful
     _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MsgType.RELOAD_CONFIG_RESPONSE);
 
     // re-register federated client with updated configs
@@ -641,7 +706,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     _numConfigReloads++;
 
-    LOG.info("Successfully updated LiKafkaConsumers configs in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
+    LOG.info("Successfully recreated LiKafkaConsumers in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
   }
 
   // For testing only, wait for reload config command to finish since it's being executed by a different thread
@@ -665,18 +730,25 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   // Returns null if the specified topic does not exist in the cluster group.
-  private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(List<ClusterConsumerPair<K, V>> consumers,
-      ClusterDescriptor cluster) {
+  private LiKafkaConsumer<K, V> getOrCreatePerClusterConsumer(ClusterDescriptor cluster) {
     if (cluster == null) {
       throw new IllegalArgumentException("Cluster cannot be null");
     }
 
-    for (ClusterConsumerPair<K, V> entry : consumers) {
+    for (ClusterConsumerPair<K, V> entry : _consumers) {
       if (entry.getCluster().equals(cluster)) {
         return entry.getConsumer();
       }
     }
 
+    LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(cluster);
+    // always update the _consumers map to avoid creating the same consumer multiple times when calling
+    // this method
+    _consumers.add(new ClusterConsumerPair<K, V>(cluster, curConsumer));
+    return curConsumer;
+  }
+
+  private LiKafkaConsumer<K, V> createPerClusterConsumer(ClusterDescriptor cluster) {
     // Create per-cluster consumer config where the following cluster-specific properties:
     //   - bootstrap.server - the actual bootstrap URL of the physical cluster to connect to
     //   - max.poll.records - the property value set for the federated consumer / the number of clusters in this cluster group
@@ -691,7 +763,6 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     int maxPollRecordsPerCluster = Math.max(_maxPollRecordsForFederatedConsumer / _numClustersToConnectTo, 1);
     configMap.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecordsPerCluster);
     LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.setConsumerConfig(configMap).build();
-    consumers.add(new ClusterConsumerPair<K, V>(cluster, newConsumer));
     return newConsumer;
   }
 

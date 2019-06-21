@@ -339,7 +339,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // since this method is invoked by marioClient, it should be non-blocking, so we create another thread doing above
     LOG.info("Starting reloadConfig for LiKafkaProducers in clusterGroup {} with new configs {}", _clusterGroup, newConfigs);
     Thread t = new Thread(() -> {
-        flushAndCloseExistingProducers(newConfigs, commandId);
+        recreateProducers(newConfigs, commandId);
     });
     t.setDaemon(true);
     t.setName("LiKafkaProducer-reloadConfig-" + _clusterGroup.getName());
@@ -353,11 +353,17 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   }
 
   // Do synchronization on the method that will be flushing and closing the producers since it will be handled by a different thread
-  synchronized void flushAndCloseExistingProducers(Map<String, String> newConfigs, UUID commandId) {
+  synchronized void recreateProducers(Map<String, String> newConfigs, UUID commandId) {
     ensureOpen();
 
     flushNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
     closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
+
+    _closed = false;
+
+    // save the original configs in case re-create producers with new configs failed, we need to re-create
+    // with the original configs
+    Map<String, Object> originalConfig = _commonProducerConfigs.originals();
 
     // update existing configs with newConfigs
     // originals() would return a copy of the internal producer configs, put in new configs and update existing configs
@@ -365,16 +371,43 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     configMap.putAll(newConfigs);
     _commonProducerConfigs = new LiKafkaProducerConfig(configMap);
 
-    // reset the state of _producers and _closed so that subsequent send will try to instantiate the producers with new configs
-    _producers.clear();
-    _closed = false;
+    // re-create per-cluster producers with new set of configs
+    // if any error occurs, recreate all per-cluster producers with previous last-known-good configs and
+    // TODO : send an error back to Mario
+    // _producers should be filled when reload config happens
+    Map<ClusterDescriptor, LiKafkaProducer<K, V>> newProducers = new ConcurrentHashMap<>();
+
+    try {
+      for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
+        LiKafkaProducer<K, V> curProducer = createPerClusterProducer(entry.getKey());
+        newProducers.put(entry.getKey(), curProducer);
+      }
+
+      // replace _producers with newly created producers
+      _producers.clear();
+      _producers = newProducers;
+    } catch (Exception e) {
+      LOG.error("Failed to recreate per-cluster producers with new configs with exception, restore to previous producers ", e);
+
+      // recreate failed, restore to previous configured producers
+      newProducers.clear();
+      _commonProducerConfigs = new LiKafkaProducerConfig(originalConfig);
+
+      for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
+        LiKafkaProducer<K, V> curProducer = createPerClusterProducer(entry.getKey());
+        newProducers.put(entry.getKey(), curProducer);
+      }
+
+      _producers = newProducers;
+    }
 
     // Convert the updated configs from Map<String, Object> to Map<String, String> and send the new config to mario server
     // report reload config execution complete to mario server
     Map<String, String> convertedConfig = new HashMap<>();
-    for (Map.Entry<String, Object> entry : configMap.entrySet()) {
+    for (Map.Entry<String, Object> entry : _commonProducerConfigs.originals().entrySet()) {
       convertedConfig.put(entry.getKey(), String.valueOf(entry.getValue()));
     }
+    // TODO: add a flag in RELOAD_CONFIG_RESPONSE message to indicate result of config reload
     _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MsgType.RELOAD_CONFIG_RESPONSE);
 
     // re-register federated client with updated configs
@@ -382,7 +415,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
     _numConfigReloads++;
 
-    LOG.info("Successfully updated LiKafkaProducers configs in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
+    LOG.info("Successfully recreated LiKafkaProducers in clusterGroup {} with new configs (diff) {}", _clusterGroup, newConfigs);
   }
 
   // For testing only, wait for reload config command to finish since it's being executed by a different thread
@@ -429,6 +462,20 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       return _producers.get(cluster);
     }
 
+    LiKafkaProducer<K, V> newProducer = createPerClusterProducer(cluster);
+    // always update _producers map to avoid creating multiple producers when calling this method
+    // multiple times
+    _producers.put(cluster, newProducer);
+    return newProducer;
+  }
+
+  private LiKafkaProducer<K, V> createPerClusterProducer(ClusterDescriptor cluster) {
+    if (cluster == null) {
+      throw new IllegalArgumentException("Cluster cannot be null");
+    }
+
+    ensureOpen();
+
     // Create per-cluster producer config
     Map<String, Object> configMap = _commonProducerConfigs.originals();
     configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapUrl());
@@ -436,7 +483,6 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
     _producerBuilder.setProducerConfig(configMap);
     LiKafkaProducer<K, V> newProducer = _producerBuilder.build();
-    _producers.put(cluster, newProducer);
     return newProducer;
   }
 
