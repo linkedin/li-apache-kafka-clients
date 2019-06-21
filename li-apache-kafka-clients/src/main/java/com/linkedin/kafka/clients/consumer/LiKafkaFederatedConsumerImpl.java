@@ -345,8 +345,41 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     List<ClusterConsumerPair<K, V>> consumers = new ArrayList<>();
     for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : clusterToPartitionsMap.entrySet()) {
       LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getKey());
+
+      /////// OLD /////
+    // If the cluster group size changed since the last assignment, we will need to restart the consumers to
+    // adjust max.poll.records based on the new cluster group size.
+    // TODO: Any change in cluster group should be handled via reload config - so this won't be needed.
+
+//    if (!_consumers.isEmpty()) {
+//      LOG.debug("closing all existing LiKafkaConsumers due to assignment change");
+//      closeNoLock();
+//      _closed = false;
+//      consumers.clear();
+//    }
+
+    // Get all the clusters in the current group.
+//    Set<ClusterDescriptor> clusters;
+//    try {
+//      clusters = _mdsClient.getClustersForGroup(_clusterGroup, _mdsRequestTimeout);
+//    } catch (MetadataServiceClientException e) {
+//      throw new KafkaException("failed to get clusters for cluster group " + _clusterGroup);
+//    }
+//
+//    for (ClusterDescriptor cluster : clusters) {
+//      getOrCreatePerClusterConsumer(cluster).assign(partitions);
+//    }
+//
+//    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToTopicPartitionsMap = getPartitionsByCluster(partitions);
+//    _numClustersToConnectTo = clusterToTopicPartitionsMap.size();
+//    _nextClusterIndexToPoll = 0;
+//    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
+//      ClusterDescriptor cluster = entry.getKey();
+//      LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(cluster);
+
+
       curConsumer.assign(entry.getValue());
-      consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), curConsumer));
+      consumers.add(new ClusterConsumerPair<K, V>(cluster, curConsumer));
     }
     _consumers = consumers;
   }
