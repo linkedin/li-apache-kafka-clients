@@ -408,7 +408,6 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       convertedConfig.put(entry.getKey(), String.valueOf(entry.getValue()));
     }
     // TODO: add a flag in RELOAD_CONFIG_RESPONSE message to indicate result of config reload
-    // TODO: add a flag in RELOAD_CONFIG_RESPONSE message to indicate result of config reload
     _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MsgType.RELOAD_CONFIG_RESPONSE);
 
     // re-register federated client with updated configs
