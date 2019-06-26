@@ -24,9 +24,11 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -81,7 +83,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     public LiKafkaConsumer<K, V> getConsumer() {
       return _consumer;
     }
- }
+  }
 
   // Per cluster Consumers
   private volatile List<ClusterConsumerPair<K, V>> _consumers;
@@ -94,6 +96,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   // max.poll.records for the federated consumer
   private int _maxPollRecordsForFederatedConsumer;
+
+  // Interval for polling the creation of nonexistent topics that are part of the current assignment/subscription
+  private int _topicCreationPollIntervalMs;
 
   // The number of clusters in this cluster group to connect to for the current assignment/subscription
   private int _numClustersToConnectTo;
@@ -112,6 +117,33 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   // Number of config reload operations executed
   private volatile int _numConfigReloads;
+
+  private class PartitionsByClusterResult {
+    private Map<ClusterDescriptor, Collection<TopicPartition>> _clusterToPartitionsMap;
+    private Set<String> _nonexistentTopics;
+
+    public PartitionsByClusterResult() {
+      _clusterToPartitionsMap = Collections.emptyMap();
+      _nonexistentTopics = Collections.emptySet();
+    }
+
+    public PartitionsByClusterResult(Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap,
+        Set<String> nonexistentTopics) {
+      _clusterToPartitionsMap = clusterToPartitionsMap;
+      _nonexistentTopics = nonexistentTopics;
+    }
+
+    public Map<ClusterDescriptor, Collection<TopicPartition>> getClusterToPartitionsMap() {
+      return _clusterToPartitionsMap;
+    }
+
+    public Set<String> getNonexistentTopics() {
+      return _nonexistentTopics;
+    }
+  }
+
+  // Current assignment/subscription state at the federated level
+  private FederatedSubscriptionState _currentSubscription;
 
   public LiKafkaFederatedConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null);
@@ -146,6 +178,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     _mdsRequestTimeoutMs = configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
     _maxPollRecordsForFederatedConsumer = configs.getInt(LiKafkaConsumerConfig.MAX_POLL_RECORDS_CONFIG);
+    _topicCreationPollIntervalMs = configs.getInt(LiKafkaConsumerConfig.TOPIC_CREATION_POLL_INTERVAL_MS_CONFIG);
+    _currentSubscription = new FederatedSubscriptionState();
     _nextClusterIndexToPoll = 0;
 
     String clientIdPrefix = (String) configs.originals().get(ConsumerConfig.CLIENT_ID_CONFIG);
@@ -180,6 +214,18 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       }
       throw e;
     }
+
+    // Create a watchdog thread that polls the creation of nonexistent topics in the current assignment/subscription
+    // and re-assign/subscribe if any of them have been created since the last poll.
+    ScheduledExecutorService es = Executors.newSingleThreadScheduledExecutor();
+    es.scheduleAtFixedRate(
+        new Runnable() {
+          @Override
+          public void run() {
+            maybeResubscribe();
+          }
+        },
+        0, _topicCreationPollIntervalMs, TimeUnit.MILLISECONDS);
   }
 
   @Override
@@ -190,14 +236,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   @Override
   synchronized public Set<TopicPartition> assignment() {
     ensureOpen();
-
-    // Get an immutable copy of the current set of consumers.
-    List<ClusterConsumerPair<K, V>> consumers = _consumers;
-    Set<TopicPartition> aggregate = new HashSet<>();
-    for (ClusterConsumerPair<K, V> entry : consumers) {
-      aggregate.addAll(entry.getConsumer().assignment());
-    }
-    return aggregate;
+    return _currentSubscription.getAssignment();
   }
 
   @Override
@@ -215,14 +254,14 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
-  private Map<ClusterDescriptor, Collection<TopicPartition>> getPartitionsByCluster(Collection<TopicPartition> partitions) {
+  private PartitionsByClusterResult getPartitionsByCluster(Set<TopicPartition> partitions) {
     ensureOpen();
     if (partitions == null) {
       throw new IllegalArgumentException("partitions cannot be null");
     }
 
     if (partitions.isEmpty()) {
-      return Collections.emptyMap();
+      return new PartitionsByClusterResult();
     }
 
     Map<TopicPartition, ClusterDescriptor> partitionToClusterMap;
@@ -235,22 +274,17 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     // Reverse the map so that we can have per-cluster topic partition sets.
     Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap = new HashMap<>();
-    Set<TopicPartition> nonexistentPartitions = new HashSet<>();
+    Set<String> nonexistentTopics = new HashSet<>();
     for (Map.Entry<TopicPartition, ClusterDescriptor> entry : partitionToClusterMap.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       ClusterDescriptor cluster = entry.getValue();
       if (cluster == null) {
-        nonexistentPartitions.add(topicPartition);
+        nonexistentTopics.add(topicPartition.topic());
       } else {
         clusterToPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
       }
     }
-
-    if (!nonexistentPartitions.isEmpty()) {
-      throw new IllegalStateException("found nonexistent partitions: " + nonexistentPartitions);
-    }
-
-    return clusterToPartitionsMap;
+    return new PartitionsByClusterResult(clusterToPartitionsMap, nonexistentTopics);
   }
 
   @Override
@@ -260,27 +294,40 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
     }
 
-    // if partitions are empty, it should be treated the same as unsubscribe(). This
-    // is the vanilla Kafka consumer behavior.
+    // If partitions are empty, it should be treated the same as unsubscribe(). This is the vanilla Kafka consumer
+    // behavior.
     if (partitions.isEmpty()) {
       unsubscribe();
       return;
     }
 
-    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToTopicPartitionsMap = getPartitionsByCluster(partitions);
+    Set<TopicPartition> partitionsSet = new HashSet<>(partitions);
+    _currentSubscription.setAssignment(partitionsSet);
+
+    // TODO: Throw an exception if there exists a partition whose topic exists but the specified partition number is
+    // out of range for that topic. Whether of not to throw an exception can be controlled by a property.
+    PartitionsByClusterResult partitionsByClusterResult = getPartitionsByCluster(partitionsSet);
+
+    _currentSubscription.setTopicsWaitingToBeCreated(partitionsByClusterResult.getNonexistentTopics());
+    if (!partitionsByClusterResult.getNonexistentTopics().isEmpty()) {
+      LOG.warn("the following partitions in the requested assignment currently do not exist: {}",
+          partitionsByClusterResult.getNonexistentTopics());
+    }
 
     // This assignment should replace the previous assignment. Since max.poll.records should be reset for consumers
     // for the new assignment, close all existing consumers first.
-    List<ClusterConsumerPair<K, V>> consumers = _consumers;
-    if (!consumers.isEmpty()) {
+    if (!_consumers.isEmpty()) {
       LOG.debug("closing all existing LiKafkaConsumers due to assignment change");
-      close();
-      consumers.clear();
+      closeNoLock(CONSUMER_CLOSE_MAX_TIMEOUT_SECS, TimeUnit.SECONDS);
     }
 
-    _numClustersToConnectTo = clusterToTopicPartitionsMap.size();
+    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap =
+        partitionsByClusterResult.getClusterToPartitionsMap();
+    _numClustersToConnectTo = clusterToPartitionsMap.size();
     _nextClusterIndexToPoll = 0;
-    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : clusterToTopicPartitionsMap.entrySet()) {
+
+    List<ClusterConsumerPair<K, V>> consumers = new ArrayList<>();
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : clusterToPartitionsMap.entrySet()) {
       LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getKey());
       curConsumer.assign(entry.getValue());
       consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), curConsumer));
@@ -300,6 +347,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   synchronized public void unsubscribe() {
+    ensureOpen();
+    _currentSubscription.unsubscribe();
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -532,13 +581,17 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     close(CONSUMER_CLOSE_MAX_TIMEOUT_SECS, TimeUnit.SECONDS);
   }
 
+  @Override
+  synchronized public void close(Duration timeout) {
+    close(timeout.toMillis(), TimeUnit.MILLISECONDS);
+  }
+
+  // This is used for testing only
+  public FederatedSubscriptionState getCurrentSubscription() {
+    return _currentSubscription;
+  }
+
   void closeNoLock(long timeout, TimeUnit timeUnit) {
-    if (_closed) {
-      return;
-    }
-
-    _closed = true;
-
     // Get an immutable copy of the current set of consumers.
     List<ClusterConsumerPair<K, V>> consumers = _consumers;
 
@@ -592,11 +645,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   @Override
   synchronized public void close(long timeout, TimeUnit timeUnit) {
     closeNoLock(timeout, timeUnit);
-  }
-
-  @Override
-  synchronized public void close(Duration timeout) {
-    closeNoLock(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    _closed = true;
   }
 
   @Override
@@ -683,8 +732,6 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       _consumers = newConsumers;
     }
 
-    _closed = false;
-
     // keep previous partition assignment after config reload
     // TODO: after subscribe() is supported, we need to also keep the original subscription
     for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : perClusterTopicPartitionSet.entrySet()) {
@@ -769,6 +816,39 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   private void ensureOpen() {
     if (_closed) {
       throw new IllegalStateException("this federated consumer has already been closed");
+    }
+  }
+
+  private void maybeResubscribe() {
+    if (_closed || _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.NONE ||
+        _currentSubscription.getTopicsWaitingToBeCreated().isEmpty()) {
+      return;
+    }
+
+    boolean topicCreated = false;
+    for (String topic : _currentSubscription.getTopicsWaitingToBeCreated()) {
+      try {
+        if (_mdsClient.getClusterForTopic(topic, _clusterGroup, _mdsRequestTimeoutMs) != null) {
+          topicCreated = true;
+          break;
+        }
+      } catch (MetadataServiceClientException e) {
+        LOG.warn("cannot get cluster info for topic {}. ignoring...", topic);
+      }
+    }
+
+    if (!topicCreated) {
+      return;
+    }
+
+    // Re-assign/subscribe
+    switch (_currentSubscription.getSubscriptionType()) {
+      case USER_ASSIGNED:
+        assign(_currentSubscription.getAssignment());
+        break;
+
+      default:
+        throw new IllegalStateException("Unsupportd subscription type");
     }
   }
 }

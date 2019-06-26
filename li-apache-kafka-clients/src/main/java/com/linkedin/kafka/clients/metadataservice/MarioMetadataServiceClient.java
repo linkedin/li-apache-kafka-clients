@@ -19,7 +19,6 @@ import com.linkedin.mario.common.websockets.Messages;
 import com.linkedin.mario.common.websockets.MsgType;
 import com.linkedin.mario.common.websockets.ReloadConfigResponseMessages;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -83,7 +82,7 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
 
   @Override
   public Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(
-      Collection<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
+      Set<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
       throws MetadataServiceClientException {
     if (clusterGroup == null) {
       throw new IllegalArgumentException("cluster group cannot be null");
@@ -95,6 +94,7 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
       topicNames.add(it.next().topic());
     }
 
+    // TODO: When Mario serves partition counts, check for out-of-range partitions and return them separately.
     Map<String, Set<ClusterDescriptor>> topicToClusterMap = getClusterMapForTopics(topicNames, clusterGroup, timeoutMs);
     Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap = new HashMap<>();
     for (Iterator<TopicPartition> it = topicPartitions.iterator(); it.hasNext(); ) {
