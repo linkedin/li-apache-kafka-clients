@@ -229,7 +229,7 @@ public class LiKafkaFederatedConsumerImplTest {
 
   @Test
   public void testReassignOnCreationOfNonexistentTopic() throws MetadataServiceClientException, InterruptedException {
-    _consumerConfig.put(LiKafkaConsumerConfig.TOPIC_CREATION_POLL_INTERVAL_MS_CONFIG, "200");
+    _consumerConfig.put(LiKafkaConsumerConfig.METADATA_MAX_AGE_CONFIG, "200");
 
     Set<TopicPartition> expectedTopicPartitions = new HashSet<>(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2,
         TOPIC_PARTITION3));

@@ -97,8 +97,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // max.poll.records for the federated consumer
   private int _maxPollRecordsForFederatedConsumer;
 
-  // Interval for polling the creation of nonexistent topics that are part of the current assignment/subscription
-  private int _topicCreationPollIntervalMs;
+  // metadata.max.age.ms, also used as the interval for polling the creation of nonexistent topics that are part of the
+  // current assignment/subscription
+  private int _metadataMaxAgeMs;
 
   // The number of clusters in this cluster group to connect to for the current assignment/subscription
   private int _numClustersToConnectTo;
@@ -178,8 +179,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     _mdsRequestTimeoutMs = configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
     _maxPollRecordsForFederatedConsumer = configs.getInt(LiKafkaConsumerConfig.MAX_POLL_RECORDS_CONFIG);
-    _topicCreationPollIntervalMs = configs.getInt(LiKafkaConsumerConfig.TOPIC_CREATION_POLL_INTERVAL_MS_CONFIG);
-    _currentSubscription = new FederatedSubscriptionState();
+    _metadataMaxAgeMs = configs.getInt(LiKafkaConsumerConfig.METADATA_MAX_AGE_CONFIG);
+    _currentSubscription = new Unsubscribed();
     _nextClusterIndexToPoll = 0;
 
     String clientIdPrefix = (String) configs.originals().get(ConsumerConfig.CLIENT_ID_CONFIG);
@@ -225,7 +226,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
             maybeResubscribe();
           }
         },
-        0, _topicCreationPollIntervalMs, TimeUnit.MILLISECONDS);
+        0, _metadataMaxAgeMs, TimeUnit.MILLISECONDS);
   }
 
   @Override
@@ -236,7 +237,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   @Override
   synchronized public Set<TopicPartition> assignment() {
     ensureOpen();
-    return _currentSubscription.getAssignment();
+    return _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.MANUAL_ASSIGNMENT
+        ? ((ManuallyAssigned) _currentSubscription).getAssignment() : Collections.emptySet();
   }
 
   @Override
@@ -301,16 +303,14 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       return;
     }
 
-    Set<TopicPartition> partitionsSet = new HashSet<>(partitions);
-    _currentSubscription.setAssignment(partitionsSet);
-
     // TODO: Throw an exception if there exists a partition whose topic exists but the specified partition number is
     // out of range for that topic. Whether of not to throw an exception can be controlled by a property.
+    Set<TopicPartition> partitionsSet = new HashSet<>(partitions);
     PartitionsByClusterResult partitionsByClusterResult = getPartitionsByCluster(partitionsSet);
 
-    _currentSubscription.setTopicsWaitingToBeCreated(partitionsByClusterResult.getNonexistentTopics());
+    _currentSubscription = new ManuallyAssigned(partitionsSet, partitionsByClusterResult.getNonexistentTopics());
     if (!partitionsByClusterResult.getNonexistentTopics().isEmpty()) {
-      LOG.warn("the following partitions in the requested assignment currently do not exist: {}",
+      LOG.warn("the following topics in the requested assignment currently do not exist: {}",
           partitionsByClusterResult.getNonexistentTopics());
     }
 
@@ -348,7 +348,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   @Override
   synchronized public void unsubscribe() {
     ensureOpen();
-    _currentSubscription.unsubscribe();
+    _currentSubscription = new Unsubscribed();
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -819,6 +819,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     }
   }
 
+  // TODO: check the client registration state and handle accordingly if it is the fallback mode
   private void maybeResubscribe() {
     if (_closed || _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.NONE ||
         _currentSubscription.getTopicsWaitingToBeCreated().isEmpty()) {
@@ -843,12 +844,14 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     // Re-assign/subscribe
     switch (_currentSubscription.getSubscriptionType()) {
-      case USER_ASSIGNED:
-        assign(_currentSubscription.getAssignment());
+      case MANUAL_ASSIGNMENT:
+        assign(((ManuallyAssigned) _currentSubscription).getAssignment());
         break;
 
       default:
-        throw new IllegalStateException("Unsupportd subscription type");
+        LOG.error("unsupported subscription type: {}", _currentSubscription.getSubscriptionType().name());
+        throw new IllegalStateException("Unsupportd subscription type: " +
+            _currentSubscription.getSubscriptionType().name());
     }
   }
 }

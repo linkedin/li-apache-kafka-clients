@@ -8,6 +8,7 @@ import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
@@ -40,7 +41,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
   public static final String MAX_POLL_RECORDS_CONFIG = ConsumerConfig.MAX_POLL_RECORDS_CONFIG;
-  public static final String TOPIC_CREATION_POLL_INTERVAL_MS_CONFIG = "li.topic.creation.poll.interval.ms";
+  public static final String METADATA_MAX_AGE_CONFIG = ConsumerConfig.METADATA_MAX_AGE_CONFIG;
   public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_CONFIG;
   public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG =
@@ -93,9 +94,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
 
   private static final String MAX_POLL_RECORDS_DOC = "The maximum number of records returned in a single call to poll().";
 
-  public static final String TOPIC_CREATION_POLL_INTERVAL_MS_DOC = "The frequency in milliseconds that a federated " +
-      "consumer polls the metadata service to check if any nonexistent topics in the initial assignment/subscription " +
-      "have been created.";
+  public static final String METADATA_MAX_AGE_DOC = CommonClientConfigs.METADATA_MAX_AGE_DOC;
 
   public static final String METADATA_SERVICE_CLIENT_CLASS_DOC =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_DOC;
@@ -173,11 +172,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 atLeast(1),
                 Importance.MEDIUM,
                 MAX_POLL_RECORDS_DOC)
-        .define(TOPIC_CREATION_POLL_INTERVAL_MS_CONFIG,
+        .define(METADATA_MAX_AGE_CONFIG,
                 Type.INT,
-                300000,
+                5 * 60 * 1000,
+                atLeast(0),
                 Importance.MEDIUM,
-                TOPIC_CREATION_POLL_INTERVAL_MS_DOC)
+                METADATA_MAX_AGE_DOC)
         .define(METADATA_SERVICE_CLIENT_CLASS_CONFIG,
                 Type.CLASS,
                 null,
