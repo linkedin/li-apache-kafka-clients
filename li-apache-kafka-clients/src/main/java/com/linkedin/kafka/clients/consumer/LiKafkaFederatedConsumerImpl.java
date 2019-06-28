@@ -53,10 +53,9 @@ import org.slf4j.LoggerFactory;
  */
 public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>, LiKafkaFederatedClient {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaFederatedConsumerImpl.class);
-  private static final int CONSUMER_CLOSE_MAX_TIMEOUT_SECS = 10 * 60;
+  private static final Duration CONSUMER_CLOSE_MAX_TIMEOUT = Duration.ofMinutes(10);
+  private static final Duration RELOAD_CONFIG_EXECUTION_TIMEOUT = Duration.ofMinutes(10);
   private static final AtomicInteger FEDERATED_CONSUMER_CLIENT_ID_SEQUENCE = new AtomicInteger(1);
-  private static final Duration RELOAD_CONFIG_EXECUTION_TIME_OUT = Duration.ofMinutes(10);
-
 
   // The cluster group this client is talking to
   private ClusterGroupDescriptor _clusterGroup;
@@ -119,6 +118,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // Number of config reload operations executed
   private volatile int _numConfigReloads;
 
+  // This contains the result of the location lookup for a set of topic partitions across multiple clusters in a cluster
+  // group.
   private class PartitionsByClusterResult {
     private Map<ClusterDescriptor, Collection<TopicPartition>> _clusterToPartitionsMap;
     private Set<String> _nonexistentTopics;
@@ -179,8 +180,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     _mdsRequestTimeoutMs = configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
     _maxPollRecordsForFederatedConsumer = configs.getInt(LiKafkaConsumerConfig.MAX_POLL_RECORDS_CONFIG);
-    _metadataMaxAgeMs = configs.getInt(LiKafkaConsumerConfig.METADATA_MAX_AGE_CONFIG);
-    _currentSubscription = new Unsubscribed();
+    _metadataMaxAgeMs = configs.getInt(ConsumerConfig.METADATA_MAX_AGE_CONFIG);
+    _currentSubscription = Unsubscribed.getInstance();
     _nextClusterIndexToPoll = 0;
 
     String clientIdPrefix = (String) configs.originals().get(ConsumerConfig.CLIENT_ID_CONFIG);
@@ -219,14 +220,17 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // Create a watchdog thread that polls the creation of nonexistent topics in the current assignment/subscription
     // and re-assign/subscribe if any of them have been created since the last poll.
     ScheduledExecutorService es = Executors.newSingleThreadScheduledExecutor();
-    es.scheduleAtFixedRate(
-        new Runnable() {
-          @Override
-          public void run() {
-            maybeResubscribe();
-          }
-        },
-        0, _metadataMaxAgeMs, TimeUnit.MILLISECONDS);
+    Thread t = new Thread(() -> {
+      refreshSubscriptionMetadata();
+    });
+    t.setDaemon(true);
+    t.setName("LiKafkaConsumer-refresh-subscription-metadata");
+    t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+      public void uncaughtException(Thread t, Throwable e) {
+        throw new KafkaException("Thread " + t.getName() + " throws exception", e);
+      }
+    });
+    es.scheduleAtFixedRate(t, 0, _metadataMaxAgeMs, TimeUnit.MILLISECONDS);
   }
 
   @Override
@@ -237,8 +241,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   @Override
   synchronized public Set<TopicPartition> assignment() {
     ensureOpen();
-    return _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.MANUAL_ASSIGNMENT
-        ? ((ManuallyAssigned) _currentSubscription).getAssignment() : Collections.emptySet();
+    return _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.USER_ASSIGNED
+        ? ((UserAssigned) _currentSubscription).getAssignment() : Collections.emptySet();
   }
 
   @Override
@@ -308,7 +312,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     Set<TopicPartition> partitionsSet = new HashSet<>(partitions);
     PartitionsByClusterResult partitionsByClusterResult = getPartitionsByCluster(partitionsSet);
 
-    _currentSubscription = new ManuallyAssigned(partitionsSet, partitionsByClusterResult.getNonexistentTopics());
+    _currentSubscription = new UserAssigned(partitionsSet, partitionsByClusterResult.getNonexistentTopics());
     if (!partitionsByClusterResult.getNonexistentTopics().isEmpty()) {
       LOG.warn("the following topics in the requested assignment currently do not exist: {}",
           partitionsByClusterResult.getNonexistentTopics());
@@ -318,7 +322,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // for the new assignment, close all existing consumers first.
     if (!_consumers.isEmpty()) {
       LOG.debug("closing all existing LiKafkaConsumers due to assignment change");
-      closeNoLock(CONSUMER_CLOSE_MAX_TIMEOUT_SECS, TimeUnit.SECONDS);
+      closeNoLock(CONSUMER_CLOSE_MAX_TIMEOUT);
     }
 
     Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap =
@@ -348,7 +352,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   @Override
   synchronized public void unsubscribe() {
     ensureOpen();
-    _currentSubscription = new Unsubscribed();
+    _currentSubscription = Unsubscribed.getInstance();
     throw new UnsupportedOperationException("Not implemented yet");
   }
 
@@ -578,12 +582,12 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   public void close() {
-    close(CONSUMER_CLOSE_MAX_TIMEOUT_SECS, TimeUnit.SECONDS);
+    close(CONSUMER_CLOSE_MAX_TIMEOUT);
   }
 
   @Override
-  synchronized public void close(Duration timeout) {
-    close(timeout.toMillis(), TimeUnit.MILLISECONDS);
+  synchronized public void close(long timeout, TimeUnit timeUnit) {
+    close(Duration.ofMillis(timeUnit.toMillis(timeout)));
   }
 
   // This is used for testing only
@@ -591,7 +595,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     return _currentSubscription;
   }
 
-  void closeNoLock(long timeout, TimeUnit timeUnit) {
+  private void closeNoLock(Duration timeout) {
     // Get an immutable copy of the current set of consumers.
     List<ClusterConsumerPair<K, V>> consumers = _consumers;
 
@@ -600,11 +604,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       return;
     }
 
-    LOG.debug("closing {} LiKafkaConsumers for cluster group {} in {} {}...", consumers.size(), _clusterGroup,
-        timeout, timeUnit);
+    LOG.debug("closing {} LiKafkaConsumers for cluster group {} in {}...", consumers.size(), _clusterGroup,
+        timeout);
 
     long startTimeMs = System.currentTimeMillis();
-    long deadlineTimeMs = startTimeMs + timeUnit.toMillis(timeout);
+    long deadlineTimeMs = startTimeMs + timeout.toMillis();
     CountDownLatch countDownLatch = new CountDownLatch(consumers.size());
     Set<Thread> threads = new HashSet<>();
     for (ClusterConsumerPair<K, V> entry : consumers) {
@@ -612,7 +616,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       LiKafkaConsumer<K, V> consumer = entry.getConsumer();
       Thread t = new Thread(() -> {
         try {
-          consumer.close(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
+          consumer.close(Duration.ofMillis(deadlineTimeMs - System.currentTimeMillis()));
         } finally {
           countDownLatch.countDown();
         }
@@ -632,7 +636,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       if (!countDownLatch.await(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS)) {
         LiKafkaClientsUtils.dumpStacksForAllLiveThreads(threads);
         throw new KafkaException(
-            "Fail to close all consumers for cluster group " + _clusterGroup + " in " + timeout + " " + timeUnit);
+            "Fail to close all consumers for cluster group " + _clusterGroup + " in " + timeout);
       }
     } catch (InterruptedException e) {
       throw new KafkaException("Fail to close all consumers for cluster group " + _clusterGroup, e);
@@ -643,8 +647,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   @Override
-  synchronized public void close(long timeout, TimeUnit timeUnit) {
-    closeNoLock(timeout, timeUnit);
+  synchronized public void close(Duration timeout) {
+    closeNoLock(timeout);
     _closed = true;
   }
 
@@ -689,7 +693,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       perClusterTopicPartitionSet.put(entry.getCluster(), entry.getConsumer().assignment());
     }
 
-    closeNoLock(RELOAD_CONFIG_EXECUTION_TIME_OUT.toMillis(), TimeUnit.MILLISECONDS);
+    closeNoLock(RELOAD_CONFIG_EXECUTION_TIMEOUT);
 
     // save the original configs in case re-create consumers with new configs failed, we need to re-create
     // with the original configs
@@ -820,7 +824,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   }
 
   // TODO: check the client registration state and handle accordingly if it is the fallback mode
-  private void maybeResubscribe() {
+  private void refreshSubscriptionMetadata() {
     if (_closed || _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.NONE ||
         _currentSubscription.getTopicsWaitingToBeCreated().isEmpty()) {
       return;
@@ -834,7 +838,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
           break;
         }
       } catch (MetadataServiceClientException e) {
-        LOG.warn("cannot get cluster info for topic {}. ignoring...", topic);
+        LOG.warn("cannot get cluster info for topic {} with the following exception. ignoring...", topic, e);
       }
     }
 
@@ -844,14 +848,13 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     // Re-assign/subscribe
     switch (_currentSubscription.getSubscriptionType()) {
-      case MANUAL_ASSIGNMENT:
-        assign(((ManuallyAssigned) _currentSubscription).getAssignment());
+      case USER_ASSIGNED:
+        assign(((UserAssigned) _currentSubscription).getAssignment());
         break;
 
       default:
         LOG.error("unsupported subscription type: {}", _currentSubscription.getSubscriptionType().name());
-        throw new IllegalStateException("Unsupportd subscription type: " +
-            _currentSubscription.getSubscriptionType().name());
+        throw new IllegalStateException("Unsupportd subscription type: " + _currentSubscription.getSubscriptionType());
     }
   }
 }

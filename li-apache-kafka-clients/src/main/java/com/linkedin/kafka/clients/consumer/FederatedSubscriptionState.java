@@ -12,28 +12,23 @@ import java.util.regex.Pattern;
 import org.apache.kafka.common.TopicPartition;
 
 // Current subscription/assignment state at the federated level
-public class FederatedSubscriptionState {
+public abstract class FederatedSubscriptionState {
   public enum SubscriptionType {
-    NONE, MANUAL_ASSIGNMENT, SUBSCRIPTION, PATTERN_SUBSCRIPTION
+    NONE, AUTO_TOPICS, AUTO_PATTERN, USER_ASSIGNED
   }
-
-  private SubscriptionType _subscriptionType;
 
   // Topics that are part of the current (non-pattern) subscription/assignment but do not exist yet
   private Set<String> _topicsWaitingToBeCreated;
 
-  public FederatedSubscriptionState(SubscriptionType subscriptionType) {
-    this(subscriptionType, Collections.emptySet());
+  protected FederatedSubscriptionState() {
+    this(Collections.emptySet());
   }
 
-  public FederatedSubscriptionState(SubscriptionType subscriptionType, Set<String> topicsWaitingToBeCreated) {
-    _subscriptionType = subscriptionType;
+  protected FederatedSubscriptionState(Set<String> topicsWaitingToBeCreated) {
     _topicsWaitingToBeCreated = topicsWaitingToBeCreated;
   }
 
-  public SubscriptionType getSubscriptionType() {
-    return _subscriptionType;
-  }
+  public abstract SubscriptionType getSubscriptionType();
 
   public void setTopicsWaitingToBeCreated(Set<String> topicsWaitingToBeCreated) {
     _topicsWaitingToBeCreated = topicsWaitingToBeCreated;
@@ -45,17 +40,37 @@ public class FederatedSubscriptionState {
 }
 
 class Unsubscribed extends FederatedSubscriptionState {
-  public Unsubscribed() {
-    super(SubscriptionType.NONE);
+  private static final Unsubscribed SINGLETON_INSTANCE = new Unsubscribed();
+
+  private Unsubscribed() {
+  }
+
+  public static Unsubscribed getInstance() {
+    return SINGLETON_INSTANCE;
+  }
+
+  @Override
+  public SubscriptionType getSubscriptionType() {
+    return SubscriptionType.NONE;
+  }
+
+  @Override
+  public void setTopicsWaitingToBeCreated(Set<String> topicsWaitingToBeCreated) {
+    throw new UnsupportedOperationException("the set of topics to be created cannot be set for unsubscribed state");
   }
 }
 
-class ManuallyAssigned extends FederatedSubscriptionState {
+class UserAssigned extends FederatedSubscriptionState {
   private Set<TopicPartition> _assignment;
 
-  public ManuallyAssigned(Set<TopicPartition> assignment, Set<String> topicsWaitingToBeCreated) {
-    super(SubscriptionType.MANUAL_ASSIGNMENT, topicsWaitingToBeCreated);
+  public UserAssigned(Set<TopicPartition> assignment, Set<String> topicsWaitingToBeCreated) {
+    super(topicsWaitingToBeCreated);
     _assignment = assignment;
+  }
+
+  @Override
+  public SubscriptionType getSubscriptionType() {
+    return SubscriptionType.USER_ASSIGNED;
   }
 
   public Set<TopicPartition> getAssignment() {
@@ -67,8 +82,13 @@ class Subscribed extends FederatedSubscriptionState {
   private Set<String> _subscription;
 
   public Subscribed(Set<String> subscription, Set<String> topicsWaitingToBeCreated) {
-    super(SubscriptionType.SUBSCRIPTION, topicsWaitingToBeCreated);
+    super(topicsWaitingToBeCreated);
     _subscription = subscription;
+  }
+
+  @Override
+  public SubscriptionType getSubscriptionType() {
+    return SubscriptionType.AUTO_TOPICS;
   }
 
   public Set<String> getSubscription() {
@@ -80,8 +100,13 @@ class PatternSubscribed extends FederatedSubscriptionState {
   private Pattern _subscribedPattern;
 
   public PatternSubscribed(Pattern subscribedPattern) {
-    super(SubscriptionType.PATTERN_SUBSCRIPTION);
+    super();
     _subscribedPattern = subscribedPattern;
+  }
+
+  @Override
+  public SubscriptionType getSubscriptionType() {
+    return SubscriptionType.AUTO_PATTERN;
   }
 
   public Pattern getSubscribedPattern() {

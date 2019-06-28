@@ -41,7 +41,6 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
   public static final String MAX_POLL_RECORDS_CONFIG = ConsumerConfig.MAX_POLL_RECORDS_CONFIG;
-  public static final String METADATA_MAX_AGE_CONFIG = ConsumerConfig.METADATA_MAX_AGE_CONFIG;
   public static final String METADATA_SERVICE_CLIENT_CLASS_CONFIG =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_CONFIG;
   public static final String METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG =
@@ -93,8 +92,6 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
       + "for the consumer's group</li><li>anything else: throw exception to the consumer.</li></ul>";
 
   private static final String MAX_POLL_RECORDS_DOC = "The maximum number of records returned in a single call to poll().";
-
-  public static final String METADATA_MAX_AGE_DOC = CommonClientConfigs.METADATA_MAX_AGE_DOC;
 
   public static final String METADATA_SERVICE_CLIENT_CLASS_DOC =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_DOC;
@@ -172,12 +169,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 atLeast(1),
                 Importance.MEDIUM,
                 MAX_POLL_RECORDS_DOC)
-        .define(METADATA_MAX_AGE_CONFIG,
+        .define(CommonClientConfigs.METADATA_MAX_AGE_CONFIG,
                 Type.INT,
                 5 * 60 * 1000,
                 atLeast(0),
                 Importance.MEDIUM,
-                METADATA_MAX_AGE_DOC)
+                CommonClientConfigs.METADATA_MAX_AGE_DOC)
         .define(METADATA_SERVICE_CLIENT_CLASS_CONFIG,
                 Type.CLASS,
                 null,
