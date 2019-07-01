@@ -9,8 +9,8 @@ import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
 
 import com.linkedin.mario.common.websockets.MsgType;
-import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 
 import java.util.UUID;
 import org.apache.kafka.common.Configurable;
@@ -51,7 +51,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @return A map from topic partitions to the descriptors of the physical clusters where they are hosted
    */
   Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(
-      Collection<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
+      Set<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
       throws MetadataServiceClientException;
 
   /**

@@ -136,6 +136,6 @@ public class MarioMetadataServiceClientTest {
     expectedResult.put(topicPartition1, CLUSTER1);
     expectedResult.put(topicPartition2, CLUSTER2);
     assertEquals(expectedResult, _marioMetadataServiceClient.getClustersForTopicPartitions(
-        Arrays.asList(topicPartition1, topicPartition2), CLUSTER_GROUP, 1000));
+        new HashSet<>(Arrays.asList(topicPartition1, topicPartition2)), CLUSTER_GROUP, 1000));
   }
 }
