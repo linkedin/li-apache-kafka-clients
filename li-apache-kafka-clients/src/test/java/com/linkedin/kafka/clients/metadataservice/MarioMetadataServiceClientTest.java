@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -132,10 +133,10 @@ public class MarioMetadataServiceClientTest {
 
     TopicPartition topicPartition1 = new TopicPartition(TOPIC1, 0);
     TopicPartition topicPartition2 = new TopicPartition(TOPIC2, 0);
-    Map<TopicPartition, ClusterDescriptor> expectedResult = new HashMap<>();
-    expectedResult.put(topicPartition1, CLUSTER1);
-    expectedResult.put(topicPartition2, CLUSTER2);
+    Map<ClusterDescriptor, Set<TopicPartition>> expectedResult = new HashMap<>();
+    expectedResult.put(CLUSTER1, new HashSet<>(Arrays.asList(topicPartition1)));
+    expectedResult.put(CLUSTER2, new HashSet<>(Arrays.asList(topicPartition2)));
     assertEquals(expectedResult, _marioMetadataServiceClient.getClustersForTopicPartitions(
-        new HashSet<>(Arrays.asList(topicPartition1, topicPartition2)), CLUSTER_GROUP, 1000));
+        new HashSet<>(Arrays.asList(topicPartition1, topicPartition2)), CLUSTER_GROUP, 1000).getPartitionsByCluster());
   }
 }

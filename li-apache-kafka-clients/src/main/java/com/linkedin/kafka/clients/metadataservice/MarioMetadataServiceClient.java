@@ -7,6 +7,8 @@ package com.linkedin.kafka.clients.metadataservice;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
+import com.linkedin.kafka.clients.common.PartitionLookupResult;
+import com.linkedin.kafka.clients.common.TopicLookupResult;
 import com.linkedin.mario.client.MarioClient;
 import com.linkedin.mario.client.models.v1.TopicQuery;
 import com.linkedin.mario.client.util.MarioClusterGroupDescriptor;
@@ -21,7 +23,6 @@ import com.linkedin.mario.common.websockets.ReloadConfigResponseMessages;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -81,7 +82,7 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   }
 
   @Override
-  public Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(
+  public PartitionLookupResult getClustersForTopicPartitions(
       Set<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
       throws MetadataServiceClientException {
     if (clusterGroup == null) {
@@ -89,30 +90,71 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
     }
 
     // Create a set of topic names out of topicPartitions.
-    Set<String> topicNames = new HashSet<>();
-    for (Iterator<TopicPartition> it = topicPartitions.iterator(); it.hasNext(); ) {
-      topicNames.add(it.next().topic());
+    Set<String> topics = new HashSet<>();
+    for (TopicPartition topicPartition : topicPartitions) {
+      String topic = topicPartition.topic();
+      if (topic == null || topic.trim().isEmpty()) {
+        throw new IllegalArgumentException("topic cannot be null or empty");
+      }
+      topics.add(topic);
     }
 
     // TODO: When Mario serves partition counts, check for out-of-range partitions and return them separately.
-    Map<String, Set<ClusterDescriptor>> topicToClusterMap = getClusterMapForTopics(topicNames, clusterGroup, timeoutMs);
-    Map<TopicPartition, ClusterDescriptor> topicPartitionToClusterMap = new HashMap<>();
-    for (Iterator<TopicPartition> it = topicPartitions.iterator(); it.hasNext(); ) {
-      TopicPartition topicPartition = it.next();
-      Set<ClusterDescriptor> clusters = topicToClusterMap.get(topicPartition.topic());
+    Map<String, Set<ClusterDescriptor>> topicToClusterMap = getClusterMapForTopics(topics, clusterGroup, timeoutMs);
+    Map<ClusterDescriptor, Set<TopicPartition>> partitionsByCluster = new HashMap<>();
+    Set<String> nonexistentTopics = new HashSet<>();
+    for (TopicPartition topicPartition : topicPartitions) {
+      String topic = topicPartition.topic();
+      Set<ClusterDescriptor> clusters = topicToClusterMap.get(topic);
       if (clusters == null || clusters.isEmpty()) {
+        nonexistentTopics.add(topic);
         continue;
       }
 
       // Unless topic move is in progress, a topic must exist in only one cluster.
       if (clusters.size() > 1) {
-        throw new IllegalStateException("topic " + topicPartition.topic() + " exists in more than one cluster " +
-            clusters + " in cluster group " + clusterGroup);
+        throw new IllegalStateException("topic " + topic + " exists in more than one cluster " + clusters +
+            " in cluster group " + clusterGroup);
       }
 
-      topicPartitionToClusterMap.put(topicPartition, clusters.iterator().next());
+      partitionsByCluster.computeIfAbsent(clusters.iterator().next(), k -> new HashSet<TopicPartition>())
+          .add(topicPartition);
     }
-    return topicPartitionToClusterMap;
+    return new PartitionLookupResult(partitionsByCluster, nonexistentTopics);
+  }
+
+  @Override
+  public TopicLookupResult getClustersForTopics(Set<String> topics, ClusterGroupDescriptor clusterGroup,
+      int timeoutMs) throws MetadataServiceClientException {
+    if (clusterGroup == null) {
+      throw new IllegalArgumentException("cluster group cannot be null");
+    }
+
+    for (String topic : topics) {
+      if (topic == null || topic.trim().isEmpty()) {
+        throw new IllegalArgumentException("topic cannot be null or empty");
+      }
+    }
+
+    Map<String, Set<ClusterDescriptor>> clustersByTopic = getClusterMapForTopics(topics, clusterGroup, timeoutMs);
+    Map<ClusterDescriptor, Set<String>> topicsByCluster = new HashMap<>();
+    Set<String> nonexistentTopics = new HashSet<>();
+    for (String topic : topics) {
+      Set<ClusterDescriptor> clusters = clustersByTopic.get(topic);
+      if (clusters == null || clusters.isEmpty()) {
+        nonexistentTopics.add(topic);
+        continue;
+      }
+
+      // Unless topic move is in progress, a topic must exist in only one cluster.
+      if (clusters.size() > 1) {
+        throw new IllegalStateException("topic " + topic + " exists in more than one cluster " + clusters +
+            " in cluster group " + clusterGroup);
+      }
+
+      topicsByCluster.computeIfAbsent(clusters.iterator().next(), k -> new HashSet<String>()).add(topic);
+    }
+    return new TopicLookupResult(topicsByCluster, nonexistentTopics);
   }
 
   // For given topic names, construct a map from topic name to cluster descriptors where the topic exists. If a topic

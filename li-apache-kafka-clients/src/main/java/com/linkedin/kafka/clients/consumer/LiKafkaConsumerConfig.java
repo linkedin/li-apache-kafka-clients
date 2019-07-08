@@ -194,7 +194,13 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 Type.INT,
                 Integer.MAX_VALUE,
                 Importance.MEDIUM,
-                METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC);
+                METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC)
+        .define(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG,
+                Type.INT,
+                60 * 1000,
+                atLeast(0),
+                Importance.MEDIUM,
+                ConsumerConfig.DEFAULT_API_TIMEOUT_MS_DOC);
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {
