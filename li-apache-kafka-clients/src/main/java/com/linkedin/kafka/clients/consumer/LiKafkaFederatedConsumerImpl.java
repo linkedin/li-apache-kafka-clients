@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -59,6 +60,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   // The cluster group this client is talking to
   private ClusterGroupDescriptor _clusterGroup;
+
+  // The default timeout for blocking calls specified by default.api.timeout.ms consumer properties.
+  // This is exposed for federated consumer methods with the default timeout that need to invoke the individual
+  // consumer's corresponding methods concurrently.
+  private int _defaultApiTimeoutMs;
 
   // The client for the metadata service which serves cluster and topic metadata
   private MetadataServiceClient _mdsClient;
@@ -147,6 +153,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // Current assignment/subscription state at the federated level
   private FederatedSubscriptionState _currentSubscription;
 
+  // Callback interface for executing methods that need to be called with cluster-specific input values and timeout.
+  interface ExecutorCallback<K, V, I> {
+    void execute(LiKafkaConsumer<K, V> consumer, I perClusterInput, Duration timeout);
+  }
+
   public LiKafkaFederatedConsumerImpl(Properties props) {
     this(new LiKafkaConsumerConfig(props), null, null);
   }
@@ -178,6 +189,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _consumers = new ArrayList<>();
     _consumerBuilder = consumerBuilder != null ? consumerBuilder : new LiKafkaConsumerBuilder<K, V>();
 
+    _defaultApiTimeoutMs = configs.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
     _mdsRequestTimeoutMs = configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
     _maxPollRecordsForFederatedConsumer = configs.getInt(LiKafkaConsumerConfig.MAX_POLL_RECORDS_CONFIG);
     _metadataMaxAgeMs = configs.getInt(ConsumerConfig.METADATA_MAX_AGE_CONFIG);
@@ -238,11 +250,37 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     return LiKafkaFederatedClientType.FEDERATED_CONSUMER;
   }
 
+  /**
+   * Get the set of partitions currently assigned to this consumer. If subscription happened by directly assigning
+   * partitions using {@link #assign(Collection)} then this will simply return the same partitions that
+   * were assigned. If topic subscription was used, then this will give the set of topic partitions currently assigned
+   * to the consumer (which may be none if the assignment hasn't happened yet, or the partitions are in the
+   * process of getting reassigned).
+   * @return The set of partitions currently assigned to this consumer
+   */
   @Override
   synchronized public Set<TopicPartition> assignment() {
     ensureOpen();
-    return _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.USER_ASSIGNED
-        ? ((UserAssigned) _currentSubscription).getAssignment() : Collections.emptySet();
+    switch (_currentSubscription.getSubscriptionType()) {
+      case SubscriptionType.USER_ASSIGNED:
+        return ((UserAssigned) _currentSubscription).getAssignment();
+
+      case SubscriptionType.AUTO_TOPIC:
+      case SubscriptionType.AUTO_PATTERN: {
+        // Get the aggregate of currently assigned partitions from all consumers.
+        Set<TopicPartition> aggregate = new HashSet<>();
+        for (ClusterConsumerPair<K, V> entry : getImmutableConsumerList()) {
+          aggregate.addAll(entry.getConsumer().assignment());
+        }
+        return aggregate;
+      }
+
+      case SubscriptionType.NONE:
+        return Collections.emptySet();
+
+      default:
+        throw IllegalStateException("invalid subscription type: " + _currentSubscription.getSubscriptionType().name());
+    }
   }
 
   @Override
@@ -293,6 +331,25 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     return new PartitionsByClusterResult(clusterToPartitionsMap, nonexistentTopics);
   }
 
+  /**
+   * Manually assign a list of partitions to this consumer. This interface does not allow for incremental assignment
+   * and will replace the previous assignment (if there is one).
+   * <p>
+   * If the given list of topic partitions is empty, it is treated the same as {@link #unsubscribe()}.
+   * <p>
+   * Manual topic assignment through this method does not use the consumer's group management
+   * functionality. As such, there will be no rebalance operation triggered when group membership or cluster and topic
+   * metadata change. Note that it is not possible to use both manual partition assignment with {@link #assign(Collection)}
+   * and group assignment with {@link #subscribe(Collection, ConsumerRebalanceListener)}.
+   * <p>
+   * If auto-commit is enabled, an async commit (based on the old assignment) will be triggered before the new
+   * assignment replaces the old one.
+   *
+   * @param partitions The list of partitions to assign this consumer
+   * @throws IllegalArgumentException If partitions is null or contains null or empty topics
+   * @throws IllegalStateException If {@code subscribe()} is called previously with topics or pattern
+   *                               (without a subsequent call to {@link #unsubscribe()})
+   */
   @Override
   synchronized public void assign(Collection<TopicPartition> partitions) {
     ensureOpen();
@@ -300,15 +357,18 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
     }
 
-    // If partitions are empty, it should be treated the same as unsubscribe(). This is the vanilla Kafka consumer
-    // behavior.
+    // Since the partitions to be assigned may belong to a differet subset of clusters for the previous
+    // assignment/subscription, unsubscribe first to start with a clean slate.
+    unsubscribe();
+
+    // If the give list of partitions is empty, we are done here.
     if (partitions.isEmpty()) {
-      unsubscribe();
       return;
     }
 
-    // TODO: Throw an exception if there exists a partition whose topic exists but the specified partition number is
+    // TODO: May throw an exception if there exists a partition whose topic exists but the specified partition number is
     // out of range for that topic. Whether of not to throw an exception can be controlled by a property.
+    // TODO: Can we use Collection instead of Set?
     Set<TopicPartition> partitionsSet = new HashSet<>(partitions);
     PartitionsByClusterResult partitionsByClusterResult = getPartitionsByCluster(partitionsSet);
 
@@ -316,13 +376,6 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     if (!partitionsByClusterResult.getNonexistentTopics().isEmpty()) {
       LOG.warn("the following topics in the requested assignment currently do not exist: {}",
           partitionsByClusterResult.getNonexistentTopics());
-    }
-
-    // This assignment should replace the previous assignment. Since max.poll.records should be reset for consumers
-    // for the new assignment, close all existing consumers first.
-    if (!_consumers.isEmpty()) {
-      LOG.debug("closing all existing LiKafkaConsumers due to assignment change");
-      closeNoLock(CONSUMER_CLOSE_MAX_TIMEOUT);
     }
 
     Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap =
@@ -334,7 +387,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : clusterToPartitionsMap.entrySet()) {
       LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getKey());
       curConsumer.assign(entry.getValue());
-      consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), curConsumer));
+      consumers.add(new ClusterConsumerPair<K, V>(cluster, curConsumer));
     }
     _consumers = consumers;
   }
@@ -353,14 +406,23 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   synchronized public void unsubscribe() {
     ensureOpen();
     _currentSubscription = Unsubscribed.getInstance();
-    throw new UnsupportedOperationException("Not implemented yet");
+    if (_consumers.isEmpty()) {
+      return;
+    }
+    for (ClusterConsumerPair<K, V> entry : _consumers) {
+      LiKafkaConsumer<K, V> consumer = entry.getConsumer();
+      consumer.unsubscribe();
+    }
+    // TODO: is it okay to not close? Close may take some time.
+    closeNoLock(_defaultApiTimeoutMs);
+    _consumers.clear();
   }
 
   @Override
   synchronized public ConsumerRecords<K, V> poll(long timeout) {
     ensureOpen();
     // Get an immutable copy of the current set of consumers.
-    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
 
     if (consumers.isEmpty()) {
       return ConsumerRecords.empty();
@@ -417,82 +479,229 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   synchronized public void commitSync() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    commitSync(Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
   @Override
   synchronized public void commitSync(Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    executeCallbackWithTimeout("commitSync", null,
+        (consumer, ignored, timeoutDuration) -> consumer.commitSync(timeoutDuration), timeout);
   }
 
   @Override
   public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    commitSync(offsets, Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
+  // ATTN: UnknownTopicOrPartitionException may be received - this is a retriable exception..
+  // if not resolved by the time, timeout exception
   @Override
   synchronized public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    long deadlineTimeMs = System.currentTimeMillis() + timeout.toMillis();
+    while (System.currentTimeMillis() < deadlineTimeMs) {
+      long startTimeMs = System.currentTimeMillis();
+      PartitionValueMapByClusterResult offsetsByClusterResult = getPartitionValueMapByCluster(offsets);
+      // Commit offset with existing partitions first.
+      executeCallbackWithTimeout("commitSync", offsetsByClusterResult.getPartitionsValueMapByCluster(),
+          (consumer, perClusterOffsets, timeoutDuration) -> {
+        consumer.commitSync((Map<TopicPartition, OffsetAndMetadata>) perClusterOffsets, timeoutDuration);
+      }, Duration.ofMillis(deadlineTimeMs - System.currentTimeMillis()));
+
+      // Vanilla Kafka consumer retries on nonexistent partitions after waiting retry.backoff.ms until the given timeout
+      // is reached. Mimic this behavior.
+      // ATTN: This is slightly different behavior since the above call also retries.. but there is no good way.
+      // TODO: update when the underlying metadata service can detect nonexistent partitions of existing topics, not
+      // just nonexistent topics.
+      if (offsetsByClusterResult.getNonexistentTopics().isEmpty()) {
+        return;
+      }
+
+      // Sleep and retry;
+      Thread.sleep(Math.Min(startTimeMs.deadlineTimeMs - System.currentTimeMillis(), _metadataMaxAgeMs));
+    }
+    throw new TimeoutException();
+  }
+
+  // A wrapper callback for async offset commits, which will call the user-provided callback only after all per-cluster
+  // consumers finish commit and call this callback. If multiple consumers encounter exceptions while commiting offsets,
+  // one of them will be passed to the user-provided callback.
+  private class WrapperOffsetCommitCallback implements OffsetCommitCallback {
+    private AtomicInteger _pendingCommitCount;
+    // An aggregate of all offsets passed to each callback
+    private Map<TopicPartition, OffsetAndMetadata> _allOffsets;
+    private volatile Exception _exception;
+    private OffsetCommitCallback _userCallback;
+
+    public WrapperOffsetCommitCallback(AtomicInteger pendingCommitCount,
+        Map<TopicPartition, OffsetAndMetadata> allOffsets, Exception exception, OffsetCommitCallback userCallback) {
+      _pendingCommitCount = pendingCommitCount;
+      _allOffsets = allOffsets;
+      _exception = exception;
+      _userCallback = userCallback;
+    }
+
+    @Override
+    public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception exception) {
+      synchronized (_allOffsets) {
+        _allOffsets.putAll(offsets);
+      }
+      if (exception != null) {
+        _exception = exception;
+      }
+      if (_pendingCommitCount.decrementAndGet() == 0) {
+        if (_userCallback == null) {
+          // Copies what DefaultOffsetCommitCallback does, which is used by upstream consumer when a null callback is
+          // passed.
+          if (_exception != null) {
+              LOG.error("Offset commit with offsets {} failed", _allOffsets, _exception);
+          }
+        } else {
+          _userCallback.onComplete(_allOffsets, _exception);
+        }
+      }
+    }
   }
 
   @Override
   public void commitAsync() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    commitAsync(null);
   }
 
   @Override
   synchronized public void commitAsync(OffsetCommitCallback callback) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
+    AtomicInteger pendingCommitCount = new AtomicInteger(consumers.size());
+    Map<TopicPartition, OffsetAndMetadata> allOffsets = new HashMap<>();
+    Exception exception = null;
+    OffsetCommitCallback wrapperCallback = new WrapperOffsetCommitCallback(pendingCommitCount, allOffsets, exception,
+        callback);
+    for (ClusterConsumerPair<K, V> entry : getImmutableConsumerList()) {
+      entry.getConsumer().commitAsync(wrapperCallback);
+    }
   }
 
   @Override
-  public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  synchronized public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
+    Map<ClusterDescriptor, Map<TopicPartition, OffsetAndMetadata>> perClusterPartitions =
+        getPartitionValueMapByCluster(offsets);
+    AtomicInteger pendingCommitCount = new AtomicInteger(perClusterPartitions.size());
+    Map<TopicPartition, OffsetAndMetadata> allOffsets = new HashMap<>();
+    Exception exception = null;
+    OffsetCommitCallback wrapperCallback = new WrapperOffsetCommitCallback(pendingCommitCount, allOffsets, exception, callback);
+    for (Map.Entry<ClusterDescriptor, Map<TopicPartition, OffsetAndMetadata>> entry : perClusterPartitions.entrySet()) {
+      getOrCreatePerClusterConsumer(consumers, entry.getKey()).commitAsync(entry.getValue(), wrapperCallback);
+    }
+    // ATTN: Need to deal with nonexistent partitions here
   }
 
+  /**
+   * Overrides the fetch offsets that the consumer will use on the next {@link #poll(Duration) poll(timeout)}. If this API
+   * is invoked for the same partition more than once, the latest offset will be used on the next poll(). Note that
+   * you may lose data if this API is arbitrarily used in the middle of consumption, to reset the fetch offsets
+   *
+   * @throws IllegalArgumentException if the provided offset is negative
+   * @throws IllegalStateException if the provided TopicPartition is not assigned to this consumer
+   */
   @Override
   synchronized public void seek(TopicPartition partition, long offset) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    // User assignment - can be checked at the federated consumer level  - ok to seek for nonexistent partition
+    //                   as long as it is part of the assignment set.
+    // Auto assignment - should be cheked by the per-cluster consumer
+    if (_currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.USER_ASSIGNED) {
+      Set<TopicPartition> assignment = ((UserAssigned) _currentSubscription).getAssignment();
+      if (!assignment.contains(TopicPartition)) {
+        throw new IllegalStateException("No current assignment for partition " + partition);
+      }
+      Set<String> topicsWaitingToBeCreated = _currentSubscription.getTopicsWaitingToBeCreated();
+      if (_currentSubscription.getTopicsWaitingToBeCreated().contains(partition.topic())) {
+        // TODO: Vanilla consumer allows to seek for user-assigned partitions that do not exist yet.
+      } else {
+        getConsumerForTopic(partition.topic()).seek(partition, offset);
+      }
+    } else {
+      // ATTN: How to check subscription? Find a cluster for the topic and let it handle?
+      getConsumerForTopic(partition.topic()).seek(partition, offset);
+    }
+  }
+
+  /**
+   * Seek to the first offset for each of the given partitions. This function evaluates lazily, seeking to the
+   * first offset in all partitions only when {@link #poll(Duration)} or {@link #position(TopicPartition)} are called.
+   * If no partitions are provided, seek to the first offset for all of the currently assigned partitions.
+   *
+   * @throws IllegalArgumentException if {@code partitions} is {@code null}
+   * @throws IllegalStateException if any of the provided partitions are not currently assigned to this consumer
+   */
+  @Override
+  synchronized public void seekToBeginning(Collection<TopicPartition> partitions) {
+    if (_currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.USER_ASSIGNED) {
+      Set<TopicPartition> assignment = ((UserAssigned) _currentSubscription).getAssignment();
+      Set<String> topicsWaitingToBeCreated = _currentSubscription.getTopicsWaitingToBeCreated();
+      for (TopicPartition partition : partitions) {
+        if (!assignment.contains(TopicPartition)) {
+          throw new IllegalStateException("No current assignment for partition " + partition);
+        }
+      }
+
+      if (_currentSubscription.getTopicsWaitingToBeCreated().contains(partition.topic())) {
+        // TODO: Vanilla consumer allows to seek for user-assigned partitions that do not exist yet.
+      } else {
+        getConsumerForTopic(partition.topic()).seek(partition, offset);
+      }
+    } else {
+      // ATTN: How to check subscription? Find a cluster for the topic and let it handle?
+      getConsumerForTopic(partition.topic()).seek(partition, offset);
+    }
+
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : getPartitionsByCluster(partitions).entrySet()) {
+      getOrCreatePerClusterConsumer(consumers, entry.getKey()).seekToBeginning(entry.getValue());
+    }
   }
 
   @Override
-  public void seekToBeginning(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
-  }
-
-  @Override
-  public void seekToEnd(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  synchronized public void seekToEnd(Collection<TopicPartition> partitions) {
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : getPartitionsByCluster(partitions).entrySet()) {
+      getOrCreatePerClusterConsumer(consumers, entry.getKey()).seekToEnd(entry.getValue());
+    }
   }
 
   @Override
   synchronized public void seekToCommitted(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : getPartitionsByCluster(partitions).entrySet()) {
+      getOrCreatePerClusterConsumer(consumers, entry.getKey()).seekToCommitted(entry.getValue());
+    }
   }
 
   @Override
   synchronized public long position(TopicPartition partition) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    // In case of user-assigned and the partition belongs to non-existent topic, it can still get the position of
+    // that partition.
+    // For subscription, partitions belong to nonexistent will throw IllegalStateException
+    return getOrCreateConsumerForTopic(partition.topic()).position(partition);
   }
 
   @Override
   synchronized public long position(TopicPartition partition, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    return getOrCreateConsumerForTopic(partition.topic()).position(partition, timeout);
   }
 
   @Override
   synchronized public OffsetAndMetadata committed(TopicPartition partition) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    return getOrCreateConsumerForTopic(partition.topic()).committed(partition);
   }
 
   @Override
   synchronized public OffsetAndMetadata committed(TopicPartition partition, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    return getOrCreateConsumerForTopic(partition.topic()).committed(partition, timeout);
   }
 
   @Override
-  synchronized public Long committedSafeOffset(TopicPartition tp) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  synchronized public Long committedSafeOffset(TopicPartition partition) {
+    return getOrCreateConsumerForTopic(partition.topic()).committedSafeOffset(partition);
   }
 
   @Override
@@ -502,82 +711,117 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   synchronized public List<PartitionInfo> partitionsFor(String topic) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    return getOrCreateConsumerForTopic(topic).partitionsFor(topic);
   }
 
   @Override
   synchronized public List<PartitionInfo> partitionsFor(String topic, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    return getOrCreateConsumerForTopic(topic).partitionsFor(topic, timeout);
   }
 
   @Override
-  synchronized public Map<String, List<PartitionInfo>> listTopics() {
-    throw new UnsupportedOperationException("Not implemented yet");
+  public Map<String, List<PartitionInfo>> listTopics() {
+    return listTopics(Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
   @Override
   synchronized public Map<String, List<PartitionInfo>> listTopics(Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    ConcurrentHashMap<String, List<PartitionInfo>> aggregate = new ConcurrentHashMap<>();
+    executeCallbackWithTimeout("listTopics", null,
+        (consumer, ignored, timeoutDuration) -> {
+          aggregate.putAll(consumer.listTopics(timeoutDuration));
+        }, timeout);
+    return Collections.unmodifiableMap(aggregate);
   }
 
   @Override
   synchronized public Set<TopicPartition> paused() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    Set<TopicPartition> aggregate = new HashSet<>();
+    for (ClusterConsumerPair<K, V> entry : getImmutableConsumerList()) {
+      aggregate.addAll(entry.getConsumer().paused());
+    }
+    return aggregate;
   }
 
   @Override
   synchronized public void pause(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : getPartitionsByCluster(partitions).entrySet()) {
+      getOrCreatePerClusterConsumer(consumers, entry.getKey()).pause(entry.getValue());
+    }
   }
 
   @Override
   synchronized public void resume(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    List<ClusterConsumerPair<K, V>> consumers = getImmutableConsumerList();
+    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : getPartitionsByCluster(partitions).entrySet()) {
+      getOrCreatePerClusterConsumer(consumers, entry.getKey()).resume(entry.getValue());
+    }
   }
 
   @Override
-  synchronized public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
+    return offsetsForTimes(timestampsToSearch, Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
   @Override
   synchronized public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    ConcurrentHashMap<TopicPartition, OffsetAndTimestamp> aggregate = new ConcurrentHashMap<>();
+    executeCallbackWithTimeout("offsetsForTimes", getPartitionValueMapByCluster(timestampsToSearch),
+        (consumer, perClusterTimestampsToSearch, timeoutDuration) -> {
+          aggregate.putAll(consumer.offsetsForTimes((Map<TopicPartition, Long>) perClusterTimestampsToSearch,
+              timeoutDuration));
+        }, timeout);
+    return aggregate;
   }
 
   @Override
-  synchronized public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
+    return beginningOffsets(partitions, Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
   @Override
-  public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  synchronized public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions, Duration timeout) {
+    ConcurrentHashMap<TopicPartition, Long> aggregate = new ConcurrentHashMap<>();
+    executeCallbackWithTimeout("beginningOffsets", getPartitionsByCluster(partitions),
+        (consumer, perClusterPartitions, timeoutDuration) -> {
+          aggregate.putAll(consumer.beginningOffsets((Collection<TopicPartition>) perClusterPartitions, timeoutDuration));
+        }, timeout);
+    return aggregate;
   }
 
   @Override
-  synchronized public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
+    return endOffsets(partitions, Duration.ofMillis(_defaultApiTimeoutMs));
   }
 
   @Override
   synchronized public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    ConcurrentHashMap<TopicPartition, Long> aggregate = new ConcurrentHashMap<>();
+    executeCallbackWithTimeout("endOffsets", getPartitionsByCluster(partitions),
+        (consumer, perClusterPartitions, timeoutDuration) -> {
+          aggregate.putAll(consumer.endOffsets((Collection<TopicPartition>) perClusterPartitions, timeoutDuration));
+        }, timeout);
+    return aggregate;
   }
 
   @Override
-  synchronized public Long safeOffset(TopicPartition tp, long messageOffset) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  synchronized public Long safeOffset(TopicPartition partition, long messageOffset) {
+    return getOrCreateConsumerForTopic(partition.topic()).safeOffset(partition, messageOffset);
   }
 
   @Override
-  synchronized public Long safeOffset(TopicPartition tp) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  synchronized public Long safeOffset(TopicPartition partition) {
+    return getOrCreateConsumerForTopic(partition.topic()).safeOffset(partition);
   }
 
   @Override
   synchronized public Map<TopicPartition, Long> safeOffsets() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    Map<TopicPartition, Long> aggregate = new HashMap<>();
+    for (ClusterConsumerPair<K, V> entry : getImmutableConsumerList()) {
+      aggregate.putAll(entry.getConsumer().safeOffsets());
+    }
+    return Collections.unmodifiableMap(aggregate);
   }
 
   @Override
@@ -590,22 +834,160 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     close(Duration.ofMillis(timeUnit.toMillis(timeout)));
   }
 
+  @Override
+  synchronized public void close(Duration timeout) {
+    closeNoLock(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    _closed = true;
+  }
+
+
+  private void closeNoLock(Duration timeout) {
+    executeCallbackWithTimeout("close", null,
+        (consumer, ignored, timeoutDuration) -> consumer.close(timeoutDuration.toMillis(), TimeUnit.MILLISECONDS),
+        Duration.of(timeout, LiKafkaClientsUtils.convertTimeUnitToChronoUnit(timeUnit)));
+  }
+
+  @Override
+  synchronized public void wakeup() {
+    for (ClusterConsumerPair<K, V> entry : getImmutableConsumerList()) {
+      entry.getConsumer().wakeup();
+    }
+  }
+
+  // Return an immutable view of the currently created consumers.
+  private List<ClusterConsumerPair<K, V>> getImmutableConsumerList() {
+    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+    return Collections.unmodifiableList(consumers);
+  }
+
   // This is used for testing only
   public FederatedSubscriptionState getCurrentSubscription() {
     return _currentSubscription;
   }
 
-  private void closeNoLock(Duration timeout) {
-    // Get an immutable copy of the current set of consumers.
-    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+  // Construct a map of partitions keyed by cluster from the given collection of partitions.
+  private Map<ClusterDescriptor, Collection<TopicPartition>> getPartitionsByCluster(Collection<TopicPartition> partitions) {
+    if (partitions == null) {
+      throw new IllegalArgumentException("partitions cannot be null");
+    }
+
+    if (partitions.isEmpty()) {
+      return Collections.emptyMap();
+    }
+
+    Map<TopicPartition, ClusterDescriptor> partitionToClusterMap;
+    try {
+      partitionToClusterMap =
+          _mdsClient.getClustersForTopicPartitions(partitions, _clusterGroup, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
+    }
+
+    // Reverse the map so that we can have per-cluster topic partition sets.
+    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap = new HashMap<>();
+    Set<TopicPartition> nonexistentPartitions = new HashSet<>();
+    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : partitionToClusterMap.entrySet()) {
+      TopicPartition topicPartition = entry.getKey();
+      ClusterDescriptor cluster = entry.getValue();
+      if (cluster == null) {
+        nonexistentPartitions.add(topicPartition);
+      } else {
+        clusterToPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
+      }
+    }
+
+    if (!nonexistentPartitions.isEmpty()) {
+      throw new IllegalStateException("found nonexistent partitions: " + nonexistentPartitions);
+    }
+
+    return clusterToPartitionsMap;
+  }
+
+  // This contains the result of the location lookup for a set of topic partitions across multiple clusters in a cluster
+  // group.
+  private class <T> PartitionValueMapByClusterResult {
+    private Map<ClusterDescriptor, Map<TopicPartition, T>> _clusterToPartitionValueMap;
+    private Set<String> _nonexistentTopics;
+
+    public PartitionValueMapByClusterResult() {
+      _clusterToPartitionValueMap = Collections.emptyMap();
+      _nonexistentTopics = Collections.emptySet();
+    }
+
+    public PartitionsValueMapByClusterResult(Map<ClusterDescriptor, Map<TopicPartition, T>> clusterToPartitionValueMap,
+        Set<String> nonexistentTopics) {
+      _clusterToPartitionValueMap = clusterToPartitionValueMap;
+      _nonexistentTopics = nonexistentTopics;
+    }
+
+    public Map<ClusterDescriptor, Map<TopicPartition, T>> getClusterToPartitionValueMap() {
+      return _clusterToPartitionValueMap;
+    }
+
+    public Set<String> getNonexistentTopics() {
+      return _nonexistentTopics;
+    }
+  }
+
+  // Construct a map of maps by cluster, where the inner map is keyed by partition.
+  private <T> PartitionValueMapByClusterResult getPartitionValueMapByCluster(Map<TopicPartition, T> valuesByPartition) {
+    if (valuesByPartition == null) {
+      throw new IllegalArgumentException("partition map cannot be null");
+    }
+
+    if (valuesByPartition.isEmpty()) {
+      return new PArtitionValueMapByClusterResult();
+    }
+
+    Map<TopicPartition, ClusterDescriptor> partitionToClusterMap;
+    try {
+      partitionToClusterMap =
+          _mdsClient.getClustersForTopicPartitions(valuesByPartition.keySet(), _clusterGroup, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get clusters for topic partitions " + valuesByPartition.keySet() + ": ", e);
+    }
+
+    // Reverse the map so that we can have per-cluster maps.
+    Map<ClusterDescriptor, Map<TopicPartition, T>> mapsByCluster = new HashMap<>();
+    Set<String> nonexistentTopics = new HashSet<>();
+    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : partitionToClusterMap.entrySet()) {
+      TopicPartition topicPartition = entry.getKey();
+      ClusterDescriptor cluster = entry.getValue();
+      if (cluster == null) {
+        nonexistentTopics.add(topicPartition.topic());
+      } else {
+        mapsByCluster.computeIfAbsent(cluster, k -> new HashMap<TopicPartition, T>()).put(topicPartition,
+            valuesByPartition.get(topicPartition));
+      }
+    }
+
+    return new PartitionValueMapByCluster(mapsByCluster, nonexistentTopics);
+  }
+
+  // For each cluster in the perClusterInput key set, concurrently call the given callback with the corresponding
+  // consumer and per-cluster input values. If perClusterInput is null, the callback will be called for all existing
+  // consumers.
+  private <I> void executeCallbackWithTimeout(String methodName,
+      Map<ClusterDescriptor, I> perClusterInput, ExecutorCallback callback, Duration timeout) {
+    List<ClusterConsumerPair<K, V>> allConsumers = getImmutableConsumerList();
+    List<ClusterConsumerPair<K, V>> consumers;
+    if (perClusterInput == null) {
+      // The callback needs to be executed against all consumers
+      consumers = allConsumers;
+    } else {
+      consumers = new ArrayList<>();
+      for (ClusterDescriptor cluster: perClusterInput.keySet()) {
+        consumers.add(new ClusterConsumerPair<K, V>(cluster, getOrCreatePerClusterConsumer(allConsumers, cluster)));
+      }
+    }
 
     if (consumers.isEmpty()) {
-      LOG.info("no consumers to close for cluster group {}", _clusterGroup);
+      // Nothing to do
       return;
     }
 
-    LOG.debug("closing {} LiKafkaConsumers for cluster group {} in {}...", consumers.size(), _clusterGroup,
-        timeout);
+    LOG.debug("starting {} for {} LiKafkaConsumers for cluster group {} in {} {}...", methodName, consumers.size(),
+        _clusterGroup, timeout);
 
     long startTimeMs = System.currentTimeMillis();
     long deadlineTimeMs = startTimeMs + timeout.toMillis();
@@ -616,13 +998,16 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       LiKafkaConsumer<K, V> consumer = entry.getConsumer();
       Thread t = new Thread(() -> {
         try {
-          consumer.close(Duration.ofMillis(deadlineTimeMs - System.currentTimeMillis()));
+          long remainingTimeMs = deadlineTimeMs - System.currentTimeMillis();
+          remainingTimeMs = Math.max(remainingTimeMs, 0);
+          callback.execute(consumer, perClusterInput == null ? null : perClusterInput.get(cluster),
+              Duration.ofMillis(remainingTimeMs));
         } finally {
           countDownLatch.countDown();
         }
       });
       t.setDaemon(true);
-      t.setName("LiKafkaConsumer-close-" + cluster.getName());
+      t.setName("LiKafkaConsumer-" + methodName + "-" + cluster.getName());
       t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
         public void uncaughtException(Thread t, Throwable e) {
           throw new KafkaException("Thread " + t.getName() + " throws exception", e);
@@ -635,26 +1020,15 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     try {
       if (!countDownLatch.await(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS)) {
         LiKafkaClientsUtils.dumpStacksForAllLiveThreads(threads);
-        throw new KafkaException(
-            "Fail to close all consumers for cluster group " + _clusterGroup + " in " + timeout);
+        throw new KafkaException("fail to perform " + methodName + " for cluster group " + _clusterGroup + " in " +
+            timeout);
       }
     } catch (InterruptedException e) {
-      throw new KafkaException("Fail to close all consumers for cluster group " + _clusterGroup, e);
+      throw new KafkaException("fail to perform " + methodName + " for cluster group " + _clusterGroup, e);
     }
 
-    LOG.info("closing {} LiKafkaConsumers for cluster group {} complete in {} milliseconds", consumers.size(),
+    LOG.info("{}: {} LiKafkaConsumers for cluster group {} complete in {} milliseconds", methodName, consumers.size(),
         _clusterGroup, (System.currentTimeMillis() - startTimeMs));
-  }
-
-  @Override
-  synchronized public void close(Duration timeout) {
-    closeNoLock(timeout);
-    _closed = true;
-  }
-
-  @Override
-  synchronized public void wakeup() {
-    throw new UnsupportedOperationException("Not implemented yet");
   }
 
   public LiKafkaConsumerConfig getCommonConsumerConfigs() {
@@ -768,16 +1142,49 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     }
   }
 
-  // Intended for testing only
+  // Package private for testing
   LiKafkaConsumer<K, V> getPerClusterConsumer(ClusterDescriptor cluster) {
-    // Get an immutable copy of the current set of consumers.
-    List<ClusterConsumerPair<K, V>> consumers = _consumers;
-    for (ClusterConsumerPair<K, V> entry : consumers) {
+    if (cluster == null) {
+      return null;
+    }
+    for (ClusterConsumerPair<K, V> entry : getImmutableConsumerList()) {
       if (entry.getCluster().equals(cluster)) {
         return entry.getConsumer();
       }
     }
     return null;
+  }
+
+  private LiKafkaConsumer<K, V> getConsumerForTopic(String topic) {
+    if (topic == null || topic.isEmpty()) {
+      throw new IllegalArgumentException("Topic cannot be null or empty");
+    }
+
+    ClusterDescriptor cluster = null;
+    try {
+      cluster = _mdsClient.getClusterForTopic(topic, _clusterGroup, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get cluster for topic " + topic + ": ", e);
+    }
+    return (cluster == null) ? null : getPerClusterConsumer(cluster);
+  }
+
+  private LiKafkaConsumer<K, V> getOrCreateConsumerForTopic(String topic) {
+    if (topic == null || topic.isEmpty()) {
+      throw new IllegalArgumentException("Topic cannot be null or empty");
+    }
+
+    ClusterDescriptor cluster = null;
+    try {
+      cluster = _mdsClient.getClusterForTopic(topic, _clusterGroup, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get cluster for topic " + topic + ": ", e);
+    }
+    if (cluster == null) {
+      throw new IllegalStateException("Topic " + topic + " not found in the metadata service");
+    }
+    List<ClusterConsumerPair<K, V>> consumers = _consumers;
+    return getOrCreatePerClusterConsumer(consumers, cluster);
   }
 
   // Returns null if the specified topic does not exist in the cluster group.
@@ -850,6 +1257,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     switch (_currentSubscription.getSubscriptionType()) {
       case USER_ASSIGNED:
         assign(((UserAssigned) _currentSubscription).getAssignment());
+        // ATTN: keep the offset separately and do seek on them?
         break;
 
       default:

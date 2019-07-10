@@ -37,6 +37,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String VALUE_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
   public static final String SEGMENT_DESERIALIZER_CLASS_CONFIG = "segment.deserializer.class";
   public static final String AUDITOR_CLASS_CONFIG = "auditor.class";
+//  public static final String DEFAULT_API_TIMEOUT_MS_CONFIG = ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG;
   public static final String ENABLE_AUTO_COMMIT_CONFIG = ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
   public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG;
   public static final String AUTO_OFFSET_RESET_CONFIG = ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
@@ -92,6 +93,8 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
       + "for the consumer's group</li><li>anything else: throw exception to the consumer.</li></ul>";
 
   private static final String MAX_POLL_RECORDS_DOC = "The maximum number of records returned in a single call to poll().";
+
+//  private static final String DEFAULT_API_TIMEOUT_MS_DOC = ConsumerConfig.DEFAULT_API_TIMEOUT_MS_DOC;
 
   public static final String METADATA_SERVICE_CLIENT_CLASS_DOC =
       LiKafkaCommonClientConfigs.METADATA_SERVICE_CLIENT_CLASS_DOC;
@@ -194,7 +197,13 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 Type.INT,
                 Integer.MAX_VALUE,
                 Importance.MEDIUM,
-                METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC);
+                METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC)
+        .define(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG,
+                Type.INT,
+                60 * 1000,
+                atLeast(0),
+                Importance.MEDIUM,
+                ConsumerConfig.DEFAULT_API_TIMEOUT_MS_DOC);
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {
