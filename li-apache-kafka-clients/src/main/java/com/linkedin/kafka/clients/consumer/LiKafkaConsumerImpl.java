@@ -234,8 +234,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     _kafkaConsumer.unsubscribe();
   }
 
-  @Override
-  public ConsumerRecords<K, V> poll(long timeout) {
+  private ConsumerRecords<K, V> poll(long timeout, boolean includeMetadataInTimeout) {
     ConsumerRecords<K, V> processedRecords;
     // We will keep polling until timeout.
     long now = System.currentTimeMillis();
@@ -257,7 +256,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
       ConsumerRecords<byte[], byte[]> rawRecords = ConsumerRecords.empty();
       try {
-         rawRecords = _kafkaConsumer.poll(Duration.ofMillis(deadline - now));
+        if (includeMetadataInTimeout) {
+          rawRecords = _kafkaConsumer.poll(Duration.ofMillis(deadline - now));
+        } else {
+          rawRecords = _kafkaConsumer.poll(deadline - now);
+        }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
       }
@@ -282,9 +285,23 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     return processedRecords;
   }
 
+  /**
+   * We still need this API for at least one specific case in Kafka-Rest. poll((long) 0) is used by Kafka-Rest's background threads
+   * to do rebalance. We cannot use poll(Duration 0) because poll(Duration) includes metadata update time in the Duration,
+   * so we end up exiting too soon to finish rebalance. poll((long) 0) on the other hand will wait for as long as it takes
+   * to rebalance, which is the desired behavior.
+   * @param timeout timeout in milliseconds for poll. Excludes metadata update time
+   * @return {@link ConsumerRecords}
+   */
+  @Override
+  @Deprecated
+  public ConsumerRecords<K, V> poll(long timeout) {
+    return poll(timeout, false);
+  }
+
   @Override
   public ConsumerRecords<K, V> poll(Duration timeout) {
-    return poll(timeout.toMillis());
+    return poll(timeout.toMillis(), true);
   }
 
   @Override
