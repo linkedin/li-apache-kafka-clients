@@ -285,6 +285,14 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     return processedRecords;
   }
 
+  /**
+   * We still need this API for at least one specific case in Kafka-Rest. poll((long) 0) is used by Kafka-Rest's background threads
+   * to do rebalance. We cannot use poll(Duration 0) because poll(Duration) includes metadata update time in the Duration,
+   * so we end up exiting too soon to finish rebalance. poll((long) 0) on the other hand will wait for as long as it takes
+   * to rebalance, which is the desired behavior.
+   * @param timeout timeout in milliseconds for poll. Excludes metadata update time
+   * @return {@link ConsumerRecords}
+   */
   @Override
   @Deprecated
   public ConsumerRecords<K, V> poll(long timeout) {
