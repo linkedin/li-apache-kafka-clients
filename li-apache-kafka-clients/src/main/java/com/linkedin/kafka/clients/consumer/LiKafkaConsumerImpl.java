@@ -286,6 +286,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
+  @Deprecated
   public ConsumerRecords<K, V> poll(long timeout) {
     return poll(timeout, false);
   }
