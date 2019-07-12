@@ -7,6 +7,8 @@ package com.linkedin.kafka.clients.metadataservice;
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
+import com.linkedin.kafka.clients.common.PartitionLookupResult;
+import com.linkedin.kafka.clients.common.TopicLookupResult;
 
 import com.linkedin.mario.common.websockets.MsgType;
 import java.util.Map;
@@ -42,17 +44,26 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
       throws MetadataServiceClientException;
 
   /**
-   * Get a map from the given topic partitions to the clusters where they are hosted. For nonexistent topic partitions,
-   * the cluster will be set to null.
+   * Get the clusters which host the given topic partitions. The result will also contain any nonexistent topics.
    *
    * @param topicPartitions  The topic partitions
    * @param clusterGroup  The cluster group descriptor
    * @param timeoutMs        Timeout in milliseconds
-   * @return A map from topic partitions to the descriptors of the physical clusters where they are hosted
+   * @return Location lookup result.
    */
-  Map<TopicPartition, ClusterDescriptor> getClustersForTopicPartitions(
-      Set<TopicPartition> topicPartitions, ClusterGroupDescriptor clusterGroup, int timeoutMs)
-      throws MetadataServiceClientException;
+  PartitionLookupResult getClustersForTopicPartitions(Set<TopicPartition> topicPartitions,
+      ClusterGroupDescriptor clusterGroup, int timeoutMs) throws MetadataServiceClientException;
+
+  /**
+   * Get the clusters which host the given topics. The result will also contain any nonexistent topics.
+   *
+   * @param topics  The topics
+   * @param clusterGroup  The cluster group descriptor
+   * @param timeoutMs        Timeout in milliseconds
+   * @return Location lookup result.
+   */
+  TopicLookupResult getClustersForTopics(Set<String> topics, ClusterGroupDescriptor clusterGroup,
+      int timeoutMs) throws MetadataServiceClientException;
 
   /**
    * Report to mario server that command execution for commandId is completed

@@ -8,6 +8,8 @@ import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClientType;
+import com.linkedin.kafka.clients.common.PartitionLookupResult;
+import com.linkedin.kafka.clients.common.TopicLookupResult;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
@@ -38,6 +40,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
+import org.apache.kafka.clients.consumer.internals.NoOpConsumerRebalanceListener;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
@@ -99,6 +102,11 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // metadata.max.age.ms, also used as the interval for polling the creation of nonexistent topics that are part of the
   // current assignment/subscription
   private int _metadataMaxAgeMs;
+
+  // The default timeout for blocking calls specified by default.api.timeout.ms consumer properties.
+  // This is exposed for federated consumer methods with the default timeout that need to invoke the individual
+  // consumer's corresponding methods concurrently.
+  private int _defaultApiTimeoutMs;
 
   // The number of clusters in this cluster group to connect to for the current assignment/subscription
   private int _numClustersToConnectTo;
@@ -181,6 +189,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _mdsRequestTimeoutMs = configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
     _maxPollRecordsForFederatedConsumer = configs.getInt(LiKafkaConsumerConfig.MAX_POLL_RECORDS_CONFIG);
     _metadataMaxAgeMs = configs.getInt(ConsumerConfig.METADATA_MAX_AGE_CONFIG);
+    _defaultApiTimeoutMs = configs.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
+
     _currentSubscription = Unsubscribed.getInstance();
     _nextClusterIndexToPoll = 0;
 
@@ -241,56 +251,109 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   @Override
   synchronized public Set<TopicPartition> assignment() {
     ensureOpen();
-    return _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.USER_ASSIGNED
-        ? ((UserAssigned) _currentSubscription).getAssignment() : Collections.emptySet();
+    switch (_currentSubscription.getSubscriptionType()) {
+      case USER_ASSIGNED:
+        return ((UserAssigned) _currentSubscription).getAssignment();
+
+      case AUTO_TOPICS:
+      case AUTO_PATTERN: {
+        // Get the aggregate of currently assigned partitions from all consumers.
+        Set<TopicPartition> aggregate = new HashSet<>();
+        for (ClusterConsumerPair<K, V> entry : _consumers) {
+          aggregate.addAll(entry.getConsumer().assignment());
+        }
+        return aggregate;
+      }
+
+      case NONE:
+        return Collections.emptySet();
+
+      default:
+        throw new IllegalStateException("invalid subscription type: " +
+            _currentSubscription.getSubscriptionType().name());
+    }
   }
 
   @Override
   synchronized public Set<String> subscription() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    ensureOpen();
+    switch (_currentSubscription.getSubscriptionType()) {
+      case AUTO_TOPICS:
+        return ((Subscribed) _currentSubscription).getSubscription();
+
+      case AUTO_PATTERN:
+        // Get the aggregate of currently subscriptions from all consumers.
+        Set<String> aggregate = new HashSet<>();
+        for (ClusterConsumerPair<K, V> entry : _consumers) {
+          aggregate.addAll(entry.getConsumer().subscription());
+        }
+        return aggregate;
+
+      case USER_ASSIGNED:
+        // TODO: Interestingly, vanilla consumer returns the previously used subscription in the case of USER_ASSIGNED.
+        // Implement this if there is a real use case.
+        return Collections.emptySet();
+
+      case NONE:
+        return Collections.emptySet();
+
+      default:
+        throw new IllegalStateException("invalid subscription type: " +
+            _currentSubscription.getSubscriptionType().name());
+    }
   }
 
   @Override
   synchronized public void subscribe(Collection<String> topics) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    subscribe(topics, new NoOpConsumerRebalanceListener());
   }
 
   @Override
   synchronized public void subscribe(Collection<String> topics, ConsumerRebalanceListener callback) {
-    throw new UnsupportedOperationException("Not implemented yet");
-  }
-
-  private PartitionsByClusterResult getPartitionsByCluster(Set<TopicPartition> partitions) {
     ensureOpen();
-    if (partitions == null) {
-      throw new IllegalArgumentException("partitions cannot be null");
+    if (topics == null) {
+      throw new IllegalArgumentException("Topic collection to subscribe to cannot be null");
     }
 
-    if (partitions.isEmpty()) {
-      return new PartitionsByClusterResult();
+    // If topics are empty, it should be treated as unsubscribe(). This is the vanilla Kafka consumer behavior.
+    if (topics.isEmpty()) {
+      unsubscribe();
+      return;
     }
 
-    Map<TopicPartition, ClusterDescriptor> partitionToClusterMap;
+    Set<String> topicsSet = new HashSet<>(topics);
+    TopicLookupResult topicLookupResult;
     try {
-      partitionToClusterMap =
-          _mdsClient.getClustersForTopicPartitions(partitions, _clusterGroup, _mdsRequestTimeoutMs);
+      topicLookupResult = _mdsClient.getClustersForTopics(topicsSet, _clusterGroup, _mdsRequestTimeoutMs);
     } catch (MetadataServiceClientException e) {
-      throw new KafkaException("failed to get clusters for topic partitions " + partitions + ": ", e);
+      throw new KafkaException("failed to get clusters for topics " + topics + ": ", e);
     }
 
-    // Reverse the map so that we can have per-cluster topic partition sets.
-    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap = new HashMap<>();
-    Set<String> nonexistentTopics = new HashSet<>();
-    for (Map.Entry<TopicPartition, ClusterDescriptor> entry : partitionToClusterMap.entrySet()) {
-      TopicPartition topicPartition = entry.getKey();
-      ClusterDescriptor cluster = entry.getValue();
-      if (cluster == null) {
-        nonexistentTopics.add(topicPartition.topic());
-      } else {
-        clusterToPartitionsMap.computeIfAbsent(cluster, k -> new HashSet<TopicPartition>()).add(topicPartition);
-      }
+    if (!topicLookupResult.getNonexistentTopics().isEmpty()) {
+      LOG.warn("the following topics in the requested subscription currently do not exist: {}",
+          topicLookupResult.getNonexistentTopics());
     }
-    return new PartitionsByClusterResult(clusterToPartitionsMap, nonexistentTopics);
+    _currentSubscription = new Subscribed(topicsSet, topicLookupResult.getNonexistentTopics());
+
+    // This subscription should replace the previous assignment/subscription. Since max.poll.records should be reset for
+    // consumers for the new subscription, close all existing consumers first.
+    if (!_consumers.isEmpty()) {
+      LOG.debug("closing all existing LiKafkaConsumers due to subscription change");
+      closeNoLock(Duration.ofMillis(_defaultApiTimeoutMs));
+      _consumers.clear();
+    }
+
+    Map<ClusterDescriptor, Set<String>> topicsByCluster = topicLookupResult.getTopicsByCluster();
+    _numClustersToConnectTo = topicsByCluster.size();
+    _nextClusterIndexToPoll = 0;
+
+    for (Map.Entry<ClusterDescriptor, Set<String>> entry : topicsByCluster.entrySet()) {
+      ClusterDescriptor cluster = entry.getKey();
+      LiKafkaConsumer<K, V> consumer = createPerClusterConsumer(cluster);
+      // TODO: create a wrapper callback that supports federation
+      consumer.subscribe(entry.getValue(), callback);
+      _consumers.add(new ClusterConsumerPair<K, V>(cluster, consumer));
+    }
   }
 
   @Override
@@ -300,8 +363,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       throw new IllegalArgumentException("Topic partition collection to assign to cannot be null");
     }
 
-    // If partitions are empty, it should be treated the same as unsubscribe(). This is the vanilla Kafka consumer
-    // behavior.
+    // If topics are empty, it should be treated as unsubscribe(). This is the vanilla Kafka consumer behavior.
     if (partitions.isEmpty()) {
       unsubscribe();
       return;
@@ -310,33 +372,37 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // TODO: Throw an exception if there exists a partition whose topic exists but the specified partition number is
     // out of range for that topic. Whether of not to throw an exception can be controlled by a property.
     Set<TopicPartition> partitionsSet = new HashSet<>(partitions);
-    PartitionsByClusterResult partitionsByClusterResult = getPartitionsByCluster(partitionsSet);
-
-    _currentSubscription = new UserAssigned(partitionsSet, partitionsByClusterResult.getNonexistentTopics());
-    if (!partitionsByClusterResult.getNonexistentTopics().isEmpty()) {
-      LOG.warn("the following topics in the requested assignment currently do not exist: {}",
-          partitionsByClusterResult.getNonexistentTopics());
+    PartitionLookupResult partitionLookupResult;
+    try {
+      partitionLookupResult = _mdsClient.getClustersForTopicPartitions(partitionsSet, _clusterGroup,
+          _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get clusters for partitions " + partitions + ": ", e);
     }
 
-    // This assignment should replace the previous assignment. Since max.poll.records should be reset for consumers
-    // for the new assignment, close all existing consumers first.
+    _currentSubscription = new UserAssigned(partitionsSet, partitionLookupResult.getNonexistentTopics());
+    if (!partitionLookupResult.getNonexistentTopics().isEmpty()) {
+      LOG.warn("the following topics in the requested assignment currently do not exist: {}",
+          partitionLookupResult.getNonexistentTopics());
+    }
+
+    // This assignment should replace the previous assignment/subscription. Since max.poll.records should be reset for
+    // consumers for the new assignment, close all existing consumers first.
     if (!_consumers.isEmpty()) {
       LOG.debug("closing all existing LiKafkaConsumers due to assignment change");
-      closeNoLock(CONSUMER_CLOSE_MAX_TIMEOUT);
+      closeNoLock(Duration.ofMillis(_defaultApiTimeoutMs));
+      _consumers.clear();
     }
 
-    Map<ClusterDescriptor, Collection<TopicPartition>> clusterToPartitionsMap =
-        partitionsByClusterResult.getClusterToPartitionsMap();
-    _numClustersToConnectTo = clusterToPartitionsMap.size();
+    Map<ClusterDescriptor, Set<TopicPartition>> partitionsByCluster = partitionLookupResult.getPartitionsByCluster();
+    _numClustersToConnectTo = partitionsByCluster.size();
     _nextClusterIndexToPoll = 0;
 
-    List<ClusterConsumerPair<K, V>> consumers = new ArrayList<>();
-    for (Map.Entry<ClusterDescriptor, Collection<TopicPartition>> entry : clusterToPartitionsMap.entrySet()) {
-      LiKafkaConsumer<K, V> curConsumer = createPerClusterConsumer(entry.getKey());
-      curConsumer.assign(entry.getValue());
-      consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), curConsumer));
+    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : partitionsByCluster.entrySet()) {
+      LiKafkaConsumer<K, V> consumer = createPerClusterConsumer(entry.getKey());
+      consumer.assign(entry.getValue());
+      _consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), consumer));
     }
-    _consumers = consumers;
   }
 
   @Override
@@ -353,7 +419,10 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   synchronized public void unsubscribe() {
     ensureOpen();
     _currentSubscription = Unsubscribed.getInstance();
-    throw new UnsupportedOperationException("Not implemented yet");
+    for (ClusterConsumerPair<K, V> entry : _consumers) {
+      LiKafkaConsumer<K, V> consumer = entry.getConsumer();
+      consumer.unsubscribe();
+    }
   }
 
   @Override
@@ -362,7 +431,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // Get an immutable copy of the current set of consumers.
     List<ClusterConsumerPair<K, V>> consumers = _consumers;
 
-    if (consumers.isEmpty()) {
+    if (consumers.isEmpty() ||
+        _currentSubscription.getSubscriptionType() == FederatedSubscriptionState.SubscriptionType.NONE) {
       return ConsumerRecords.empty();
     }
 
@@ -809,8 +879,6 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapUrl());
     configMap.put(ConsumerConfig.CLIENT_ID_CONFIG, _clientIdPrefix + "-" + cluster.getName());
 
-    // TODO: when subscription is supported, max.poll.records for existing consumers may need to be adjusted if a new
-    // consumer talks to a new cluster.
     int maxPollRecordsPerCluster = Math.max(_maxPollRecordsForFederatedConsumer / _numClustersToConnectTo, 1);
     configMap.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecordsPerCluster);
     LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.setConsumerConfig(configMap).build();
@@ -850,6 +918,10 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     switch (_currentSubscription.getSubscriptionType()) {
       case USER_ASSIGNED:
         assign(((UserAssigned) _currentSubscription).getAssignment());
+        break;
+
+      case AUTO_TOPICS:
+        subscribe(((Subscribed) _currentSubscription).getSubscription());
         break;
 
       default:

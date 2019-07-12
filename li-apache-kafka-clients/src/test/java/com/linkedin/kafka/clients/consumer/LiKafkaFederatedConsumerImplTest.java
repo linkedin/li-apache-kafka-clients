@@ -6,12 +6,15 @@ package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
+import com.linkedin.kafka.clients.common.PartitionLookupResult;
+import com.linkedin.kafka.clients.common.TopicLookupResult;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 
 import com.linkedin.mario.common.websockets.MsgType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -88,19 +91,20 @@ public class LiKafkaFederatedConsumerImplTest {
   }
 
   @Test
-  public void testBasicWorkflow() throws MetadataServiceClientException {
+  public void testBasicWorkflowWithAssignment() throws MetadataServiceClientException {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
     Set<TopicPartition> expectedTopicPartitions = new HashSet<>(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2,
         TOPIC_PARTITION3));
 
-    Map<TopicPartition, ClusterDescriptor> topicPartitionsToClusterMapToReturn =
-        new HashMap<TopicPartition, ClusterDescriptor>() {{
-          put(TOPIC_PARTITION1, CLUSTER1);
-          put(TOPIC_PARTITION2, CLUSTER2);
-          put(TOPIC_PARTITION3, CLUSTER1);
+    Map<ClusterDescriptor, Set<TopicPartition>> partitionsByClustersToReturn =
+        new HashMap<ClusterDescriptor, Set<TopicPartition>>() {{
+          put(CLUSTER1, new HashSet<>(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION3)));
+          put(CLUSTER2, new HashSet<>(Arrays.asList(TOPIC_PARTITION2)));
     }};
+    PartitionLookupResult expectedPartitionLookupResult = new PartitionLookupResult(partitionsByClustersToReturn,
+        Collections.emptySet());
     when(_mdsClient.getClustersForTopicPartitions(eq(expectedTopicPartitions), eq(CLUSTER_GROUP), anyInt()))
-        .thenReturn(topicPartitionsToClusterMapToReturn);
+        .thenReturn(expectedPartitionLookupResult);
 
     _federatedConsumer = new LiKafkaFederatedConsumerImpl<>(_consumerConfig, _mdsClient, new MockConsumerBuilder());
 
@@ -168,18 +172,103 @@ public class LiKafkaFederatedConsumerImplTest {
   }
 
   @Test
+  public void testBasicWorkflowWithSubscription() throws MetadataServiceClientException {
+    // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
+    Set<String> expectedTopics = new HashSet<>(Arrays.asList(TOPIC1, TOPIC2, TOPIC3));
+
+    Map<ClusterDescriptor, Set<String>> topicsByClustersToReturn =
+        new HashMap<ClusterDescriptor, Set<String>>() {{
+          put(CLUSTER1, new HashSet<>(Arrays.asList(TOPIC1, TOPIC3)));
+          put(CLUSTER2, new HashSet<>(Arrays.asList(TOPIC2)));
+        }};
+    TopicLookupResult expectedTopicLookupResult = new TopicLookupResult(topicsByClustersToReturn,
+        Collections.emptySet());
+    when(_mdsClient.getClustersForTopics(eq(expectedTopics), eq(CLUSTER_GROUP), anyInt()))
+        .thenReturn(expectedTopicLookupResult);
+
+    _federatedConsumer = new LiKafkaFederatedConsumerImpl<>(_consumerConfig, _mdsClient, new MockConsumerBuilder());
+
+    // Make sure we start with a clean slate
+    assertNull("Consumer for cluster 1 should have not been created yet",
+        _federatedConsumer.getPerClusterConsumer(CLUSTER1));
+    assertNull("Consumer for cluster 2 should have not been created yet",
+        _federatedConsumer.getPerClusterConsumer(CLUSTER2));
+
+    // Subscribe all three topics
+    _federatedConsumer.subscribe(Arrays.asList(TOPIC1, TOPIC2, TOPIC3));
+
+    // Verify consumers for both clusters have been created.
+    MockConsumer consumer1 = ((MockLiKafkaConsumer) _federatedConsumer.getPerClusterConsumer(CLUSTER1)).getDelegate();
+    MockConsumer consumer2 = ((MockLiKafkaConsumer) _federatedConsumer.getPerClusterConsumer(CLUSTER2)).getDelegate();
+    assertNotNull("Consumer for cluster 1 should have been created", consumer1);
+    assertNotNull("Consumer for cluster 2 should have been created", consumer2);
+
+    // Verify if subscription() returns all topics.
+    assertEquals("subscription() should return all topics",
+        new HashSet<String>(expectedTopics), _federatedConsumer.subscription());
+
+    // Simulate rebalance to populate assignment in each consumer.
+    consumer1.rebalance(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION3));
+    consumer2.rebalance(Arrays.asList(TOPIC_PARTITION2));
+
+    // Set beginning offsets for each per-cluster consumer (needed for MockConsumer).
+    HashMap<TopicPartition, Long> beginningOffsets1 = new HashMap<>();
+    beginningOffsets1.put(TOPIC_PARTITION1, 0L);
+    beginningOffsets1.put(TOPIC_PARTITION3, 0L);
+    consumer1.updateBeginningOffsets(beginningOffsets1);
+
+    HashMap<TopicPartition, Long> beginningOffsets2 = new HashMap<>();
+    beginningOffsets2.put(TOPIC_PARTITION2, 0L);
+    consumer2.updateBeginningOffsets(beginningOffsets2);
+
+    // Prepare test setup where one record for topic1, two records for topic2, and one record for topic3 are available
+    // for consumption.
+    ConsumerRecord<byte[], byte[]> record1 = new ConsumerRecord(TOPIC_PARTITION1.topic(), TOPIC_PARTITION1.partition(),
+        0, "key1", "value1");
+    ConsumerRecord<byte[], byte[]> record2 = new ConsumerRecord(TOPIC_PARTITION2.topic(), TOPIC_PARTITION2.partition(),
+        0, "key2", "value2");
+    ConsumerRecord<byte[], byte[]> record3 = new ConsumerRecord(TOPIC_PARTITION2.topic(), TOPIC_PARTITION2.partition(),
+        1, "key4", "value4");
+    ConsumerRecord<byte[], byte[]> record4 = new ConsumerRecord(TOPIC_PARTITION3.topic(), TOPIC_PARTITION3.partition(),
+        0, "key3", "value3");
+
+    consumer1.addRecord(record1);
+    consumer1.addRecord(record4);
+
+    consumer2.addRecord(record2);
+    consumer2.addRecord(record3);
+
+    // Poll the federated consumer and verify the result.
+    ConsumerRecords<byte[], byte[]> pollResult = _federatedConsumer.poll(1000);
+    assertEquals("poll should return four records", 4, pollResult.count());
+    assertEquals("poll should return one record for topic1", new ArrayList<>(Arrays.asList(record1)), pollResult.records(TOPIC_PARTITION1));
+    assertEquals("poll should return two records for topic2", new ArrayList<>(Arrays.asList(record2, record3)), pollResult.records(TOPIC_PARTITION2));
+    assertEquals("poll should return one record for topic3", new ArrayList<>(Arrays.asList(record4)), pollResult.records(TOPIC_PARTITION3));
+
+    // Verify per-cluster consumers are not in closed state.
+    assertFalse("Consumer for cluster 1 should have not been closed", consumer1.closed());
+    assertFalse("Consumer for cluster 2 should have not been closed", consumer2.closed());
+
+    // Close the federated consumer and verify both consumers are closed.
+    _federatedConsumer.close();
+    assertTrue("Consumer for cluster 1 should have been closed", consumer1.closed());
+    assertTrue("Consumer for cluster 2 should have been closed", consumer2.closed());
+  }
+
+  @Test
   public void testConsumerReloadConfigCommand() throws MetadataServiceClientException, InterruptedException {
     // Set expectations so that topics 1 and 3 are hosted in cluster 1 and topic 2 in cluster 2.
     Set<TopicPartition> expectedTopicPartitions = new HashSet<>(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2,
         TOPIC_PARTITION3));
-    Map<TopicPartition, ClusterDescriptor> topicPartitionsToClusterMapToReturn =
-        new HashMap<TopicPartition, ClusterDescriptor>() {{
-          put(TOPIC_PARTITION1, CLUSTER1);
-          put(TOPIC_PARTITION2, CLUSTER2);
-          put(TOPIC_PARTITION3, CLUSTER1);
+    Map<ClusterDescriptor, Set<TopicPartition>> partitionsByClustersToReturn =
+        new HashMap<ClusterDescriptor, Set<TopicPartition>>() {{
+          put(CLUSTER1, new HashSet<>(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION3)));
+          put(CLUSTER2, new HashSet<>(Arrays.asList(TOPIC_PARTITION2)));
         }};
+    PartitionLookupResult expectedPartitionLookupResult = new PartitionLookupResult(partitionsByClustersToReturn,
+        Collections.emptySet());
     when(_mdsClient.getClustersForTopicPartitions(eq(expectedTopicPartitions), eq(CLUSTER_GROUP), anyInt()))
-        .thenReturn(topicPartitionsToClusterMapToReturn);
+        .thenReturn(expectedPartitionLookupResult);
 
     _federatedConsumer = new LiKafkaFederatedConsumerImpl<>(_consumerConfig, _mdsClient, new MockConsumerBuilder());
 
@@ -236,14 +325,16 @@ public class LiKafkaFederatedConsumerImplTest {
 
     // Set expectations so that the cluster for TOPIC_PARTITION2 is only returned when getClustersForTopicPartitions()
     // is called for the second time. This is to simulate delayed creation of TOPIC2.
-    Map<TopicPartition, ClusterDescriptor> initialPartitionToClusterMapToReturn =
-        new HashMap<TopicPartition, ClusterDescriptor>() {{
-          put(TOPIC_PARTITION1, CLUSTER1);
-          put(TOPIC_PARTITION2, null);
-          put(TOPIC_PARTITION3, CLUSTER2);
+    Map<ClusterDescriptor, Set<TopicPartition>> initialPartitionsByClustersToReturn =
+        new HashMap<ClusterDescriptor, Set<TopicPartition>>() {{
+          put(CLUSTER1, new HashSet<>(Arrays.asList(TOPIC_PARTITION1)));
+          put(CLUSTER2, new HashSet<>(Arrays.asList(TOPIC_PARTITION3)));
         }};
+    PartitionLookupResult initialPartitionLookupResult = new PartitionLookupResult(initialPartitionsByClustersToReturn,
+        new HashSet<String>(Arrays.asList(TOPIC2)));
+
     when(_mdsClient.getClustersForTopicPartitions(eq(expectedTopicPartitions), eq(CLUSTER_GROUP), anyInt()))
-        .thenReturn(initialPartitionToClusterMapToReturn);
+        .thenReturn(initialPartitionLookupResult);
 
     _federatedConsumer = new LiKafkaFederatedConsumerImpl<>(_consumerConfig, _mdsClient, new MockConsumerBuilder());
 
@@ -273,14 +364,15 @@ public class LiKafkaFederatedConsumerImplTest {
 
     // Wait some time and "create" TOPIC2.
     Thread.sleep(500);
-    Map<TopicPartition, ClusterDescriptor> newPartitionToToClusterMapToReturn =
-        new HashMap<TopicPartition, ClusterDescriptor>() {{
-          put(TOPIC_PARTITION1, CLUSTER1);
-          put(TOPIC_PARTITION2, CLUSTER2);
-          put(TOPIC_PARTITION3, CLUSTER2);
+    Map<ClusterDescriptor, Set<TopicPartition>> newPartitionsByClustersToReturn =
+        new HashMap<ClusterDescriptor, Set<TopicPartition>>() {{
+          put(CLUSTER1, new HashSet<>(Arrays.asList(TOPIC_PARTITION1)));
+          put(CLUSTER2, new HashSet<>(Arrays.asList(TOPIC_PARTITION2, TOPIC_PARTITION3)));
         }};
+    PartitionLookupResult newPartitionLookupResult = new PartitionLookupResult(newPartitionsByClustersToReturn,
+        Collections.emptySet());
     when(_mdsClient.getClustersForTopicPartitions(eq(expectedTopicPartitions), eq(CLUSTER_GROUP), anyInt()))
-        .thenReturn(newPartitionToToClusterMapToReturn);
+        .thenReturn(newPartitionLookupResult);
     when(_mdsClient.getClusterForTopic(eq(TOPIC2), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER2);
 
     // Give some time for the watchdog thread to detect the creation of TOPIC2 and invoke assign() again.
