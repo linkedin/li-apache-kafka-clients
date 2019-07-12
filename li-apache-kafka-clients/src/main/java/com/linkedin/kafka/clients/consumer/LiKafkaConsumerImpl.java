@@ -234,8 +234,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     _kafkaConsumer.unsubscribe();
   }
 
-  @Override
-  public ConsumerRecords<K, V> poll(long timeout) {
+  private ConsumerRecords<K, V> poll(long timeout, boolean includeMetadataInTimeout) {
     ConsumerRecords<K, V> processedRecords;
     // We will keep polling until timeout.
     long now = System.currentTimeMillis();
@@ -257,7 +256,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
       ConsumerRecords<byte[], byte[]> rawRecords = ConsumerRecords.empty();
       try {
-         rawRecords = _kafkaConsumer.poll(Duration.ofMillis(deadline - now));
+        if (includeMetadataInTimeout) {
+          rawRecords = _kafkaConsumer.poll(Duration.ofMillis(deadline - now));
+        } else {
+          rawRecords = _kafkaConsumer.poll(deadline - now);
+        }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
       }
@@ -283,8 +286,13 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   }
 
   @Override
+  public ConsumerRecords<K, V> poll(long timeout) {
+    return poll(timeout, false);
+  }
+
+  @Override
   public ConsumerRecords<K, V> poll(Duration timeout) {
-    return poll(timeout.toMillis());
+    return poll(timeout.toMillis(), true);
   }
 
   @Override
