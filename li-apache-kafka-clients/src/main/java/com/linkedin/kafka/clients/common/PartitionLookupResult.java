@@ -12,26 +12,25 @@ import org.apache.kafka.common.TopicPartition;
 
 
 // This contains the result of the location lookup for a set of partitions across multiple clusters in a cluster group.
-public class PartitionLookupResult {
+public class PartitionLookupResult extends LocationLookupResult {
   private Map<ClusterDescriptor, Set<TopicPartition>> _partitionsByCluster;
-  private Set<String> _nonexistentTopics;
 
   public PartitionLookupResult() {
-    _partitionsByCluster = Collections.emptyMap();
-    _nonexistentTopics = Collections.emptySet();
+    this(Collections.emptyMap(), Collections.emptySet());
   }
 
   public PartitionLookupResult(Map<ClusterDescriptor, Set<TopicPartition>> partitionsByCluster,
       Set<String> nonexistentTopics) {
+    super(nonexistentTopics);
     _partitionsByCluster = partitionsByCluster;
-    _nonexistentTopics = nonexistentTopics;
+  }
+
+  @Override
+  public LocationLookupResult.ValueType getValueType() {
+    return LocationLookupResult.ValueType.PARTITIONS;
   }
 
   public Map<ClusterDescriptor, Set<TopicPartition>> getPartitionsByCluster() {
     return _partitionsByCluster;
-  }
-
-  public Set<String> getNonexistentTopics() {
-    return _nonexistentTopics;
   }
 }

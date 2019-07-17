@@ -10,25 +10,24 @@ import java.util.Set;
 
 
 // This contains the result of the location lookup for a set of topics across multiple clusters in a cluster group.
-public class TopicLookupResult {
+public class TopicLookupResult extends LocationLookupResult {
   private Map<ClusterDescriptor, Set<String>> _topicsByCluster;
-  private Set<String> _nonexistentTopics;
 
   public TopicLookupResult() {
-    _topicsByCluster = Collections.emptyMap();
-    _nonexistentTopics = Collections.emptySet();
+    this(Collections.emptyMap(), Collections.emptySet());
   }
 
   public TopicLookupResult(Map<ClusterDescriptor, Set<String>> topicsByCluster, Set<String> nonexistentTopics) {
+    super(nonexistentTopics);
     _topicsByCluster = topicsByCluster;
-    _nonexistentTopics = nonexistentTopics;
+  }
+
+  @Override
+  public LocationLookupResult.ValueType getValueType() {
+    return LocationLookupResult.ValueType.TOPICS;
   }
 
   public Map<ClusterDescriptor, Set<String>> getTopicsByCluster() {
     return _topicsByCluster;
-  }
-
-  public Set<String> getNonexistentTopics() {
-    return _nonexistentTopics;
   }
 }

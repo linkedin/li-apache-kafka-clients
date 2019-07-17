@@ -105,6 +105,9 @@ public class LiKafkaFederatedConsumerImplTest {
         Collections.emptySet());
     when(_mdsClient.getClustersForTopicPartitions(eq(expectedTopicPartitions), eq(CLUSTER_GROUP), anyInt()))
         .thenReturn(expectedPartitionLookupResult);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC1), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC2), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER2);
+    when(_mdsClient.getClusterForTopic(eq(TOPIC3), eq(CLUSTER_GROUP), anyInt())).thenReturn(CLUSTER1);
 
     _federatedConsumer = new LiKafkaFederatedConsumerImpl<>(_consumerConfig, _mdsClient, new MockConsumerBuilder());
 
@@ -160,6 +163,15 @@ public class LiKafkaFederatedConsumerImplTest {
     assertEquals("poll should return one record for topic1", new ArrayList<>(Arrays.asList(record1)), pollResult.records(TOPIC_PARTITION1));
     assertEquals("poll should return two records for topic2", new ArrayList<>(Arrays.asList(record2, record3)), pollResult.records(TOPIC_PARTITION2));
     assertEquals("poll should return one record for topic3", new ArrayList<>(Arrays.asList(record4)), pollResult.records(TOPIC_PARTITION3));
+
+    assertEquals("There should be no prior offset commit for topic1 partition 0", null, _federatedConsumer.committed(TOPIC_PARTITION1));
+    assertEquals("There should be no prior offset commit for topic2 partition 0", null, _federatedConsumer.committed(TOPIC_PARTITION2));
+    assertEquals("There should be no prior offset commit for topic3 partition 0", null, _federatedConsumer.committed(TOPIC_PARTITION3));
+
+    _federatedConsumer.commitSync();
+    assertEquals("Commit offset for topic1 partition 0 should be 1", 1, _federatedConsumer.committed(TOPIC_PARTITION1).offset());
+    assertEquals("Commit offset for topic2 partition 0 should be 2", 2, _federatedConsumer.committed(TOPIC_PARTITION2).offset());
+    assertEquals("Commit offset for topic3 partition 0 should be 1", 1, _federatedConsumer.committed(TOPIC_PARTITION3).offset());
 
     // Verify per-cluster consumers are not in closed state.
     assertFalse("Consumer for cluster 1 should have not been closed", consumer1.closed());
