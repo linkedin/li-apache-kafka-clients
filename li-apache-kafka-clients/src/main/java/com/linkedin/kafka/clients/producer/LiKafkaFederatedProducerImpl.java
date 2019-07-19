@@ -12,7 +12,7 @@ import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 
-import com.linkedin.mario.common.websockets.MsgType;
+import com.linkedin.mario.common.websockets.MessageType;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -69,6 +69,15 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
   // Producer configs common to all clusters
   private LiKafkaProducerConfig _commonProducerConfigs;
+
+  // Consumer configs received from Conductor at boot up time
+  private Map<String, String> _bootupConfigsFromConductor;
+
+  // If client is in federated mode
+  private boolean _isFederatedMode;
+
+  // Number of producers that successfully applied configs at boot up time, used for testing only
+  private int _numProducersWithBootupConfigs = 0;
 
   // The prefix of the client.id property to be used for individual producers. Since the client id is part of the
   // producer metric keys, we need to use cluster-specific client ids to differentiate metrics from different clusters.
@@ -136,7 +145,16 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       // We assume that such information will be kept and used by the metadata service client itself.
       //
       // TODO: make sure this is not blocking indefinitely and also works when Mario is not available.
-      _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
+      boolean registerSuccessful = _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
+
+      if (registerSuccessful) {
+        _isFederatedMode = true;
+        LOG.info("Register federated producer group {} to Conductor succeeded, using federated mode", _clusterGroup.toString());
+      } else {
+        _isFederatedMode = false;
+        LOG.info("Register federated producer group {} to Conductor failed, using fallback mode", _clusterGroup.toString());
+        // TODO: handle fallback mode here, possibly spin up regular LiKafkaProducer here
+      }
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
@@ -333,6 +351,27 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     return _commonProducerConfigs;
   }
 
+  synchronized public void applyBootupConfigFromConductor(Map<String, String> configs) {
+    _bootupConfigsFromConductor = configs;
+
+    // Only try to recreate per-cluster consumers when _consumers are initialized, i.e. after subscribe/assign has
+    // been called, otherwise it's impossible to create per-cluster consumers without the topic-cluster information,
+    // just save the boot up configs
+    if (_producers != null && !_producers.isEmpty()) {
+      recreateProducers(configs, null);
+    }
+
+    _isFederatedMode = true;
+  }
+
+  int getNumProducersWithBootupConfigs() {
+    return _numProducersWithBootupConfigs;
+  }
+
+  int getNumConfigReloads() {
+    return _numConfigReloads;
+  }
+
   public void reloadConfig(Map<String, String> newConfigs, UUID commandId) {
     // Go over each producer, flush and close. Since each per-cluster producer will be instantiated when the client began
     // producing to that cluster, we just need to clear the mappings and update the configs
@@ -376,6 +415,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     // TODO : send an error back to Mario
     // _producers should be filled when reload config happens
     Map<ClusterDescriptor, LiKafkaProducer<K, V>> newProducers = new ConcurrentHashMap<>();
+    boolean recreateProducerSuccessful = false;
 
     try {
       for (Map.Entry<ClusterDescriptor, LiKafkaProducer<K, V>> entry : _producers.entrySet()) {
@@ -386,6 +426,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       // replace _producers with newly created producers
       _producers.clear();
       _producers = newProducers;
+      recreateProducerSuccessful = true;
     } catch (Exception e) {
       LOG.error("Failed to recreate per-cluster producers with new configs with exception, restore to previous producers ", e);
 
@@ -407,8 +448,7 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     for (Map.Entry<String, Object> entry : _commonProducerConfigs.originals().entrySet()) {
       convertedConfig.put(entry.getKey(), String.valueOf(entry.getValue()));
     }
-    // TODO: add a flag in RELOAD_CONFIG_RESPONSE message to indicate result of config reload
-    _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MsgType.RELOAD_CONFIG_RESPONSE);
+    _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MessageType.RELOAD_CONFIG_RESPONSE, recreateProducerSuccessful);
 
     // re-register federated client with updated configs
     _mdsClient.reRegisterFederatedClient(newConfigs);
@@ -481,8 +521,20 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
     configMap.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapUrl());
     configMap.put(ProducerConfig.CLIENT_ID_CONFIG, _clientIdPrefix + "-" + cluster.getName());
 
-    _producerBuilder.setProducerConfig(configMap);
-    LiKafkaProducer<K, V> newProducer = _producerBuilder.build();
+    Map<String, Object> configMapWithBootupConfig = new HashMap<>(configMap);
+    // Apply the configs received from Conductor at boot up/registration time
+    if (_isFederatedMode && _bootupConfigsFromConductor != null && !_bootupConfigsFromConductor.isEmpty()) {
+      configMapWithBootupConfig.putAll(_bootupConfigsFromConductor);
+    }
+
+    LiKafkaProducer<K, V> newProducer;
+    try {
+      newProducer = _producerBuilder.setProducerConfig(configMapWithBootupConfig).build();
+      _numProducersWithBootupConfigs++;
+    } catch (Exception e) {
+      LOG.error("Failed to create per-cluster producer with config {}, try creating with config {}", configMapWithBootupConfig, configMap);
+      newProducer = _producerBuilder.setProducerConfig(configMap).build();
+    }
     return newProducer;
   }
 

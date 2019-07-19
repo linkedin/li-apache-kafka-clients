@@ -9,7 +9,7 @@ import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 
-import com.linkedin.mario.common.websockets.MsgType;
+import com.linkedin.mario.common.websockets.MessageType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -23,6 +23,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -159,9 +160,19 @@ public class LiKafkaFederatedProducerImplTest {
     ProducerRecord<byte[], byte[]> record2 = new ProducerRecord<>(TOPIC2, 0, 0L, "key2".getBytes(), "value2".getBytes());
     ProducerRecord<byte[], byte[]> record3 = new ProducerRecord<>(TOPIC3, 0, 0L, "key3".getBytes(), "value3".getBytes());
 
+    // Simulate sending bootup configs from Conductor
+    Map<String, String> bootupConfigs = new HashMap<>();
+    bootupConfigs.put("K3", "V3");
+    bootupConfigs.put("K4", "V4");
+
+    _federatedProducer.applyBootupConfigFromConductor(bootupConfigs);
+
     _federatedProducer.send(record1);
     _federatedProducer.send(record2);
     _federatedProducer.send(record3);
+
+    // Verify that after send, boot up configs have been successfully applied to the two producers
+    Assert.assertEquals(_federatedProducer.getNumProducersWithBootupConfigs(), 2);
 
     _federatedProducer.flush();
 
@@ -176,7 +187,7 @@ public class LiKafkaFederatedProducerImplTest {
     _federatedProducer.waitForReloadConfigFinish();
 
     // verify corresponding marioClient method is only called once
-    verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MsgType.RELOAD_CONFIG_RESPONSE));
+    verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MessageType.RELOAD_CONFIG_RESPONSE), eq(true));
     verify(_mdsClient, times(1)).reRegisterFederatedClient(any());
 
     // verify per-cluster producers have been recreated after reloadConfig
@@ -188,6 +199,11 @@ public class LiKafkaFederatedProducerImplTest {
     // verify after reload config, the common producer configs contains the new configs from config reload command
     assertTrue(_federatedProducer.getCommonProducerConfigs().originals().containsKey("K1"));
     assertTrue(_federatedProducer.getCommonProducerConfigs().originals().containsKey("K2"));
+
+    // Simulate the boot up config response came after the producers have been created, this is essentially a config reload, so we expect the
+    // config reload count to be 2
+    _federatedProducer.applyBootupConfigFromConductor(bootupConfigs);
+    Assert.assertEquals(_federatedProducer.getNumConfigReloads(), 2);
 
     // verify send is still successful after reload config
     Future<RecordMetadata> metadata1 = _federatedProducer.send(record1);

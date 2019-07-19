@@ -10,7 +10,7 @@ import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
 import com.linkedin.kafka.clients.common.PartitionLookupResult;
 import com.linkedin.kafka.clients.common.TopicLookupResult;
 
-import com.linkedin.mario.common.websockets.MsgType;
+import com.linkedin.mario.common.websockets.MessageType;
 import java.util.Map;
 import java.util.Set;
 
@@ -29,7 +29,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @param configs         Client configs
    * @param timeoutMs       Timeout in milliseconds
    */
-  void registerFederatedClient(LiKafkaFederatedClient federatedClient, ClusterGroupDescriptor clusterGroup,
+  boolean registerFederatedClient(LiKafkaFederatedClient federatedClient, ClusterGroupDescriptor clusterGroup,
       Map<String, ?> configs, int timeoutMs);
 
   /**
@@ -67,11 +67,12 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
 
   /**
    * Report to mario server that command execution for commandId is completed
-   * @param commandId    UUID identifying the completed command
-   * @param configs      config diff before and after the command
-   * @param messageType  response message type to mario server
+   * @param commandId                UUID identifying the completed command
+   * @param configs                  config diff before and after the command
+   * @param messageType              response message type to mario server
+   * @param commandExecutionResult   execution result of the given command
    */
-  void reportCommandExecutionComplete(UUID commandId, Map<String, String> configs, MsgType messageType);
+  void reportCommandExecutionComplete(UUID commandId, Map<String, String> configs, MessageType messageType, boolean commandExecutionResult);
 
   /**
    * Re-register federated client with new set of configs

@@ -13,7 +13,7 @@ import com.linkedin.kafka.clients.common.TopicLookupResult;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import com.linkedin.mario.common.websockets.MsgType;
+import com.linkedin.mario.common.websockets.MessageType;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -96,6 +96,9 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // Consumer configs common to all clusters
   private LiKafkaConsumerConfig _commonConsumerConfigs;
 
+  // Consumer configs received from Conductor at boot up time
+  private Map<String, String> _bootupConfigsFromConductor;
+
   // max.poll.records for the federated consumer
   private int _maxPollRecordsForFederatedConsumer;
 
@@ -112,6 +115,12 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   private int _numClustersToConnectTo;
 
   private int _nextClusterIndexToPoll;
+
+  // If client is in federated mode
+  private boolean _isFederatedMode;
+
+  // Number of consumers that successfully applied configs at boot up time, used for testing only
+  private int _numConsumersWithBootupConfigs = 0;
 
   // The prefix of the client.id property to be used for individual consumers. Since the client id is part of the
   // consumer metric keys, we need to use cluster-specific client ids to differentiate metrics from different clusters.
@@ -215,7 +224,16 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       // We assume that such information will be kept and used by the metadata service client itself.
       //
       // TODO: make sure this is not blocking indefinitely and also works when Mario is not available.
-      _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
+      boolean registerSuccessful = _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
+
+      if (registerSuccessful) {
+        _isFederatedMode = true;
+        LOG.info("Register federated consumer group {} to Conductor succeeded, using federated mode", _clusterGroup.toString());
+      } else {
+        _isFederatedMode = false;
+        LOG.info("Register federated consumer group {} to Conductor failed, using fallback mode", _clusterGroup.toString());
+        // TODO: handle fallback mode here, possibly spin up regular LiKafkaConsumer here
+      }
     } catch (Exception e) {
       try {
         if (_mdsClient != null) {
@@ -349,7 +367,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     for (Map.Entry<ClusterDescriptor, Set<String>> entry : topicsByCluster.entrySet()) {
       ClusterDescriptor cluster = entry.getKey();
-      LiKafkaConsumer<K, V> consumer = createPerClusterConsumer(cluster);
+      LiKafkaConsumer<K, V> consumer = getOrCreatePerClusterConsumer(cluster);
       // TODO: create a wrapper callback that supports federation
       consumer.subscribe(entry.getValue(), callback);
       _consumers.add(new ClusterConsumerPair<K, V>(cluster, consumer));
@@ -399,7 +417,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _nextClusterIndexToPoll = 0;
 
     for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : partitionsByCluster.entrySet()) {
-      LiKafkaConsumer<K, V> consumer = createPerClusterConsumer(entry.getKey());
+      LiKafkaConsumer<K, V> consumer = getOrCreatePerClusterConsumer(entry.getKey());
       consumer.assign(entry.getValue());
       _consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), consumer));
     }
@@ -665,6 +683,14 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     return _currentSubscription;
   }
 
+  int getNumConsumersWithBootupConfigs() {
+    return _numConsumersWithBootupConfigs;
+  }
+
+  int getNumConfigReloads() {
+    return _numConfigReloads;
+  }
+
   private void closeNoLock(Duration timeout) {
     // Get an immutable copy of the current set of consumers.
     List<ClusterConsumerPair<K, V>> consumers = _consumers;
@@ -731,6 +757,19 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     return _commonConsumerConfigs;
   }
 
+  synchronized public void applyBootupConfigFromConductor(Map<String, String> configs) {
+    _bootupConfigsFromConductor = configs;
+
+    // Only try to recreate per-cluster consumers when _consumers are initialized, i.e. after subscribe/assign has
+    // been called, otherwise it's impossible to create per-cluster consumers without the topic-cluster information,
+    // just save the boot up configs
+    if (_consumers != null && !_consumers.isEmpty()) {
+      recreateConsumers(configs, null);
+    }
+
+    _isFederatedMode = true;
+  }
+
   public void reloadConfig(Map<String, String> newConfigs, UUID commandId) {
     // Go over each consumer, close them, and update existing configs with newConfigs. Since each per-cluster consumer will be
     // instantiated when the client began consuming from that cluster, we just need to clear the mappings and update the configs.
@@ -772,14 +811,18 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // update existing configs with newConfigs
     // originals() would return a copy of the internal consumer configs, put in new configs and update existing configs
     Map<String, Object> configMap = _commonConsumerConfigs.originals();
-    configMap.putAll(newConfigs);
-    _commonConsumerConfigs = new LiKafkaConsumerConfig(configMap);
+
+    if (newConfigs != null && !newConfigs.isEmpty()) {
+      configMap.putAll(newConfigs);
+      _commonConsumerConfigs = new LiKafkaConsumerConfig(configMap);
+    }
 
     // re-create per-cluster consumers with new set of configs
     // if any error occurs, recreate all per-cluster consumers with previous last-known-good configs and
     // TODO : send an error back to Mario
     // _consumers should be filled when reload config happens
     List<ClusterConsumerPair<K, V>> newConsumers = new ArrayList<>();
+    boolean recreateConsumerSuccessful = false;
 
     try {
       for (ClusterConsumerPair<K, V> entry : _consumers) {
@@ -790,6 +833,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
       // replace _consumers with newly created consumers
       _consumers.clear();
       _consumers = newConsumers;
+      recreateConsumerSuccessful = true;
     } catch (Exception e) {
       // if any exception occurs, re-create per-cluster consumers with last-known-good configs
       LOG.error("Failed to recreate per-cluster consumers with new config with exception, restore to previous consumers ", e);
@@ -819,8 +863,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     for (Map.Entry<String, Object> entry : _commonConsumerConfigs.originals().entrySet()) {
       convertedConfig.put(entry.getKey(), String.valueOf(entry.getValue()));
     }
-    // TODO: Add a flag in RELOAD_CONFIG_RESPONSE message to indicate whether re-creating per-cluster consumers is successful
-    _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MsgType.RELOAD_CONFIG_RESPONSE);
+    _mdsClient.reportCommandExecutionComplete(commandId, convertedConfig, MessageType.RELOAD_CONFIG_RESPONSE, recreateConsumerSuccessful);
 
     // re-register federated client with updated configs
     _mdsClient.reRegisterFederatedClient(newConfigs);
@@ -879,9 +922,23 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     configMap.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, cluster.getBootstrapUrl());
     configMap.put(ConsumerConfig.CLIENT_ID_CONFIG, _clientIdPrefix + "-" + cluster.getName());
 
+    Map<String, Object> configMapWithBootupConfig = new HashMap<>(configMap);
+    // Apply the configs received from Conductor at boot up/registration time
+    if (_isFederatedMode && _bootupConfigsFromConductor != null && !_bootupConfigsFromConductor.isEmpty()) {
+      configMapWithBootupConfig.putAll(_bootupConfigsFromConductor);
+    }
+
     int maxPollRecordsPerCluster = Math.max(_maxPollRecordsForFederatedConsumer / _numClustersToConnectTo, 1);
     configMap.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, maxPollRecordsPerCluster);
-    LiKafkaConsumer<K, V> newConsumer = _consumerBuilder.setConsumerConfig(configMap).build();
+    LiKafkaConsumer<K, V> newConsumer;
+
+    try {
+      newConsumer = _consumerBuilder.setConsumerConfig(configMapWithBootupConfig).build();
+      _numConsumersWithBootupConfigs++;
+    } catch (Exception e) {
+      LOG.error("Failed to create per-cluster consumer with config {}, try creating with config {}", configMapWithBootupConfig, configMap);
+      newConsumer = _consumerBuilder.setConsumerConfig(configMap).build();
+    }
     return newConsumer;
   }
 
