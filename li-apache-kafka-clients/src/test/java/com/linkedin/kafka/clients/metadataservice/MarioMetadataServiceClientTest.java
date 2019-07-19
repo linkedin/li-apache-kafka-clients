@@ -87,7 +87,7 @@ public class MarioMetadataServiceClientTest {
     // For now, simply verify the corresponding MarioClient method is called once with expected arguments.
     MarioClusterGroupDescriptor expectedMarioClusterGroup = new MarioClusterGroupDescriptor(CLUSTER_GROUP.getName(),
         CLUSTER_GROUP.getEnvironment());
-    verify(_marioClient, times(1)).registerFederatedClient(eq(expectedMarioClusterGroup), eq(configs), eq(100),
+    verify(_marioClient, times(1)).registerFederatedClient(eq(expectedMarioClusterGroup), eq(configs), eq(100L),
         any(MarioCommandCallback.class));
   }
 
