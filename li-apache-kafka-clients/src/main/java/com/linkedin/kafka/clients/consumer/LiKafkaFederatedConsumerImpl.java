@@ -367,7 +367,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     for (Map.Entry<ClusterDescriptor, Set<String>> entry : topicsByCluster.entrySet()) {
       ClusterDescriptor cluster = entry.getKey();
-      LiKafkaConsumer<K, V> consumer = getOrCreatePerClusterConsumer(cluster);
+      LiKafkaConsumer<K, V> consumer = createPerClusterConsumer(cluster);
       // TODO: create a wrapper callback that supports federation
       consumer.subscribe(entry.getValue(), callback);
       _consumers.add(new ClusterConsumerPair<K, V>(cluster, consumer));
@@ -417,7 +417,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _nextClusterIndexToPoll = 0;
 
     for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : partitionsByCluster.entrySet()) {
-      LiKafkaConsumer<K, V> consumer = getOrCreatePerClusterConsumer(entry.getKey());
+      LiKafkaConsumer<K, V> consumer = createPerClusterConsumer(entry.getKey());
       consumer.assign(entry.getValue());
       _consumers.add(new ClusterConsumerPair<K, V>(entry.getKey(), consumer));
     }
