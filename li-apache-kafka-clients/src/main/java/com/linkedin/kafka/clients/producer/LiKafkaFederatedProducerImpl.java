@@ -73,11 +73,12 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   // Consumer configs received from Conductor at boot up time
   private Map<String, String> _bootupConfigsFromConductor;
 
-  // If client is in federated mode
-  private boolean _isFederatedMode;
+  // If client is in fallback mode. Fallback mode means this federated client is not able to talk to Conductor (due to
+  // either Conductor not deployed or network issue), so it will fallback to use the regular kafka client.
+  private boolean _isFallbackMode;
 
   // Number of producers that successfully applied configs at boot up time, used for testing only
-  private int _numProducersWithBootupConfigs = 0;
+  private Set<LiKafkaProducer<K, V>> _numProducersWithBootupConfigs = new HashSet<>();
 
   // The prefix of the client.id property to be used for individual producers. Since the client id is part of the
   // producer metric keys, we need to use cluster-specific client ids to differentiate metrics from different clusters.
@@ -148,11 +149,11 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       boolean registerSuccessful = _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
 
       if (registerSuccessful) {
-        _isFederatedMode = true;
+        _isFallbackMode = false;
         LOG.info("Register federated producer group {} to Conductor succeeded, using federated mode", _clusterGroup.toString());
       } else {
-        _isFederatedMode = false;
-        LOG.info("Register federated producer group {} to Conductor failed, using fallback mode", _clusterGroup.toString());
+        _isFallbackMode = true;
+        LOG.warn("Register federated producer group {} to Conductor failed, using fallback mode", _clusterGroup.toString());
         // TODO: handle fallback mode here, possibly spin up regular LiKafkaProducer here
       }
     } catch (Exception e) {
@@ -361,11 +362,11 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
       recreateProducers(configs, null);
     }
 
-    _isFederatedMode = true;
+    _isFallbackMode = false;
   }
 
   int getNumProducersWithBootupConfigs() {
-    return _numProducersWithBootupConfigs;
+    return _numProducersWithBootupConfigs.size();
   }
 
   int getNumConfigReloads() {
@@ -523,14 +524,14 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
 
     Map<String, Object> configMapWithBootupConfig = new HashMap<>(configMap);
     // Apply the configs received from Conductor at boot up/registration time
-    if (_isFederatedMode && _bootupConfigsFromConductor != null && !_bootupConfigsFromConductor.isEmpty()) {
+    if (!_isFallbackMode && _bootupConfigsFromConductor != null && !_bootupConfigsFromConductor.isEmpty()) {
       configMapWithBootupConfig.putAll(_bootupConfigsFromConductor);
     }
 
     LiKafkaProducer<K, V> newProducer;
     try {
       newProducer = _producerBuilder.setProducerConfig(configMapWithBootupConfig).build();
-      _numProducersWithBootupConfigs++;
+      _numProducersWithBootupConfigs.add(newProducer);
     } catch (Exception e) {
       LOG.error("Failed to create per-cluster producer with config {}, try creating with config {}", configMapWithBootupConfig, configMap);
       newProducer = _producerBuilder.setProducerConfig(configMap).build();
