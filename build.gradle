@@ -42,7 +42,7 @@ project.ext {
     }
   }
   kafkaVersion = "2.0.1"
-  marioVersion = "0.0.7"
+  marioVersion = "0.0.8"
 }
 
 subprojects {
