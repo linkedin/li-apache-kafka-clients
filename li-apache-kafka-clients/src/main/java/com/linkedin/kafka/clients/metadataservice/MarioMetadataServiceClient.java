@@ -17,8 +17,9 @@ import com.linkedin.mario.common.models.v1.KafkaTopicModel;
 import com.linkedin.mario.common.models.v1.TopicQueryResults;
 import com.linkedin.mario.common.websockets.MarioCommandCallback;
 
+import com.linkedin.mario.common.websockets.MarioException;
 import com.linkedin.mario.common.websockets.Messages;
-import com.linkedin.mario.common.websockets.MsgType;
+import com.linkedin.mario.common.websockets.MessageType;
 import com.linkedin.mario.common.websockets.ReloadConfigResponseMessages;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -58,7 +59,19 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
     MarioClusterGroupDescriptor marioClusterGroup = new MarioClusterGroupDescriptor(clusterGroup.getName(),
         clusterGroup.getEnvironment());
     MarioCommandCallback marioCommandCallback = new MarioCommandCallbackImpl(federatedClient);
-    _marioClient.registerFederatedClient(marioClusterGroup, (Map<String, String>) configs, timeoutMs, marioCommandCallback);
+
+    try {
+      _marioClient.registerFederatedClient(marioClusterGroup, (Map<String, String>) configs, timeoutMs,
+          marioCommandCallback);
+    } catch (MarioException e) {
+      // Based on the exception thrown, different actions might be taken, e.g. if mario returns a client version
+      // too low/not supported exception, we can stop the client immediately; otherwise if it's mario temperarily
+      // we can continue to create clients with original config and let mario client retry connecting in the background,
+      // once mario is available,
+      //
+      // For now, just print error and continue with original config
+      e.printStackTrace();
+    }
   }
 
   @Override
@@ -191,11 +204,11 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   }
 
   @Override
-  public void reportCommandExecutionComplete(UUID commandId, Map<String, String> configs, MsgType messageType) {
+  public void reportCommandExecutionComplete(UUID commandId, Map<String, String> configs, MessageType messageType, boolean commandExecutionResult) {
     Messages messageToSent;
     switch (messageType) {
       case RELOAD_CONFIG_RESPONSE:
-        messageToSent = new ReloadConfigResponseMessages(configs, commandId);
+        messageToSent = new ReloadConfigResponseMessages(configs, commandId, commandExecutionResult);
         break;
       default:
         throw new UnsupportedOperationException("Message type " + messageType + " is not supported right now");

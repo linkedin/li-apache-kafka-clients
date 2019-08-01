@@ -11,7 +11,7 @@ import com.linkedin.kafka.clients.common.TopicLookupResult;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 
-import com.linkedin.mario.common.websockets.MsgType;
+import com.linkedin.mario.common.websockets.MessageType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,6 +30,7 @@ import org.apache.kafka.clients.consumer.MockConsumer;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -272,8 +273,18 @@ public class LiKafkaFederatedConsumerImplTest {
 
     _federatedConsumer = new LiKafkaFederatedConsumerImpl<>(_consumerConfig, _mdsClient, new MockConsumerBuilder());
 
+    // Simulate sending bootup configs from Conductor
+    Map<String, String> bootupConfigs = new HashMap<>();
+    bootupConfigs.put("K3", "V3");
+    bootupConfigs.put("K4", "V4");
+
+    _federatedConsumer.applyBootupConfigFromConductor(bootupConfigs);
+
     // Assign topic partitions from all three topics
     _federatedConsumer.assign(Arrays.asList(TOPIC_PARTITION1, TOPIC_PARTITION2, TOPIC_PARTITION3));
+
+    // Verify that after assign, boot up configs have been successfully applied to the two consumers
+    Assert.assertEquals(_federatedConsumer.getNumConsumersWithBootupConfigs(), 2);
 
     Set<TopicPartition> curAssignment = _federatedConsumer.assignment();
 
@@ -295,7 +306,7 @@ public class LiKafkaFederatedConsumerImplTest {
     _federatedConsumer.waitForReloadConfigFinish();
 
     // verify corresponding marioClient method is only called once
-    verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MsgType.RELOAD_CONFIG_RESPONSE));
+    verify(_mdsClient, times(1)).reportCommandExecutionComplete(eq(commandId), any(), eq(MessageType.RELOAD_CONFIG_RESPONSE), eq(true));
     verify(_mdsClient, times(1)).reRegisterFederatedClient(any());
 
     // Verify consumers for both clusters have been created.
@@ -314,6 +325,11 @@ public class LiKafkaFederatedConsumerImplTest {
 
     // Verify the topic partition assignment remains the same after reload config
     assertEquals(curAssignment, _federatedConsumer.assignment());
+
+    // Simulate boot up configs response came after consumers have already been created, this is essentially another config reload,
+    // so we expect the number of config reloads to be 2
+    _federatedConsumer.applyBootupConfigFromConductor(bootupConfigs);
+    Assert.assertEquals(_federatedConsumer.getNumConfigReloads(), 2);
   }
 
   @Test
