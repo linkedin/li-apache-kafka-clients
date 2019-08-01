@@ -29,7 +29,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @param configs         Client configs
    * @param timeoutMs       Timeout in milliseconds
    */
-  boolean registerFederatedClient(LiKafkaFederatedClient federatedClient, ClusterGroupDescriptor clusterGroup,
+  void registerFederatedClient(LiKafkaFederatedClient federatedClient, ClusterGroupDescriptor clusterGroup,
       Map<String, ?> configs, int timeoutMs);
 
   /**

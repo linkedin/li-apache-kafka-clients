@@ -17,6 +17,7 @@ import com.linkedin.mario.common.models.v1.KafkaTopicModel;
 import com.linkedin.mario.common.models.v1.TopicQueryResults;
 import com.linkedin.mario.common.websockets.MarioCommandCallback;
 
+import com.linkedin.mario.common.websockets.MarioException;
 import com.linkedin.mario.common.websockets.Messages;
 import com.linkedin.mario.common.websockets.MessageType;
 import com.linkedin.mario.common.websockets.ReloadConfigResponseMessages;
@@ -49,7 +50,7 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
   }
 
   @Override
-  public boolean registerFederatedClient(LiKafkaFederatedClient federatedClient, ClusterGroupDescriptor clusterGroup,
+  public void registerFederatedClient(LiKafkaFederatedClient federatedClient, ClusterGroupDescriptor clusterGroup,
       Map<String, ?> configs, int timeoutMs) {
     if (clusterGroup == null) {
       throw new IllegalArgumentException("cluster group cannot be null");
@@ -60,10 +61,16 @@ public class MarioMetadataServiceClient implements MetadataServiceClient {
     MarioCommandCallback marioCommandCallback = new MarioCommandCallbackImpl(federatedClient);
 
     try {
-      return _marioClient.registerFederatedClient(marioClusterGroup, (Map<String, String>) configs, timeoutMs,
+      _marioClient.registerFederatedClient(marioClusterGroup, (Map<String, String>) configs, timeoutMs,
           marioCommandCallback);
-    } catch (Exception e) {
-      return false;
+    } catch (MarioException e) {
+      // Based on the exception thrown, different actions might be taken, e.g. if mario returns a client version
+      // too low/not supported exception, we can stop the client immediately; otherwise if it's mario temperarily
+      // we can continue to create clients with original config and let mario client retry connecting in the background,
+      // once mario is available,
+      //
+      // For now, just print error and continue with original config
+      e.printStackTrace();
     }
   }
 

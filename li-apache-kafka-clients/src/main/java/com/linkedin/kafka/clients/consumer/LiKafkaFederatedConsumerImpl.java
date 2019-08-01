@@ -116,10 +116,6 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   private int _nextClusterIndexToPoll;
 
-  // If client is in fallback mode. Fallback mode means this federated client is not able to talk to Conductor (due to
-  // either Conductor not deployed or network issue), so it will fallback to use the regular kafka client.
-  private boolean _isFallbackMode;
-
   // Number of consumers that successfully applied configs at boot up time, used for testing only
   private Set<LiKafkaConsumer<K, V>> _numConsumersWithBootupConfigs = new HashSet<>();
 
@@ -213,38 +209,17 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _closed = false;
     _numConfigReloads = 0;
 
-    try {
-      // Instantiate metadata service client if necessary.
-      _mdsClient = mdsClient != null ? mdsClient :
-          configs.getConfiguredInstance(LiKafkaConsumerConfig.METADATA_SERVICE_CLIENT_CLASS_CONFIG, MetadataServiceClient.class);
+    // Instantiate metadata service client if necessary.
+    _mdsClient = mdsClient != null ? mdsClient :
+        configs.getConfiguredInstance(LiKafkaConsumerConfig.METADATA_SERVICE_CLIENT_CLASS_CONFIG, MetadataServiceClient.class);
 
-      // Register this federated client with the metadata service. The metadata service will assign a UUID to this
-      // client, which will be used for later interaction between the metadata service and the client.
-      //
-      // Registration may also return further information such as the metadata server version and any protocol settings.
-      // We assume that such information will be kept and used by the metadata service client itself.
-      //
-      // TODO: make sure this is not blocking indefinitely and also works when Mario is not available.
-      boolean registerSuccessful = _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
-
-      if (registerSuccessful) {
-        _isFallbackMode = false;
-        LOG.info("Register federated consumer group {} to Conductor succeeded, using federated mode", _clusterGroup.toString());
-      } else {
-        _isFallbackMode = true;
-        LOG.warn("Register federated consumer group {} to Conductor failed, using fallback mode", _clusterGroup.toString());
-        // TODO: handle fallback mode here, possibly spin up regular LiKafkaConsumer here
-      }
-    } catch (Exception e) {
-      try {
-        if (_mdsClient != null) {
-          _mdsClient.close(_mdsRequestTimeoutMs);
-        }
-      } catch (Exception e2) {
-        e.addSuppressed(e2);
-      }
-      throw e;
-    }
+    // Register this federated client with the metadata service. The metadata service will assign a UUID to this
+    // client, which will be used for later interaction between the metadata service and the client.
+    //
+    // Registration may also return further information such as the metadata server version and any protocol settings.
+    // We assume that such information will be kept and used by the metadata service client itself.
+    //
+    _mdsClient.registerFederatedClient(this, _clusterGroup, configs.originals(), _mdsRequestTimeoutMs);
 
     // Create a watchdog thread that polls the creation of nonexistent topics in the current assignment/subscription
     // and re-assign/subscribe if any of them have been created since the last poll.
@@ -767,8 +742,6 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     if (_consumers != null && !_consumers.isEmpty()) {
       recreateConsumers(configs, null);
     }
-
-    _isFallbackMode = false;
   }
 
   public void reloadConfig(Map<String, String> newConfigs, UUID commandId) {
@@ -925,7 +898,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
     Map<String, Object> configMapWithBootupConfig = new HashMap<>(configMap);
     // Apply the configs received from Conductor at boot up/registration time
-    if (!_isFallbackMode && _bootupConfigsFromConductor != null && !_bootupConfigsFromConductor.isEmpty()) {
+    if (_bootupConfigsFromConductor != null && !_bootupConfigsFromConductor.isEmpty()) {
       configMapWithBootupConfig.putAll(_bootupConfigsFromConductor);
     }
 
