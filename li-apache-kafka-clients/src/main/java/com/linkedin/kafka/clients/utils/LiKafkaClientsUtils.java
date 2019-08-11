@@ -7,6 +7,11 @@ package com.linkedin.kafka.clients.utils;
 import java.nio.ByteBuffer;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 
@@ -100,5 +105,25 @@ public class LiKafkaClientsUtils {
         t.dumpStack();
       }
     }
+  }
+
+  public static Map<String, String> propertiesToStringMap(Properties props, List<String> errors) {
+    if (props == null) {
+      return null;
+    }
+    if (props.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> translated = new HashMap<>(props.size());
+    props.forEach((k, v) -> {
+      //Properties does not allow for null keys or values
+      String sk = k.toString();
+      String sv = v.toString();
+      String other = translated.put(sk, sv);
+      if (other != null && errors != null) {
+        errors.add("value " + sk + "=" + sv + " clobbers over value " + other + " after string conversion");
+      }
+    });
+    return translated;
   }
 }
