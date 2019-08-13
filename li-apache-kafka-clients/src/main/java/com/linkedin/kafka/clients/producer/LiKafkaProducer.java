@@ -6,10 +6,6 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.annotations.InterfaceOrigin;
 import java.util.concurrent.TimeUnit;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.clients.producer.Producer;
 
 
@@ -27,7 +23,4 @@ public interface LiKafkaProducer<K, V> extends Producer<K, V> {
    */
   @InterfaceOrigin.LiKafkaClients
   void flush(long timeout, TimeUnit timeUnit);
-
-  @InterfaceOrigin.LiKafkaClients
-  Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics);
 }

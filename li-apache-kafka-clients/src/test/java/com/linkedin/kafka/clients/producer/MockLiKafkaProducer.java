@@ -6,7 +6,6 @@ package com.linkedin.kafka.clients.producer;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
@@ -55,12 +54,6 @@ public class MockLiKafkaProducer implements LiKafkaProducer<byte[], byte[]> {
   @Override
   public List<PartitionInfo> partitionsFor(String topic) {
     return _delegate.partitionsFor(topic);
-  }
-
-  @Override
-  public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
-    //TODO come back here when upstream API settles
-    throw new UnsupportedOperationException("not implemented");
   }
 
   @Override

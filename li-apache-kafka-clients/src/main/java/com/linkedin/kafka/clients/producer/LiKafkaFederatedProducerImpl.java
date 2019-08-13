@@ -11,9 +11,7 @@ import com.linkedin.kafka.clients.common.LiKafkaFederatedClientType;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClientException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-
 import com.linkedin.mario.common.websockets.MessageType;
-
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -22,17 +20,16 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
+import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
@@ -220,12 +217,6 @@ public class LiKafkaFederatedProducerImpl<K, V> implements LiKafkaProducer<K, V>
   @Override
   synchronized public List<PartitionInfo> partitionsFor(String topic) {
     return getOrCreateProducerForTopic(topic).partitionsFor(topic);
-  }
-
-  @Override
-  synchronized public Map<String, List<PartitionInfo>> partitionsFor(Set<String> topics) {
-    // TODO: come back here when upstream API settles
-    throw new UnsupportedOperationException("Not implemented yet");
   }
 
   @Override
