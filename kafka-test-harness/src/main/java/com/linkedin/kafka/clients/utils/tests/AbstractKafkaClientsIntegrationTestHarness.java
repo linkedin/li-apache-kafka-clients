@@ -16,9 +16,12 @@ import java.io.File;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.network.Mode;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 
@@ -33,6 +36,14 @@ public abstract class AbstractKafkaClientsIntegrationTestHarness extends Abstrac
   protected LiKafkaProducer<String, String> createProducer(Properties overrides) {
     Properties props = getProducerProperties(overrides);
     return new LiKafkaProducerImpl<>(props);
+  }
+
+  protected Producer<byte[], byte[]> createRawProducer() {
+    Properties props = new Properties();
+    props.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    props.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    Properties finalProducerProps = getProducerProperties(props);
+    return new KafkaProducer<>(finalProducerProps);
   }
 
   protected Properties getProducerProperties(Properties overrides) {

@@ -10,4 +10,7 @@ plugins {
 
 dependencies {
   testCompile project(':kafka-test-harness')
+  testCompile ("com.linkedin.mario:mario-integration-tests:${rootProject.ext.marioVersion}") {
+    exclude group: 'org.apache.kafka'
+  }
 }

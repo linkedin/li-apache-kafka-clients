@@ -50,7 +50,6 @@ import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -60,7 +59,6 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
-import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -126,7 +124,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     int buriedMessageCount = 1_000;
     int syntheticMessageCount = 10;
     int totalMessageCount = buriedMessageCount + syntheticMessageCount;
-    Producer<byte[], byte[]> extraMessagesProducer = createKafkaProducer();
+    Producer<byte[], byte[]> extraMessagesProducer = createRawProducer();
     for (int i = 0; i < buriedMessageCount; i++) {
       UUID messageId = LiKafkaClientsUtils.randomUUID();
       String message = LiKafkaClientsTestUtils.getRandomString(MAX_SEGMENT_SIZE / 2);
@@ -1190,7 +1188,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     //send 2 interleaved gigantic msgs
 
-    Producer<byte[], byte[]> producer = createKafkaProducer();
+    Producer<byte[], byte[]> producer = createRawProducer();
     // M0, 20 segments
     UUID messageId0 = LiKafkaClientsUtils.randomUUID();
     String message0 = KafkaTestUtils.getRandomString(20 * MAX_SEGMENT_SIZE);
@@ -1268,7 +1266,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     //send a gigantic msg
 
-    Producer<byte[], byte[]> producer = createKafkaProducer();
+    Producer<byte[], byte[]> producer = createRawProducer();
     // M0, 20 segments
     UUID messageId0 = LiKafkaClientsUtils.randomUUID();
     String message0 = KafkaTestUtils.getRandomString(20 * MAX_SEGMENT_SIZE);
@@ -1639,7 +1637,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         new DefaultSegmentSerializer(),
         new UUIDFactory.DefaultUUIDFactory<>());
 
-    Producer<byte[], byte[]> producer = createKafkaProducer();
+    Producer<byte[], byte[]> producer = createRawProducer();
     // Prepare messages.
     int messageSize = MAX_SEGMENT_SIZE + MAX_SEGMENT_SIZE / 2;
     // M0, 2 segments
@@ -1691,15 +1689,6 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       fail("Produce synthetic data failed.", e);
     }
     producer.close();
-  }
-
-  //TODO - remove / refactor
-  private Producer<byte[], byte[]> createKafkaProducer() {
-    Properties props = new Properties();
-    props.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
-    props.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
-    Properties finalProducerProps = getProducerProperties(props);
-    return new KafkaProducer(finalProducerProps);
   }
 
   private class RebalanceTestConsumerThread extends Thread {
