@@ -9,6 +9,8 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.mario.client.EventHandler;
 import com.linkedin.mario.client.SimpleClient;
 import com.linkedin.mario.client.SimpleClientState;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,6 +23,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -33,7 +36,9 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.ProducerFencedException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +51,7 @@ import org.slf4j.LoggerFactory;
  */
 public class LiKafkaInstrumentedProducerImpl<K, V> implements Producer<K, V>, EventHandler {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaInstrumentedProducerImpl.class);
+  private static final String BOUNDED_FLUSH_THREAD_PREFIX = "Bounded-Flush-Thread-";
 
   private final long initialConnectionTimeoutMs = TimeUnit.SECONDS.toMillis(30);
   private final ReadWriteLock delegateLock = new ReentrantReadWriteLock();
@@ -64,6 +70,10 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements Producer<K, V>, Ev
   private volatile Map<String, String> configOverrides;
   private volatile Producer<K, V> delegate;
   private final SimpleClient mdsClient;
+
+  // This is null if the underlying producer does not have an implementation for time-bounded flush
+  private Method boundedFlushMethod;
+  private final AtomicInteger boundFlushThreadCount = new AtomicInteger();
 
   public LiKafkaInstrumentedProducerImpl(
       Properties baseConfig,
@@ -185,6 +195,17 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements Producer<K, V>, Ev
         delegateConfig.putAll(configOverrides);
       }
       delegate = producerFactory.apply(delegateConfig);
+
+      // TODO: Remove this hack when bounded flush is added to upstream
+      Method producerSupportsBoundedFlush;
+      try {
+        producerSupportsBoundedFlush = delegate.getClass().getMethod("flush", long.class, TimeUnit.class);
+      } catch (NoSuchMethodException e) {
+        LOG.warn("delegate producer does not support time-bounded flush.", e);
+        producerSupportsBoundedFlush = null;
+      }
+      boundedFlushMethod = producerSupportsBoundedFlush;
+
       return true;
     } finally {
       delegateLock.writeLock().unlock();
@@ -282,6 +303,58 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements Producer<K, V>, Ev
     delegateLock.readLock().lock();
     try {
       delegate.flush();
+    } finally {
+      delegateLock.readLock().unlock();
+    }
+  }
+
+  /**
+   * A temporary hack that implements the bounded flush API defined in LiKafkaProducer.
+   * TODO: remove when the bounded flush is added to upstream.
+   *
+   * This method will flush all the message buffered in producer. The call blocks until timeout.
+   * If the underlying producer doesn't support a bounded flush, it will invoke the {@link #flush()}.
+   */
+  public void flush(long timeout, TimeUnit timeUnit) {
+    verifyOpen();
+
+    delegateLock.readLock().lock();
+    try {
+      boolean useSeparateThreadForFlush = false;
+      if (boundedFlushMethod != null) {
+        try {
+          boundedFlushMethod.invoke(delegate, timeout, timeUnit);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+          LOG.trace("Underlying producer does not support bounded flush!", e);
+          useSeparateThreadForFlush = true;
+        }
+      } else {
+        useSeparateThreadForFlush = true;
+      }
+
+      if (useSeparateThreadForFlush) {
+        final CountDownLatch latch = new CountDownLatch(1);
+        Thread t = new Thread(() -> {
+          delegate.flush();
+          latch.countDown();
+        });
+        t.setDaemon(true);
+        t.setName(BOUNDED_FLUSH_THREAD_PREFIX + boundFlushThreadCount.getAndIncrement());
+        t.setUncaughtExceptionHandler((t1, e) -> {
+          LOG.warn("Thread " + t1.getName() + " terminated unexpectedly.", e);
+        });
+        t.start();
+
+        boolean latchResult = false;
+        try {
+          latchResult = latch.await(timeout, timeUnit);
+        } catch (InterruptedException e) {
+          throw new InterruptException("Flush interruped.", e);
+        }
+        if (!latchResult) {
+          throw new TimeoutException("Failed to flush accumulated records within " + timeout + " " + timeUnit);
+        }
+      }
     } finally {
       delegateLock.readLock().unlock();
     }
