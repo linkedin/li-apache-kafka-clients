@@ -323,8 +323,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       try {
         _boundedFlushMethod.invoke(_producer, timeout, timeUnit);
       } catch (IllegalAccessException | InvocationTargetException e) {
-        LOG.trace("Underlying producer does not support bounded flush!", e);
-        useSeparateThreadForFlush = true;
+        throw new IllegalStateException("failed to invoke the bounded flush method", e);
       }
     } else {
       useSeparateThreadForFlush = true;
