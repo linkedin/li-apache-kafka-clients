@@ -1,6 +1,7 @@
 #gradle
 .gradle/
 build/
+.mario/
 
 #idea
 .idea/
