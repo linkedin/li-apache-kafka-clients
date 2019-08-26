@@ -32,6 +32,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   private static final ConfigDef CONFIG;
 
   public static final String LARGE_MESSAGE_ENABLED_CONFIG = "large.message.enabled";
+  public static final String HEADER_TIMESTAMP_ENABLED = "header.timestamp.enabled";
   public static final String MAX_MESSAGE_SEGMENT_BYTES_CONFIG = "max.message.segment.bytes";
   public static final String AUDITOR_CLASS_CONFIG = "auditor.class";
   public static final String KEY_SERIALIZER_CLASS_CONFIG = ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG;
@@ -53,6 +54,10 @@ public class LiKafkaProducerConfig extends AbstractConfig {
       "If large message is enabled, the producer will split the messages whose size is greater than " +
       "max.message.segment.bytes to multiple smaller messages and send them separately.";
 
+  public static final String HEADER_TIMESTAMP_ENABLED_DOC = "Configure the producer to stamp event time in the headers. "
+      + "Note that, any previously stamped values will be overwritten. "
+      + "If enabled, the new timestamp in the header will be equal to ProducerRecord.timestamp() if non-null "
+      + "otherwise, System.currentTimeInMillis() will be used.";
   public static final String MAX_MESSAGE_SEGMENT_BYTES_DOC = "The maximum size of a large message segment. " +
       "This configuration is also used as the threshold of the definition of large messages, i.e. " +
       "the producer will only split the messages whose size is greater the maximum allowed segment bytes. " +
@@ -91,6 +96,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
     // TODO: Add a default metadata service client class.
     CONFIG = new ConfigDef()
         .define(LARGE_MESSAGE_ENABLED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM, LARGE_MESSAGE_ENABLED_DOC)
+        .define(HEADER_TIMESTAMP_ENABLED, Type.BOOLEAN, "true", Importance.MEDIUM, HEADER_TIMESTAMP_ENABLED_DOC)
         .define(MAX_MESSAGE_SEGMENT_BYTES_CONFIG, Type.INT, "800000", Importance.MEDIUM, MAX_MESSAGE_SEGMENT_BYTES_DOC)
         .define(AUDITOR_CLASS_CONFIG, Type.CLASS, NoOpAuditor.class.getName(), Importance.MEDIUM, AUDITOR_CLASS_DOC)
         .define(KEY_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, KEY_SERIALIZER_CLASS_DOC)

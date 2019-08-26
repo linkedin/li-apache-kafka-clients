@@ -8,8 +8,12 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.Headers;
 
 import static org.testng.Assert.assertEquals;
 
@@ -51,5 +55,27 @@ public class LiKafkaClientsTestUtils {
       stringBuiler.append(chars[Math.abs(random.nextInt()) % 16]);
     }
     return stringBuiler.toString();
+  }
+
+  /**
+   * Special header keys have a "_" prefix and are managed internally by the clients.
+   * @param headers
+   * @return
+   */
+  public static Map<String, byte[]> fetchSpecialHeaders(Headers headers) {
+    Map<String, byte[]> map = new HashMap<>();
+    for (Header header : headers) {
+
+      if (!header.key().startsWith("_")) {
+        // skip any non special header
+        continue;
+      }
+
+      if (map.containsKey(header.key())) {
+        throw new IllegalStateException("Duplicate special header found " + header.key());
+      }
+      map.put(header.key(), header.value());
+    }
+    return map;
   }
 }

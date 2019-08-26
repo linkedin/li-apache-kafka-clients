@@ -11,6 +11,8 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
+import com.linkedin.kafka.clients.utils.Constants;
+import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -35,6 +37,8 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.errors.TimeoutException;
+import org.apache.kafka.common.header.Headers;
+import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
@@ -115,6 +119,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   // Large message settings
   private final boolean _largeMessageEnabled;
+  private final boolean _enableHeaderTimestamps;
   private final int _maxMessageSegmentSize;
   private final MessageSplitter _messageSplitter;
   private final boolean _largeMessageSegmentWrappingRequired;
@@ -178,7 +183,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       producerSupportsBoundedFlush = null;
     }
     _boundedFlushMethod = producerSupportsBoundedFlush;
-
+    _enableHeaderTimestamps = configs.getBoolean(LiKafkaProducerConfig.HEADER_TIMESTAMP_ENABLED);
     try {
       // Instantiate the key serializer if necessary.
       _keySerializer = keySerializer != null ? keySerializer
@@ -238,6 +243,17 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       Integer partition = producerRecord.partition();
       Future<RecordMetadata> future = null;
       UUID messageId = _uuidFactory.getUuid(producerRecord);
+
+      Headers headers = producerRecord.headers();
+      if (_enableHeaderTimestamps) {
+        if (headers == null) {
+          headers = new RecordHeaders();
+        }
+        // Remove any header that maybe using the key for audit event timestamp or large message.
+        headers.remove(Constants.TIMESTAMP_HEADER);
+        headers.add(Constants.TIMESTAMP_HEADER, PrimitiveEncoderDecoder.encodeLong(timestamp));
+      }
+
       if (LOG.isTraceEnabled()) {
         LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}",
             messageId.toString().replaceAll("-", ""),
@@ -266,7 +282,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       if (_largeMessageEnabled && serializedValueLength > _maxMessageSegmentSize) {
         // Split the payload into large message segments
         List<ProducerRecord<byte[], byte[]>> segmentRecords =
-            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue);
+            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, headers);
         Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
         for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
           future = _producer.send(segmentRecord, largeMessageCallback);
@@ -275,14 +291,14 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         // Wrap the paylod with a large message segment, even if the payload is not big enough to split
         List<ProducerRecord<byte[], byte[]>> wrappedRecord =
             _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue,
-                serializedValueLength);
+                serializedValueLength, headers);
         if (wrappedRecord.size() != 1) {
           throw new IllegalStateException("Failed to create a large message segment wrapped message");
         }
         future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
       } else {
         // Do not wrap with a large message segment
-        future = _producer.send(new ProducerRecord(topic, partition, timestamp, serializedKey, serializedValue),
+        future = _producer.send(new ProducerRecord(topic, partition, timestamp, serializedKey, serializedValue, headers),
             errorLoggingCallback);
       }
       failed = false;
