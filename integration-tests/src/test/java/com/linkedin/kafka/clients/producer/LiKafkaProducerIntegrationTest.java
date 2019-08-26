@@ -6,6 +6,9 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
+import com.linkedin.kafka.clients.utils.Constants;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
+import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import java.io.IOException;
 import java.util.BitSet;
@@ -54,6 +57,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
    */
   @Test
   public void testSend() throws IOException, InterruptedException {
+    long startTime = System.currentTimeMillis();
     Properties props = new Properties();
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
     final String tempTopic = "testTopic" + new Random().nextInt(1000000);
@@ -74,6 +78,11 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
       while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
         ConsumerRecords<String, String> records = consumer.poll(100);
         for (ConsumerRecord<String, String> record : records) {
+          Map<String, byte[]> headers = LiKafkaClientsTestUtils.fetchSpecialHeaders(record.headers());
+          assertTrue(headers.containsKey(Constants.TIMESTAMP_HEADER));
+          long eventTimestamp = PrimitiveEncoderDecoder.decodeLong(headers.get(Constants.TIMESTAMP_HEADER), 0);
+          assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
+
           int index = Integer.parseInt(record.value());
           counts.set(index);
           messageCount++;
