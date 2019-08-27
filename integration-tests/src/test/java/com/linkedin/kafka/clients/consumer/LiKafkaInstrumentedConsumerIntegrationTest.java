@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.consumer;
 
 import com.google.common.collect.ImmutableMap;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import com.linkedin.mario.common.models.v1.ClientConfigRule;
 import com.linkedin.mario.common.models.v1.ClientConfigRules;
@@ -81,8 +82,12 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     Properties baseConsumerConfig = getConsumerProperties(extra);
     LiKafkaInstrumentedConsumerImpl<byte[], byte[]> consumer = new LiKafkaInstrumentedConsumerImpl<>(
         baseConsumerConfig,
-        LiKafkaConsumerImpl::new,
-        mario.getUrl()
+        (baseConfig, overrideConfig) -> {
+          return new LiKafkaConsumerImpl(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig));
+        },
+        () -> {
+          return mario.getUrl();
+        }
     );
 
     consumer.subscribe(Collections.singletonList(topic));

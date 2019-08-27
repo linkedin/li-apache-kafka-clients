@@ -126,4 +126,15 @@ public class LiKafkaClientsUtils {
     });
     return translated;
   }
+
+  public static Properties getConsolidatedProperties(Properties props1, Properties props2) {
+    Properties consolidated = new Properties();
+    if (props1 != null) {
+      consolidated.putAll(props1);
+    }
+    if (props2 != null) {
+      consolidated.putAll(props2);
+    }
+    return consolidated;
+  }
 }
