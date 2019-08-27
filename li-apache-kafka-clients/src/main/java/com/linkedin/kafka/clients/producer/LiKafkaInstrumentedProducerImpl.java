@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * @param <K>
  * @param <V>
  */
-public class LiKafkaInstrumentedProducerImpl<K, V> implements Producer<K, V>, EventHandler {
+public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer<K, V>, EventHandler {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaInstrumentedProducerImpl.class);
   private static final String BOUNDED_FLUSH_THREAD_PREFIX = "Bounded-Flush-Thread-";
 
@@ -156,8 +156,8 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements Producer<K, V>, Ev
     //TODO - respond to command UUID
   }
 
-  //package-private FOR TESTING
-  Producer<K, V> getDelegate() {
+  @Override
+  public Producer<K, V> getDelegate() {
     return delegate;
   }
 
