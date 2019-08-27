@@ -47,7 +47,7 @@ import org.slf4j.LoggerFactory;
  * @param <K>
  * @param <V>
  */
-public class LiKafkaInstrumentedConsumerImpl<K, V> implements Consumer<K, V>, EventHandler {
+public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer<K, V>, EventHandler {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaInstrumentedConsumerImpl.class);
 
   private final long initialConnectionTimeoutMs = TimeUnit.SECONDS.toMillis(30);
@@ -154,8 +154,8 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements Consumer<K, V>, Ev
     //TODO - respond to command UUID
   }
 
-  //package-private FOR TESTING
-  Consumer<K, V> getDelegate() {
+  @Override
+  public Consumer<K, V> getDelegate() {
     return delegate;
   }
 
