@@ -189,11 +189,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
         //(not sure, need to see transaction spec)
       }
 
-      Properties overrideProps = new Properties();
-      if (configOverrides != null) {
-        overrideProps.putAll(configOverrides);
-      }
-      delegate = producerFactory.create(baseConfig, overrideProps);
+      delegate = producerFactory.create(baseConfig, LiKafkaClientsUtils.convertConfigMapToProperties(configOverrides));
 
       // TODO: Remove this hack when bounded flush is added to upstream
       Method producerSupportsBoundedFlush;

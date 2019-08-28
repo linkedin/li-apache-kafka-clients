@@ -137,4 +137,12 @@ public class LiKafkaClientsUtils {
     }
     return consolidated;
   }
+
+  public static Properties convertConfigMapToProperties(Map<String, String> configMap) {
+    Properties props = new Properties();
+    if (configMap != null) {
+      props.putAll(configMap);
+    }
+    return props;
+  }
 }

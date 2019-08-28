@@ -186,11 +186,7 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
         }
       }
 
-      Properties overrideProps = new Properties();
-      if (configOverrides != null) {
-        overrideProps.putAll(configOverrides);
-      }
-      delegate = consumerFactory.create(baseConfig, overrideProps);
+      delegate = consumerFactory.create(baseConfig, LiKafkaClientsUtils.convertConfigMapToProperties(configOverrides));
 
       if (subscriptionPattern != null) {
         if (rebalanceListener != null) {
