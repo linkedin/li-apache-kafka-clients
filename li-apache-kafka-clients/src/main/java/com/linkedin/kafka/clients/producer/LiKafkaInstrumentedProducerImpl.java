@@ -26,7 +26,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.Callback;
@@ -57,8 +56,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
   private final long initialConnectionTimeoutMs = TimeUnit.SECONDS.toMillis(30);
   private final ReadWriteLock delegateLock = new ReentrantReadWriteLock();
   private final Properties baseConfig;
-  private final BiFunction<Properties, Properties, Producer<K, V>> producerFactory;
-  private final Supplier<String> mdsUrlSupplier;
+  private final ProducerFactory<K, V> producerFactory;
   private final CountDownLatch initialConnectionLatch = new CountDownLatch(1);
   private final MetricsProxy metricsProxy = new MetricsProxy() {
     @Override
@@ -78,14 +76,13 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
 
   public LiKafkaInstrumentedProducerImpl(
       Properties baseConfig,
-      BiFunction<Properties, Properties, Producer<K, V>> producerFactory,
+      ProducerFactory<K, V> producerFactory,
       Supplier<String> mdsUrlSupplier
   ) {
     List<String> conversionIssues = new ArrayList<>(1);
     this.baseConfig = baseConfig;
     Map<String, String> translatedBaseConfig = LiKafkaClientsUtils.propertiesToStringMap(baseConfig, conversionIssues);
     this.producerFactory = producerFactory;
-    this.mdsUrlSupplier = mdsUrlSupplier;
 
     if (!conversionIssues.isEmpty()) {
       StringJoiner csv = new StringJoiner(", ");
@@ -93,8 +90,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       LOG.error("issues translating producer config to strings: {}", csv);
     }
 
-    mdsClient = new SimpleClient(
-        mdsUrlSupplier.get(),
+    mdsClient = new SimpleClient(mdsUrlSupplier,
         TimeUnit.MINUTES.toMillis(1),
         TimeUnit.HOURS.toMillis(1), translatedBaseConfig,
         this
@@ -113,11 +109,11 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       boolean delegateChanged = recreateDelegate(true);
       if (delegateChanged) {
         if (issue != null) {
-          LOG.error("exception waiting to contact {}, using user-provided configs as fallback", mdsUrlSupplier.get(),
-              issue);
+          LOG.error("exception waiting to contact {}, using user-provided configs as fallback",
+              mdsClient.getLastAttemptedMarioUrl(), issue);
         } else {
           LOG.error("unable to contact {} within timeout ({}), using user-provided configs as fallback",
-              mdsUrlSupplier.get(), initialConnectionTimeoutMs);
+              mdsClient.getLastAttemptedMarioUrl(), initialConnectionTimeoutMs);
         }
       } else if (issue != null) {
         //we got interrupted waiting, but apparently connection to mds was successful?
@@ -135,9 +131,9 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
         boolean configOverrideChanged = !Objects.equals(currentOverrides, newOverrides);
         if (delegate == null || configOverrideChanged) {
           if (configOverrideChanged) {
-            LOG.info("got new config overrides from {}: {}", mdsUrlSupplier.get(), newOverrides);
+            LOG.info("got new config overrides from {}: {}", mdsClient.getLastConnectedMarioUrl(), newOverrides);
           } else {
-            LOG.info("successfully connected to {}, no config overrides", mdsUrlSupplier.get());
+            LOG.info("successfully connected to {}, no config overrides", mdsClient.getLastConnectedMarioUrl());
           }
           this.configOverrides = newOverrides;
           recreateDelegate(false);
@@ -152,7 +148,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
   public void configChangeRequested(UUID commandId, Map<String, String> configDiff, String message) {
     Map<String, String> currentOverrides = this.configOverrides;
     if (!Objects.equals(currentOverrides, configDiff)) {
-      LOG.info("got new config overrides from {}: {} ({})", mdsUrlSupplier.get(), configDiff, message);
+      LOG.info("got new config overrides from {}: {} ({})", mdsClient.getLastConnectedMarioUrl(), configDiff, message);
       this.configOverrides = configDiff;
       recreateDelegate(false);
     }
@@ -197,7 +193,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       if (configOverrides != null) {
         overrideProps.putAll(configOverrides);
       }
-      delegate = producerFactory.apply(baseConfig, overrideProps);
+      delegate = producerFactory.create(baseConfig, overrideProps);
 
       // TODO: Remove this hack when bounded flush is added to upstream
       Method producerSupportsBoundedFlush;

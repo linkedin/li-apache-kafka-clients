@@ -56,13 +56,9 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
     Properties baseProducerConfig = getConsumerProperties(extra);
     LiKafkaInstrumentedProducerImpl<byte[], byte[]> producer = new LiKafkaInstrumentedProducerImpl<>(
         baseProducerConfig,
-        (baseConfig, overrideConfig) -> {
-          return new LiKafkaProducerImpl(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig));
-        },
-        () -> {
-          return mario.getUrl();
-        }
-    );
+        (baseConfig, overrideConfig) ->
+            new LiKafkaProducerImpl(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        () -> mario.getUrl());
 
     byte[] key = new byte[500];
     byte[] value = new byte[500];
