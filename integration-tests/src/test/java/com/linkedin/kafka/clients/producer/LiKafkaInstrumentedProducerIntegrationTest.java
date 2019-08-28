@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.producer;
 
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import com.linkedin.mario.common.models.v1.ClientConfigRule;
 import com.linkedin.mario.common.models.v1.ClientConfigRules;
@@ -55,9 +56,9 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
     Properties baseProducerConfig = getConsumerProperties(extra);
     LiKafkaInstrumentedProducerImpl<byte[], byte[]> producer = new LiKafkaInstrumentedProducerImpl<>(
         baseProducerConfig,
-        LiKafkaProducerImpl::new,
-        mario.getUrl()
-    );
+        (baseConfig, overrideConfig) ->
+            new LiKafkaProducerImpl(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        () -> mario.getUrl());
 
     byte[] key = new byte[500];
     byte[] value = new byte[500];
