@@ -6,9 +6,7 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
-import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
-import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.Collections;
 import java.util.Objects;
@@ -19,9 +17,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.header.Header;
-import org.apache.kafka.common.header.Headers;
-import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -422,21 +417,6 @@ public class ConsumerRecordsProcessor<K, V> {
       }
 
       _partitionConsumerHighWatermark.computeIfAbsent(tp, _storedConsumerHighWatermark)._currentConsumerHighWatermark = consumerRecord.offset();
-      // Create a new copy of the headers
-      Headers headers = new RecordHeaders(consumerRecord.headers());
-      Header largeMessageHeader = headers.lastHeader(Constants.LARGE_MESSAGE_HEADER);
-      if (largeMessageHeader != null) {
-        LargeMessageHeaderValue largeMessageHeaderValue = LargeMessageHeaderValue.fromBytes(largeMessageHeader.value());
-        // Once the large message header value is parsed, remove any such key from record headers
-        headers.remove(Constants.LARGE_MESSAGE_HEADER);
-        largeMessageHeaderValue = new LargeMessageHeaderValue(
-            largeMessageHeaderValue.getType(),
-            LargeMessageHeaderValue.EMPTY_UUID,
-            LargeMessageHeaderValue.INVALID_SEGMENT_ID,
-            largeMessageHeaderValue.getNumberOfSegments()
-        );
-        headers.add(Constants.LARGE_MESSAGE_HEADER, LargeMessageHeaderValue.toBytes(largeMessageHeaderValue));
-      }
 
       handledRecord = new ConsumerRecord<>(
           consumerRecord.topic(),
@@ -448,9 +428,7 @@ public class ConsumerRecordsProcessor<K, V> {
           consumerRecord.serializedKeySize(),
           valueBytes == null ? 0 : valueBytes.length,
           _keyDeserializer.deserialize(consumerRecord.topic(), consumerRecord.key()),
-          value,
-          headers
-      );
+          value);
     }
     return handledRecord;
   }
