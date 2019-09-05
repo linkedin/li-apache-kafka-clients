@@ -3,6 +3,12 @@
  * Licensed under the BSD 2-Clause License (the "License"). 
  * See License in the project root for license information.
  */
+
+import javax.xml.bind.DatatypeConverter
+import java.security.MessageDigest
+import java.util.regex.Pattern
+
+
 plugins {
   id "com.jfrog.artifactory"
   id "idea"
@@ -11,6 +17,8 @@ plugins {
 group = 'com.linkedin.kafka.clients'
 
 project.ext {
+  gitHash = "unknown"
+  gitName = "unknown"
   pomConfig = {
     url "https://github.com/linkedin/li-apache-kafka-clients"
     licenses {
@@ -42,7 +50,7 @@ project.ext {
     }
   }
   kafkaVersion = "2.0.1"
-  marioVersion = "0.0.14"
+  marioVersion = "0.0.16"
 }
 
 subprojects {
@@ -103,6 +111,44 @@ subprojects {
       archives sourcesJar
       archives javadocJar
     }
+
+    assemble.dependsOn ':parseGitInfo' //make sure we have git info before packaging
+
+    jar {
+      doFirst { //for some odd reason this is needed to pick up gitHash
+        //version embedding at build time
+        //we create a file called __Versioning__[md5] and set its payload to contain versioning info
+        //
+        //the file name is not fixed, but contains an md5 hash of the project group name and version.
+        //its not fixed so that if multiple libraries are repackaged (think fat/shaded jar) the versioning files
+        //are unlikely to conflict or get overwritten. the md5 hash part is chosen such that builds are
+        //"repeatable" - re-running the same build results in the same output. this is nice for incremental builds.
+        //
+        //the value contains versioning information for both this module and the entire project it was built as part of.
+        //
+        //this information allows us, at runtime, to determine what libraries/versions exist on a given classpath
+
+        MessageDigest md = MessageDigest.getInstance("MD5")
+        md.update(project.group.getBytes("UTF-8"))
+        md.update(project.name.getBytes("UTF-8"))
+        md.update(project.version.getBytes("UTF-8"))
+        byte[] digest = md.digest();
+        String hash = DatatypeConverter.printHexBinary(digest).toUpperCase()
+
+        String versioningFileName = "__Versioning__" + hash
+        String versioningPayload = "{" +
+            "\"format\":\"v1\"," +
+            "\"project\":\"" + rootProject.group + ":" + rootProject.name + ":" + rootProject.version + "\"," +
+            "\"module\":\"" + project.group + ":" + project.name + ":" + project.version + "\"," +
+            "\"branch\":\"" + rootProject.gitName + "\"," +
+            "\"revision\":\"" + rootProject.gitHash + "\"" +
+            "}"
+
+        String outFolder = "${project.buildDir}/resources/main/META-INF/"
+        mkdir outFolder
+        file("${outFolder}/${versioningFileName}").text = versioningPayload
+      }
+    }
   }
 }
 
@@ -130,7 +176,57 @@ task distributeBuild(type: com.linkedin.gradle.build.DistributeTask) {
 }
 
 //wrapper generation task
-task wrapper(type: Wrapper) {
-  gradleVersion = '4.3.1'
+wrapper {
+  gradleVersion = '5.2.1'
   distributionType = Wrapper.DistributionType.ALL
+}
+
+tasks.register("parseGitInfo") {
+  group = 'Versioning'
+  description = 'retrieves the current branch/tag name and git hash'
+
+  doLast {
+    def headFile = file("${rootProject.rootDir}/.git/HEAD")
+    if (!headFile.exists()) {
+      //we're not a git working copy
+      logger.warn("${headFile} not found - this doesnt appear to be a git checkout")
+      rootProject.gitHash = "unknown"
+      rootProject.gitName = "unknown"
+      return
+    }
+    def contents = headFile.text
+    //.git/HEAD is either a hash (if detached head) or a ref
+    def refPattern = Pattern.compile("ref:\\s+(refs/(\\w+)/(.*))\\s+\$")
+    def matcher = refPattern.matcher(contents)
+    if (!matcher.matches()) {
+      rootProject.gitHash = contents.trim()
+      rootProject.gitName = contents.trim() //use the hash as the branch name
+      logger.info("git working copy is in detached head mode at revision ${gitHash}")
+    } else {
+      def path = matcher.group(1)
+      def category = matcher.group(2)
+      def name = matcher.group(3)
+      def refFile = file("${rootProject.rootDir}/.git/${path}")
+      if (!refFile.exists()) {
+        //TODO - add support for packed-refs
+        throw new IllegalStateException("unable to find ${refFile}")
+      }
+      rootProject.gitHash = refFile.text.trim()
+      rootProject.gitName = name
+      def type
+      switch (category) {
+        case "heads":
+          type = "branch"
+          break
+        case "tags":
+          type = "tag"
+          break
+        default:
+          logger.warn("unknown ref folder ${category}")
+          type = "unknown"
+          break
+      }
+      logger.info("git working copy is at ${type} ${rootProject.gitName} at revision ${rootProject.gitHash}")
+    }
+  }
 }

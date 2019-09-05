@@ -19,3 +19,6 @@ out/
 
 #osx
 .DS_Store
+
+#mario
+.mario/
