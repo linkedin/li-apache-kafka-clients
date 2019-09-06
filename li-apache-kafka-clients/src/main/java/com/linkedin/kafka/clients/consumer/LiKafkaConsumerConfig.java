@@ -200,7 +200,13 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 60 * 1000,
                 atLeast(0),
                 Importance.MEDIUM,
-                ConsumerConfig.DEFAULT_API_TIMEOUT_MS_DOC);
+                ConsumerConfig.DEFAULT_API_TIMEOUT_MS_DOC)
+        .define(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG,
+                Type.LONG,
+                100L,
+                atLeast(0L),
+                Importance.LOW,
+                CommonClientConfigs.RETRY_BACKOFF_MS_DOC);
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {

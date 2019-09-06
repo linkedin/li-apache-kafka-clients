@@ -8,6 +8,7 @@ import com.linkedin.kafka.clients.common.ClusterDescriptor;
 import com.linkedin.kafka.clients.common.ClusterGroupDescriptor;
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClient;
 import com.linkedin.kafka.clients.common.LiKafkaFederatedClientType;
+import com.linkedin.kafka.clients.common.PartitionKeyedMapLookupResult;
 import com.linkedin.kafka.clients.common.PartitionLookupResult;
 import com.linkedin.kafka.clients.common.TopicLookupResult;
 import com.linkedin.kafka.clients.metadataservice.MetadataServiceClient;
@@ -46,6 +47,8 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.InterruptException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,7 +112,10 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
   // The default timeout for blocking calls specified by default.api.timeout.ms consumer properties.
   // This is exposed for federated consumer methods with the default timeout that need to invoke the individual
   // consumer's corresponding methods concurrently.
-  private int _defaultApiTimeoutMs;
+  private Duration _defaultApiTimeout;
+
+  // retry.backoff.ms
+  private long _retryBackoffMs;
 
   // The number of clusters in this cluster group to connect to for the current assignment/subscription
   private int _numClustersToConnectTo;
@@ -195,7 +201,8 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     _mdsRequestTimeoutMs = configs.getInt(LiKafkaConsumerConfig.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG);
     _maxPollRecordsForFederatedConsumer = configs.getInt(LiKafkaConsumerConfig.MAX_POLL_RECORDS_CONFIG);
     _metadataMaxAgeMs = configs.getInt(ConsumerConfig.METADATA_MAX_AGE_CONFIG);
-    _defaultApiTimeoutMs = configs.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG);
+    _defaultApiTimeout = Duration.ofMillis(configs.getInt(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG));
+    _retryBackoffMs = configs.getLong(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG);
 
     _currentSubscription = Unsubscribed.getInstance();
     _nextClusterIndexToPoll = 0;
@@ -333,7 +340,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // consumers for the new subscription, close all existing consumers first.
     if (!_consumers.isEmpty()) {
       LOG.debug("closing all existing LiKafkaConsumers due to subscription change");
-      closeNoLock(Duration.ofMillis(_defaultApiTimeoutMs));
+      closeNoLock(_defaultApiTimeout);
       _consumers.clear();
     }
 
@@ -384,7 +391,7 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     // consumers for the new assignment, close all existing consumers first.
     if (!_consumers.isEmpty()) {
       LOG.debug("closing all existing LiKafkaConsumers due to assignment change");
-      closeNoLock(Duration.ofMillis(_defaultApiTimeoutMs));
+      closeNoLock(_defaultApiTimeout);
       _consumers.clear();
     }
 
@@ -481,22 +488,52 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   synchronized public void commitSync() {
-    throw new UnsupportedOperationException("Not implemented yet");
+    commitSync(_defaultApiTimeout);
   }
 
   @Override
   synchronized public void commitSync(Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    executePerClusterCallback("commitSync", null /* call for all consumers */,
+        (consumer, ignored, remainingTimeout) -> consumer.commitSync(remainingTimeout), timeout);
   }
 
   @Override
   public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    commitSync(offsets, _defaultApiTimeout);
   }
 
+  // ATTN: UnknownTopicOrPartitionException may be received - this is a retriable exception..
+  // if not resolved by the time, timeout exception
   @Override
   synchronized public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    // Vanilla consumer's commitSync() retries on nonexistent partitions until the given timeout is reached. Since
+    // federated consumer does not know where the currently nonexistent topics in the input will be created, it mimics
+    // the vanilla consumer's behavior by retrying after waiting retry.backoff.ms until the given timeout is reached.
+    long now = System.currentTimeMillis();
+    long deadlineTimeMs = now + timeout.toMillis();
+    while (now < deadlineTimeMs) {
+      PartitionKeyedMapLookupResult offsetsByClusterResult = getPartitionKeyedMapsByCluster(offsets);
+      // Commit offset with existing partitions first.
+      executePerClusterCallback("commitSync", offsetsByClusterResult.getPartitionKeyedMapsByCluster(),
+          (consumer, perClusterOffsets, remainingTimeout) -> {
+            consumer.commitSync((Map<TopicPartition, OffsetAndMetadata>) perClusterOffsets, remainingTimeout);
+          }, Duration.ofMillis(Math.min(deadlineTimeMs - System.currentTimeMillis(), 0)));
+
+      if (offsetsByClusterResult.getNonexistentTopics().isEmpty()) {
+        return;
+      }
+
+      // There are nonexistent topics in the given offsets. Sleep and retry;
+      try {
+        Thread.sleep(Math.min(deadlineTimeMs - System.currentTimeMillis(), _retryBackoffMs));
+      } catch (InterruptedException e) {
+        LOG.warn("interrupted while retrying commitSync()");
+        throw new InterruptException(e);
+      }
+
+      now = System.currentTimeMillis();
+    }
+    throw new TimeoutException("Failed to complete commitSync within " + timeout);
   }
 
   @Override
@@ -546,17 +583,48 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
 
   @Override
   synchronized public OffsetAndMetadata committed(TopicPartition partition) {
-    throw new UnsupportedOperationException("Not implemented yet");
+
+    return committed(partition, _defaultApiTimeout);
   }
 
   @Override
   synchronized public OffsetAndMetadata committed(TopicPartition partition, Duration timeout) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    if (partition == null) {
+      throw new IllegalArgumentException("partition cannot be null");
+    }
+
+    long now = System.currentTimeMillis();
+    long deadlineTimeMs = now + timeout.toMillis();
+    while (now < deadlineTimeMs) {
+      LiKafkaConsumer<K, V> consumer = getPerClusterConsumerForTopic(partition.topic());
+      if (consumer != null) {
+        return consumer.committed(partition, timeout);
+      }
+
+      try {
+        Thread.sleep(Math.min(deadlineTimeMs - System.currentTimeMillis(), _retryBackoffMs));
+      } catch (InterruptedException e) {
+        LOG.warn("interrupted while retrying committed()");
+        throw new InterruptException(e);
+      }
+
+      now = System.currentTimeMillis();
+    }
+    throw new TimeoutException("Failed to complete committed() within " + timeout);
   }
 
   @Override
-  synchronized public Long committedSafeOffset(TopicPartition tp) {
-    throw new UnsupportedOperationException("Not implemented yet");
+  synchronized public Long committedSafeOffset(TopicPartition partition) {
+    if (partition == null) {
+      throw new IllegalArgumentException("partition cannot be null");
+    }
+
+    LiKafkaConsumer<K, V> consumer = getPerClusterConsumerForTopic(partition.topic());
+    if (consumer != null) {
+      return consumer.committedSafeOffset(partition);
+    } else {
+      throw new IllegalStateException("partition " + partition + " does not exist");
+    }
   }
 
   @Override
@@ -855,6 +923,20 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
     }
   }
 
+  private LiKafkaConsumer<K, V> getPerClusterConsumerForTopic(String topic) {
+    if (topic == null || topic.isEmpty()) {
+      throw new IllegalArgumentException("Topic cannot be null or empty");
+    }
+
+    ClusterDescriptor cluster = null;
+    try {
+      cluster = _mdsClient.getClusterForTopic(topic, _clusterGroup, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get cluster for topic " + topic + ": ", e);
+    }
+    return (cluster == null) ? null : getPerClusterConsumer(cluster);
+  }
+
   // Intended for testing only
   LiKafkaConsumer<K, V> getPerClusterConsumer(ClusterDescriptor cluster) {
     // Get an immutable copy of the current set of consumers.
@@ -959,5 +1041,110 @@ public class LiKafkaFederatedConsumerImpl<K, V> implements LiKafkaConsumer<K, V>
         LOG.error("unsupported subscription type: {}", _currentSubscription.getSubscriptionType().name());
         throw new IllegalStateException("Unsupportd subscription type: " + _currentSubscription.getSubscriptionType());
     }
+  }
+
+  // Callback interface for concurrently calling a method against per-cluster consumers with cluster-specific input
+  // values with timeout.
+  interface PerClusterExecutorCallback<K, V, I> {
+    void execute(LiKafkaConsumer<K, V> consumer, I perClusterInput, Duration timeout);
+  }
+
+  // For each cluster in the perClusterInput key set, concurrently call the given callback against the corresponding
+  // consumer with the input values for that cluster. If perClusterInput is null, the callback will be called for all
+  // existing consumers.
+  private <I> void executePerClusterCallback(String methodName,
+      Map<ClusterDescriptor, I> perClusterInput, PerClusterExecutorCallback callback, Duration timeout) {
+    List<ClusterConsumerPair<K, V>> consumers;
+    if (perClusterInput == null) {
+      // The callback needs to be executed against all consumers
+      consumers = _consumers;
+    } else {
+      consumers = new ArrayList<>();
+      for (ClusterDescriptor cluster : perClusterInput.keySet()) {
+        LiKafkaConsumer<K, V> consumer = getPerClusterConsumer(cluster);
+        if (cluster == null) {
+          LOG.warn("consumer for cluster {} does not exist for {}. ignoring.", cluster, methodName);
+        } else {
+          consumers.add(new ClusterConsumerPair<K, V>(cluster, consumer));
+        }
+      }
+    }
+
+    if (consumers.isEmpty()) {
+      // Nothing to do
+      return;
+    }
+
+    LOG.debug("starting {} for {} LiKafkaConsumers for cluster group {} in {} {}", methodName, consumers.size(),
+        _clusterGroup, timeout);
+
+    long startTimeMs = System.currentTimeMillis();
+    long deadlineTimeMs = startTimeMs + timeout.toMillis();
+    CountDownLatch countDownLatch = new CountDownLatch(consumers.size());
+    Set<Thread> threads = new HashSet<>();
+    for (ClusterConsumerPair<K, V> entry : consumers) {
+      ClusterDescriptor cluster = entry.getCluster();
+      LiKafkaConsumer<K, V> consumer = entry.getConsumer();
+      Thread t = new Thread(() -> {
+        try {
+          Duration remainingTime = Duration.ofMillis(Math.max(deadlineTimeMs - System.currentTimeMillis(), 0));
+          callback.execute(consumer, perClusterInput == null ? null : perClusterInput.get(cluster), remainingTime);
+        } finally {
+          countDownLatch.countDown();
+        }
+      });
+      t.setDaemon(true);
+      t.setName("LiKafkaConsumer-" + methodName + "-" + cluster.getName());
+      t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+        public void uncaughtException(Thread t, Throwable e) {
+          throw new KafkaException("Thread " + t.getName() + " throws exception", e);
+        }
+      });
+      t.start();
+      threads.add(t);
+    }
+
+    try {
+      if (!countDownLatch.await(deadlineTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS)) {
+        LiKafkaClientsUtils.dumpStacksForAllLiveThreads(threads);
+        throw new KafkaException(
+            "fail to perform " + methodName + " for cluster group " + _clusterGroup + " in " + timeout);
+      }
+    } catch (InterruptedException e) {
+      throw new KafkaException("fail to perform " + methodName + " for cluster group " + _clusterGroup, e);
+    }
+
+    LOG.info("{}: {} LiKafkaConsumers for cluster group {} complete in {} milliseconds", methodName, consumers.size(),
+        _clusterGroup, (System.currentTimeMillis() - startTimeMs));
+  }
+
+  // For the given parition to value map, construct a map ofConstruct a map of maps by cluster, where the inner map is keyed by partition.
+  private <T> PartitionKeyedMapLookupResult getPartitionKeyedMapsByCluster(Map<TopicPartition, T> partitionKeyedMap) {
+    if (partitionKeyedMap == null) {
+      throw new IllegalArgumentException("partition map cannot be null");
+    }
+
+    if (partitionKeyedMap.isEmpty()) {
+      return new PartitionKeyedMapLookupResult();
+    }
+
+    PartitionLookupResult partitionLookupResult;
+    try {
+      partitionLookupResult =
+          _mdsClient.getClustersForTopicPartitions(partitionKeyedMap.keySet(), _clusterGroup, _mdsRequestTimeoutMs);
+    } catch (MetadataServiceClientException e) {
+      throw new KafkaException("failed to get clusters for topic partitions " + partitionKeyedMap.keySet() + ": ", e);
+    }
+    Map<ClusterDescriptor, Map<TopicPartition, T>> partitionKeyedMapsByCluster = new HashMap<>();
+    for (Map.Entry<ClusterDescriptor, Set<TopicPartition>> entry : partitionLookupResult.getPartitionsByCluster().entrySet()) {
+      ClusterDescriptor cluster = entry.getKey();
+      Set<TopicPartition> topicPartitions = entry.getValue();
+      for (TopicPartition topicPartition : entry.getValue()) {
+        partitionKeyedMapsByCluster.computeIfAbsent(cluster, k -> new HashMap<TopicPartition, T>())
+            .put(topicPartition, partitionKeyedMap.get(topicPartition));
+      }
+    }
+
+    return new PartitionKeyedMapLookupResult(partitionKeyedMapsByCluster, partitionLookupResult.getNonexistentTopics());
   }
 }
