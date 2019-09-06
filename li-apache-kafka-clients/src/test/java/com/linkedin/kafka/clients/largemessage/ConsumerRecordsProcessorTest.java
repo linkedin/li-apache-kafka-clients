@@ -7,8 +7,10 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
+import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
+import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.Collections;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -84,10 +86,25 @@ public class ConsumerRecordsProcessorTest {
     ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
     assertEquals(processedRecords.count(), 4, "There should be 4 records");
     Iterator<ConsumerRecord<String, String>> iter = processedRecords.iterator();
-    assertEquals(iter.next().offset(), 0, "Message offset should b 0");
-    assertEquals(iter.next().offset(), 2, "Message offset should b 2");
-    assertEquals(iter.next().offset(), 4, "Message offset should b 4");
-    assertEquals(iter.next().offset(), 5, "Message offset should b 5");
+    ConsumerRecord<String, String> record = iter.next();
+    assertEquals(record.offset(), 0, "Message offset should b 0");
+    assertNull(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER));
+
+    record = iter.next();
+    assertEquals(record.offset(), 2, "Message offset should b 2");
+    assertEquals(
+        PrimitiveEncoderDecoder.decodeLong(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER).value(), 0),
+        1L
+    );
+    record = iter.next();
+    assertEquals(record.offset(), 4, "Message offset should b 4");
+    assertEquals(
+        PrimitiveEncoderDecoder.decodeLong(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER).value(), 0),
+        1L
+    );
+    record = iter.next();
+    assertEquals(record.offset(), 5, "Message offset should b 5");
+    assertNull(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER));
   }
 
   @Test
