@@ -10,6 +10,7 @@ import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
@@ -436,6 +437,13 @@ public class ConsumerRecordsProcessor<K, V> {
             largeMessageHeaderValue.getNumberOfSegments()
         );
         headers.add(Constants.LARGE_MESSAGE_HEADER, LargeMessageHeaderValue.toBytes(largeMessageHeaderValue));
+      }
+
+      // Introduce a safe offset header if and only if the safe offset is not the same as the high watermark
+      // Note: Safe offset is the last consumed record offset + 1
+      Long safeOffset = safeOffset(new TopicPartition(consumerRecord.topic(), consumerRecord.partition()));
+      if (safeOffset != null && safeOffset != consumerRecord.offset() + 1) {
+        headers.add(Constants.SAFE_OFFSET_HEADER, PrimitiveEncoderDecoder.encodeLong(safeOffset));
       }
 
       handledRecord = new ConsumerRecord<>(
