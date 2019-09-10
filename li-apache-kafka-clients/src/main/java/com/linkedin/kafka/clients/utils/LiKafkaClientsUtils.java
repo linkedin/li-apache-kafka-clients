@@ -4,9 +4,11 @@
 
 package com.linkedin.kafka.clients.utils;
 
+import com.linkedin.mario.common.versioning.VersioningUtils;
 import java.nio.ByteBuffer;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -24,6 +26,11 @@ import org.slf4j.LoggerFactory;
  */
 public class LiKafkaClientsUtils {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaClientsUtils.class);
+  private static final List<String> KNOWN_PROJECT_GROUPS = Arrays.asList(
+      "com.linkedin.kafka",
+      "com.linkedin.mario",
+      "com.linkedin.kafka.clients"
+  );
 
   private static SecureRandom _secureRandom;
 
@@ -144,5 +151,17 @@ public class LiKafkaClientsUtils {
       props.putAll(configMap);
     }
     return props;
+  }
+
+  public static Map<String, String> getKnownLibraryVersions() {
+    Map<String, String> results = new HashMap<>();
+    for (String knownProjectGroup : KNOWN_PROJECT_GROUPS) {
+      String versions = VersioningUtils.summarize(VersioningUtils.getProjectHistogram(
+          project -> project.getCoordinates().getGroup().equals(knownProjectGroup),
+          artifact -> artifact.getCoordinates().getVersion()
+      ));
+      results.put(knownProjectGroup, versions);
+    }
+    return results;
   }
 }

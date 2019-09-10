@@ -12,12 +12,12 @@ plugins {
 
 dependencies {
   compile project(':li-apache-kafka-clients')
-  compile "org.apache.kafka:kafka-clients:${rootProject.ext.kafkaVersion}"
+  compile "com.linkedin.kafka:kafka-clients:${rootProject.ext.liKafkaVersion}"
   compile 'org.apache.zookeeper:zookeeper:3.4.9' //matches kafka server dependency
   compile 'com.101tec:zkclient:0.10'
   compile 'commons-io:commons-io:2.6'
   compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
-  runtime "org.apache.kafka:kafka_2.11:${rootProject.ext.kafkaVersion}"
+  runtime "com.linkedin.kafka:kafka_2.11:${rootProject.ext.liKafkaVersion}"
 }
 
 publishing {
