@@ -54,6 +54,7 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
   private final ReadWriteLock delegateLock = new ReentrantReadWriteLock();
   private final Properties baseConfig;
   private final ConsumerFactory<K, V> consumerFactory;
+  private final Map<String, String> libraryVersions;
   private final CountDownLatch initialConnectionLatch = new CountDownLatch(1);
   private final MetricsProxy metricsProxy = new MetricsProxy() {
     @Override
@@ -72,8 +73,18 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
   private volatile Collection<TopicPartition> assignedPartitions = null;
   private volatile Pattern subscriptionPattern = null;
 
+  @Deprecated
   public LiKafkaInstrumentedConsumerImpl(
       Properties baseConfig,
+      ConsumerFactory<K, V> consumerFactory,
+      Supplier<String> mdsUrlSupplier
+  ) {
+    this(baseConfig, null, consumerFactory, mdsUrlSupplier);
+  }
+
+  public LiKafkaInstrumentedConsumerImpl(
+      Properties baseConfig,
+      Map<String, String> libraryVersions,
       ConsumerFactory<K, V> consumerFactory,
       Supplier<String> mdsUrlSupplier
   ) {
@@ -81,6 +92,10 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
     this.baseConfig = baseConfig;
     Map<String, String> translatedBaseConfig = LiKafkaClientsUtils.propertiesToStringMap(baseConfig, conversionIssues);
     this.consumerFactory = consumerFactory;
+    this.libraryVersions = LiKafkaClientsUtils.getKnownLibraryVersions();
+    if (libraryVersions != null && !libraryVersions.isEmpty()) {
+      this.libraryVersions.putAll(libraryVersions); //user input overrides built-ins
+    }
 
     if (!conversionIssues.isEmpty()) {
       StringJoiner csv = new StringJoiner(", ");
@@ -90,7 +105,9 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
 
     mdsClient = new SimpleClient(mdsUrlSupplier,
         TimeUnit.MINUTES.toMillis(1),
-        TimeUnit.HOURS.toMillis(1), translatedBaseConfig,
+        TimeUnit.HOURS.toMillis(1),
+        translatedBaseConfig,
+        this.libraryVersions,
         this
     );
 

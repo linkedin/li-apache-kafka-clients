@@ -82,6 +82,7 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     Properties baseConsumerConfig = getConsumerProperties(extra);
     LiKafkaInstrumentedConsumerImpl<byte[], byte[]> consumer = new LiKafkaInstrumentedConsumerImpl<>(
         baseConsumerConfig,
+        null,
         (baseConfig, overrideConfig) ->
             new LiKafkaConsumerImpl(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
         () -> mario.getUrl());

@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -992,7 +993,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
           public byte[] deserialize(String topic, byte[] data) {
             // Throw exception when deserializing
             if (new String(data).startsWith(KafkaTestUtils.EXCEPTION_MESSAGE)) {
-              throw new SerializationException();
+              throw new SerializationException("intentional exception by marker payload");
             }
             return data;
           }
@@ -1010,7 +1011,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.subscribe(Collections.singleton(topic));
       ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
       while (records.isEmpty()) {
-        records = consumer.poll(Duration.ofMillis(1000));
+        records = consumer.poll(Duration.ofMillis(10));
       }
       assertEquals(records.count(), 4, "Only the first message should be returned");
       assertEquals(records.iterator().next().offset(), 2L, "The offset of the first message should be 2.");
@@ -1027,7 +1028,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     List<BiConsumer<LiKafkaConsumer<byte[], byte[]>, TopicPartition>> testFuncList = new ArrayList<>(6);
     testFuncList.add((consumer, tp) -> {
       try {
-        consumer.poll(Duration.ofMillis(1000));
+        consumer.poll(Duration.ofMillis(100));
         fail("Should have thrown exception.");
       } catch (ConsumerRecordsProcessingException crpe) {
         // expected
@@ -1036,7 +1037,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       assertEquals(consumer.position(tp), 8L, "The position should be 8");
       ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
       while (records.isEmpty()) {
-        records = consumer.poll(1000);
+        records = consumer.poll(Duration.ofMillis(10));
       }
       assertEquals(records.count(), 1, "There should be four messages left.");
     });
@@ -1081,11 +1082,16 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     testFuncList.add((consumer, tp) -> {
       consumer.seekToBeginning(Collections.singleton(tp));
-      try {
-        consumer.poll(Duration.ofMillis(1000));
-      } catch (Exception e) {
-        fail("Unexpected exception");
+      int recordsRead = 0;
+      long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(2);
+      while (recordsRead < 4 && System.currentTimeMillis() < deadline) {
+        try {
+          recordsRead += consumer.poll(Duration.ofMillis(10)).count();
+        } catch (Exception e) {
+          fail("Unexpected exception");
+        }
       }
+      Assert.assertEquals(recordsRead, 4, "expected to read 4 records. read " + recordsRead);
       assertEquals(consumer.position(tp), 7L, "The position should be 7");
     });
 
@@ -1670,20 +1676,25 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     List<ProducerRecord<byte[], byte[]>> m0SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, LiKafkaClientsUtils.randomUUID(), message0.getBytes());
     List<ProducerRecord<byte[], byte[]>> m1SegsPartition1 = splitter.split(topic, SYNTHETIC_PARTITION_1, LiKafkaClientsUtils.randomUUID(), message1.getBytes());
 
+    List<Future<RecordMetadata>> futures = new ArrayList<>();
     try {
-      producer.send(m0Segs.get(0)).get();
-      producer.send(m1Segs.get(0)).get();
-      producer.send(m2Segs.get(0)).get();
-      producer.send(m3Segs.get(0)).get();
-      producer.send(m1Segs.get(1)).get();
-      producer.send(m0Segs.get(1)).get();
-      producer.send(m3Segs.get(1)).get();
-      producer.send(m4Segs.get(0)).get();
-      producer.send(m5Segs.get(0)).get();
-      producer.send(m5Segs.get(1)).get();
+      futures.add(producer.send(m0Segs.get(0)));
+      futures.add(producer.send(m1Segs.get(0)));
+      futures.add(producer.send(m2Segs.get(0)));
+      futures.add(producer.send(m3Segs.get(0)));
+      futures.add(producer.send(m1Segs.get(1)));
+      futures.add(producer.send(m0Segs.get(1)));
+      futures.add(producer.send(m3Segs.get(1)));
+      futures.add(producer.send(m4Segs.get(0)));
+      futures.add(producer.send(m5Segs.get(0)));
+      futures.add(producer.send(m5Segs.get(1)));
 
-      producer.send(m0SegsPartition1.get(0)).get();
-      producer.send(m1SegsPartition1.get(0)).get();
+      futures.add(producer.send(m0SegsPartition1.get(0)));
+      futures.add(producer.send(m1SegsPartition1.get(0)));
+
+      for (Future<RecordMetadata> future : futures) {
+        future.get();
+      }
 
     } catch (Exception e) {
       fail("Produce synthetic data failed.", e);
