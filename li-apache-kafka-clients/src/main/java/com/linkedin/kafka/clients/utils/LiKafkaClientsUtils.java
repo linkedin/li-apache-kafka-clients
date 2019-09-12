@@ -11,12 +11,17 @@ import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.common.Metric;
+import org.apache.kafka.common.MetricName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -163,5 +168,41 @@ public class LiKafkaClientsUtils {
       results.put(knownProjectGroup, versions);
     }
     return results;
+  }
+
+  public static String getClientId(Consumer<?, ?> consumer) {
+    return fishForClientId(consumer.metrics());
+  }
+
+  public static String getClientId(Producer<?, ?> producer) {
+    return fishForClientId(producer.metrics());
+  }
+
+  /**
+   * kafka doesnt have an API for getting the client id from a client (WTH?!)
+   * relying on reflection is tricky because we may be dealing with various
+   * wrappers/decorators, but it does leak through kafka's metrics tags ...
+   * @param metrics kafka client metrics
+   * @return best guess for the client id
+   */
+  private static String fishForClientId(Map<MetricName, ? extends Metric> metrics) {
+    Set<String> candidates = new HashSet<>();
+    metrics.forEach((metricName, metric) -> {
+      Map<String, String> tags = metricName.tags();
+      if (tags == null) {
+        return;
+      }
+      String clientId = tags.get("client-id");
+      if (clientId != null) {
+        candidates.add(clientId);
+      }
+    });
+    if (candidates.isEmpty()) {
+      return null;
+    }
+    if (candidates.size() > 1) {
+      throw new IllegalArgumentException("ambiguous client id from client: " + candidates);
+    }
+    return candidates.iterator().next();
   }
 }

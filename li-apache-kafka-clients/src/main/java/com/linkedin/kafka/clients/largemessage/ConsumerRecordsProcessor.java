@@ -84,6 +84,8 @@ public class ConsumerRecordsProcessor<K, V> {
   private final Auditor<K, V> _auditor;
   private final Function<TopicPartition, ConsumerHighWatermarkState> _storedConsumerHighWatermark;
 
+  private long recordsSkipped = 0;
+
   /**
    *
    * @param messageAssembler non-null.  Assembles large segments segments
@@ -142,7 +144,8 @@ public class ConsumerRecordsProcessor<K, V> {
         ConsumerRecord<K, V> handledRecord = handleConsumerRecord(record);
         result.addRecord(tp, handledRecord);
       } catch (SkippableException e) {
-        LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
+        recordsSkipped++;
+        LOG.warn("Exception thrown when processing message with offset {} from partition {}. record skipped.", offset, tp, e);
       } catch (RuntimeException e) {
         LOG.warn("Exception thrown when processing message with offset {} from partition {}", offset, tp, e);
         result.recordException(tp, offset, e);
@@ -406,6 +409,10 @@ public class ConsumerRecordsProcessor<K, V> {
   public void close(long timeout, TimeUnit timeUnit) {
     _messageAssembler.close();
     _auditor.close(timeout, timeUnit);
+  }
+
+  public long getRecordsSkipped() {
+    return recordsSkipped;
   }
 
   private ConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
