@@ -50,7 +50,7 @@ import org.slf4j.LoggerFactory;
 public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer<K, V>, EventHandler {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaInstrumentedConsumerImpl.class);
 
-  private final long initialConnectionTimeoutMs = TimeUnit.SECONDS.toMillis(30);
+  private final long initialConnectionTimeoutMs;
   private final ReadWriteLock delegateLock = new ReentrantReadWriteLock();
   private final Properties baseConfig;
   private final ConsumerFactory<K, V> consumerFactory;
@@ -88,6 +88,16 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
       ConsumerFactory<K, V> consumerFactory,
       Supplier<String> mdsUrlSupplier
   ) {
+    this(baseConfig, libraryVersions, consumerFactory, mdsUrlSupplier, TimeUnit.SECONDS.toMillis(30));
+  }
+
+  public LiKafkaInstrumentedConsumerImpl(
+      Properties baseConfig,
+      Map<String, String> libraryVersions,
+      ConsumerFactory<K, V> consumerFactory,
+      Supplier<String> mdsUrlSupplier,
+      long initialConnectionTimeoutMs
+  ) {
     List<String> conversionIssues = new ArrayList<>(1);
     this.baseConfig = baseConfig;
     Map<String, String> translatedBaseConfig = LiKafkaClientsUtils.propertiesToStringMap(baseConfig, conversionIssues);
@@ -96,6 +106,7 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
     if (libraryVersions != null && !libraryVersions.isEmpty()) {
       this.libraryVersions.putAll(libraryVersions); //user input overrides built-ins
     }
+    this.initialConnectionTimeoutMs = initialConnectionTimeoutMs;
 
     if (!conversionIssues.isEmpty()) {
       StringJoiner csv = new StringJoiner(", ");

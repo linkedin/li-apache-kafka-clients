@@ -53,7 +53,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaInstrumentedProducerImpl.class);
   private static final String BOUNDED_FLUSH_THREAD_PREFIX = "Bounded-Flush-Thread-";
 
-  private final long initialConnectionTimeoutMs = TimeUnit.SECONDS.toMillis(30);
+  private final long initialConnectionTimeoutMs;
   private final ReadWriteLock delegateLock = new ReentrantReadWriteLock();
   private final Properties baseConfig;
   private final Map<String, String> libraryVersions;
@@ -90,6 +90,16 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       ProducerFactory<K, V> producerFactory,
       Supplier<String> mdsUrlSupplier
   ) {
+    this(baseConfig, libraryVersions, producerFactory, mdsUrlSupplier, TimeUnit.SECONDS.toMillis(30));
+  }
+
+  public LiKafkaInstrumentedProducerImpl(
+      Properties baseConfig,
+      Map<String, String> libraryVersions,
+      ProducerFactory<K, V> producerFactory,
+      Supplier<String> mdsUrlSupplier,
+      long initialConnectionTimeoutMs
+  ) {
     List<String> conversionIssues = new ArrayList<>(1);
     this.baseConfig = baseConfig;
     Map<String, String> translatedBaseConfig = LiKafkaClientsUtils.propertiesToStringMap(baseConfig, conversionIssues);
@@ -98,6 +108,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       this.libraryVersions.putAll(libraryVersions); //allow user arguments to override builtins
     }
     this.producerFactory = producerFactory;
+    this.initialConnectionTimeoutMs = initialConnectionTimeoutMs;
 
     if (!conversionIssues.isEmpty()) {
       StringJoiner csv = new StringJoiner(", ");
