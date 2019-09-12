@@ -70,6 +70,7 @@ import org.slf4j.LoggerFactory;
 public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaConsumerImpl.class);
   private final Consumer<byte[], byte[]> _kafkaConsumer;
+  private final String _clientId;
   private final ConsumerRecordsProcessor<K, V> _consumerRecordsProcessor;
   private final LiKafkaConsumerRebalanceListener<K, V> _consumerRebalanceListener;
   private final LiKafkaOffsetCommitCallback _offsetCommitCallback;
@@ -77,6 +78,10 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final long _autoCommitInterval;
   private final LiOffsetResetStrategy _offsetResetStrategy;
   private long _lastAutoCommitMs;
+
+  private final MetricName _skippedRecordsMetricName;
+  private final Metric __skippedRecordsMetric;
+
   private ConsumerRecordsProcessResult<K, V> _lastProcessedResult;
 
   public LiKafkaConsumerImpl(Properties props) {
@@ -120,7 +125,31 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     _kafkaConsumer = new KafkaConsumer<>(configs.configForVanillaConsumer(),
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
-  try {
+    _clientId = LiKafkaClientsUtils.getClientId(_kafkaConsumer);
+    _skippedRecordsMetricName = new MetricName(
+        "records-skipped",
+        "lnkd",
+        "number of records skipped due to deserialization issues",
+        Collections.singletonMap("client-id", _clientId)
+    );
+    __skippedRecordsMetric = new Metric() {
+      @Override
+      public MetricName metricName() {
+        return _skippedRecordsMetricName;
+      }
+
+      @Override
+      public double value() {
+        return (double) _consumerRecordsProcessor.getRecordsSkipped();
+      }
+
+      @Override
+      public Object metricValue() {
+        return value();
+      }
+    };
+
+    try {
 
     // Instantiate segment deserializer if needed.
     Deserializer segmentDeserializer = largeMessageSegmentDeserializer != null ? largeMessageSegmentDeserializer :
@@ -694,7 +723,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public Map<MetricName, ? extends Metric> metrics() {
-    return _kafkaConsumer.metrics();
+    Map<MetricName, Metric> fromDelegate = new HashMap<>(_kafkaConsumer.metrics());
+    fromDelegate.put(_skippedRecordsMetricName, __skippedRecordsMetric);
+    return fromDelegate;
   }
 
   @Override
