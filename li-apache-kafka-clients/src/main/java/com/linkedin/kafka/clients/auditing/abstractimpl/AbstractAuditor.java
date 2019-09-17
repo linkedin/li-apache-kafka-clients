@@ -97,7 +97,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
    */
   public AbstractAuditor() {
     super();
-    this.setUncaughtExceptionHandler((t, e) -> LOG.error("Auditor encounter exception.", e));
+    this.setUncaughtExceptionHandler((t, e) -> LOG.error("Auditor died to unhandled exception", e));
     this.setDaemon(true);
     _time = new SystemTime();
   }
@@ -146,7 +146,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
             waitForNextTick(now);
           } catch (Exception e) {
             // We catch all the exceptions from the user's onTick() call but not exit.
-            LOG.error("Auditor encounter exception.", e);
+            LOG.error("Auditor encountered exception.", e);
           }
         }
       } finally {
@@ -154,7 +154,11 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
         _nextStats.close();
         _shutdown = true;
         long shutdownBudgetRemaining = _shutdownDeadline - System.currentTimeMillis();
-        onClosed(_currentStats, _nextStats, Math.max(0, shutdownBudgetRemaining));
+        try {
+          onClosed(_currentStats, _nextStats, Math.max(0, shutdownBudgetRemaining));
+        } catch (Exception e) {
+          LOG.error("error closing auditor", e);
+        }
       }
     } else {
       LOG.info("Auto auditing is set to false. Automatic ticking is disabled.");
