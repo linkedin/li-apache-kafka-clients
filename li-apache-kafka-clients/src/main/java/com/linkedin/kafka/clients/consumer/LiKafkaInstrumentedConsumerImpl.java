@@ -88,7 +88,7 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
       ConsumerFactory<K, V> consumerFactory,
       Supplier<String> mdsUrlSupplier
   ) {
-    this(baseConfig, libraryVersions, consumerFactory, mdsUrlSupplier, TimeUnit.SECONDS.toMillis(30));
+    this(baseConfig, libraryVersions, consumerFactory, mdsUrlSupplier, TimeUnit.SECONDS.toMillis(10));
   }
 
   public LiKafkaInstrumentedConsumerImpl(

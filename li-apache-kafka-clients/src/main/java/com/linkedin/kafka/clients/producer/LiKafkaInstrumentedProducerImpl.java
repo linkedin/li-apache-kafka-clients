@@ -90,7 +90,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       ProducerFactory<K, V> producerFactory,
       Supplier<String> mdsUrlSupplier
   ) {
-    this(baseConfig, libraryVersions, producerFactory, mdsUrlSupplier, TimeUnit.SECONDS.toMillis(30));
+    this(baseConfig, libraryVersions, producerFactory, mdsUrlSupplier, TimeUnit.SECONDS.toMillis(10));
   }
 
   public LiKafkaInstrumentedProducerImpl(
