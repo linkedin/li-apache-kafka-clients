@@ -133,7 +133,7 @@ Due to the complexity of the `seek()` operation with large messages, users are e
 In general, li-apache-kafka-clients does not support large message handling for log compacted topics. In some specific cases, it might work by playing with the message keys, users may refer to [Handle Large Messages in Apache Kafka](http://www.slideshare.net/JiangjieQin/handle-large-messages-in-apache-kafka-58692297) if interested.
 
 #### Record Headers ####
-With li-apache-kafka-clients_1.0.17 and onwards, we have introduced internal headers(with `_` as prefix) which are used to convey certain information about the messages. 
-* `_so` => safe offset header; set only on the consumers when the safe offset is not the same as the high watermark. The contents are as follows: `safeOffset <4 bytes>`
+With li-apache-kafka-clients_1.0.17 and onwards, we have introduced client specific headers(with `_` as prefix) which are used to convey certain information about the messages. 
+* `_so` => safe offset header; set only on the consumers when the safe offset is not the same as the high watermark. The contents are as follows: `safeOffset<4 bytes>`
 * `_t` => create timestamp of the record. The contents are as follows: `timestamp<4 bytes>`
 * `_lm` => large message header; The contents are as follows: `Type<1 byte> | UUID<16 bytes> | segmentNumber<4 bytes> | numberOfSegments<4 bytes>`
