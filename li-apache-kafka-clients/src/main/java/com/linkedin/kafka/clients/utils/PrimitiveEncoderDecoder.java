@@ -21,6 +21,9 @@ public class PrimitiveEncoderDecoder {
 
   /**
    * Encodes a long value into a {@link PrimitiveEncoderDecoder#LONG_SIZE} byte array
+   * @param value value to be encoded
+   * @param output output where encoded data will be stored
+   * @param pos position in output where value will be encoded starting from
    */
   public static void encodeLong(long value, byte[] output, int pos) {
     if (output == null) {
@@ -45,6 +48,8 @@ public class PrimitiveEncoderDecoder {
 
   /**
    * Encodes a long value into a newly created byte[] and returns it.
+   * @param value value to be encoded
+   * @return encoded form of value
    */
   public static byte[] encodeLong(long value) {
     byte[] data = new byte[LONG_SIZE];
@@ -54,6 +59,9 @@ public class PrimitiveEncoderDecoder {
 
   /**
    * Encodes a int value into a {@link PrimitiveEncoderDecoder#INT_SIZE} byte array
+   * @param value value to be encoded
+   * @param output destination to be encoded into
+   * @param pos position in destination where encoded value will start
    */
   public static void encodeInt(int value, byte[] output, int pos) {
     if (output == null) {
@@ -78,6 +86,8 @@ public class PrimitiveEncoderDecoder {
 
   /**
    * Encodes a int value int a newly created byte[] and returns it
+   * @param value value to be encoded
+   * @return encoded value
    */
   public static byte[] encodeInt(int value) {
     byte[] data = new byte[INT_SIZE];
@@ -105,6 +115,9 @@ public class PrimitiveEncoderDecoder {
 
   /**
    * Decodes {@link PrimitiveEncoderDecoder#LONG_SIZE} bytes from offset in the input byte array
+   * @param input where to read encoded form from
+   * @param pos position in input to start reading from
+   * @return a decoded long
    */
   public static long decodeLong(byte[] input, int pos) {
     if (input == null) {
