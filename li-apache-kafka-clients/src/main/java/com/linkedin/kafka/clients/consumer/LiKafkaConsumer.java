@@ -194,6 +194,7 @@ public interface LiKafkaConsumer<K, V> extends Consumer<K, V> {
    * <p>
    * This method is large message aware. This method is synchronous and takes effect immediately. If there is
    * no offset committed for some of the partitions, an exception will be thrown.
+   * @param partitions partitions for which to seek to committed offsets
    */
   @InterfaceOrigin.LiKafkaClients
   void seekToCommitted(Collection<TopicPartition> partitions);

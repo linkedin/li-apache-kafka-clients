@@ -37,6 +37,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String AUDITOR_CLASS_CONFIG = "auditor.class";
   public static final String KEY_SERIALIZER_CLASS_CONFIG = ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG;
   public static final String VALUE_SERIALIZER_CLASS_CONFIG = ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG;
+  public static final String PARTITIONER_CLASS_CONFIG = ProducerConfig.PARTITIONER_CLASS_CONFIG;
+  public static final String MAX_BLOCK_MS_CONFIG = ProducerConfig.MAX_BLOCK_MS_CONFIG;
   public static final String SEGMENT_SERIALIZER_CLASS_CONFIG = "segment.serializer";
   public static final String UUID_FACTORY_CLASS_CONFIG = "uuid.factory.class";
   public static final String CURRENT_PRODUCER = "current.producer";
@@ -70,6 +72,10 @@ public class LiKafkaProducerConfig extends AbstractConfig {
 
   public static final String VALUE_SERIALIZER_CLASS_DOC = "The value serializer class";
 
+  public static final String PARTITIONER_CLASS_CONFIG_DOC = "The partitioner class";
+
+  public static final String MAX_BLOCK_MS_DOC = "see max.block.ms in kafka producer documentation";
+
   public static final String SEGMENT_SERIALIZER_CLASS_DOC = "The class of segment serializer. The segment serializer " +
       "will be used to serialize large message segments when large message is enabled for LiKafkaProducer.";
 
@@ -101,6 +107,10 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(AUDITOR_CLASS_CONFIG, Type.CLASS, NoOpAuditor.class.getName(), Importance.MEDIUM, AUDITOR_CLASS_DOC)
         .define(KEY_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, KEY_SERIALIZER_CLASS_DOC)
         .define(VALUE_SERIALIZER_CLASS_CONFIG, Type.CLASS, ByteArraySerializer.class.getName(), Importance.MEDIUM, VALUE_SERIALIZER_CLASS_DOC)
+        //we set null as the default partitioner because the "vanilla" kafka default partitioner is "safe" for large message
+        //support and we'd rather not pay the cost of making reflection calls for metadata in send() if we dont have to.
+        .define(PARTITIONER_CLASS_CONFIG, Type.CLASS, null, Importance.MEDIUM, PARTITIONER_CLASS_CONFIG_DOC)
+        .define(MAX_BLOCK_MS_CONFIG, Type.LONG, 60 * 1000, atLeast(0), Importance.MEDIUM, MAX_BLOCK_MS_DOC)
         .define(SEGMENT_SERIALIZER_CLASS_CONFIG, Type.CLASS, DefaultSegmentSerializer.class.getName(), Importance.MEDIUM, SEGMENT_SERIALIZER_CLASS_DOC)
         .define(UUID_FACTORY_CLASS_CONFIG, Type.CLASS, UUIDFactory.DefaultUUIDFactory.class.getName(), Importance.LOW, UUID_FACTORY_CLASS_DOC)
         .define(METADATA_SERVICE_CLIENT_CLASS_CONFIG, Type.CLASS, null, Importance.MEDIUM, METADATA_SERVICE_CLIENT_CLASS_DOC)

@@ -15,18 +15,24 @@ import com.linkedin.kafka.clients.producer.LiKafkaProducerImpl;
 import java.io.File;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.network.Mode;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 
 
 public abstract class AbstractKafkaClientsIntegrationTestHarness extends AbstractKafkaIntegrationTestHarness {
+  protected final static int DEFAULT_MAX_SEGMENT_BYTES = 200;
 
   @Override
   public void setUp() {
@@ -56,7 +62,7 @@ public abstract class AbstractKafkaClientsIntegrationTestHarness extends Abstrac
 
     setSecurityConfigs(result, "producer");
 
-    result.setProperty(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG, "200");
+    result.setProperty(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG, "" + DEFAULT_MAX_SEGMENT_BYTES);
     result.setProperty(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, DefaultSegmentSerializer.class.getCanonicalName());
 
     //apply overrides
@@ -70,6 +76,14 @@ public abstract class AbstractKafkaClientsIntegrationTestHarness extends Abstrac
   protected LiKafkaConsumer<String, String> createConsumer(Properties overrides) {
     Properties props = getConsumerProperties(overrides);
     return new LiKafkaConsumerImpl<>(props);
+  }
+
+  protected Consumer<byte[], byte[]> createRawConsumer() {
+    Properties props = new Properties();
+    props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getCanonicalName());
+    props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getCanonicalName());
+    Properties finalConsumerProps = getConsumerProperties(props);
+    return new KafkaConsumer<>(finalConsumerProps);
   }
 
   protected Properties getConsumerProperties(Properties overrides) {
@@ -88,6 +102,27 @@ public abstract class AbstractKafkaClientsIntegrationTestHarness extends Abstrac
     result.setProperty(LiKafkaConsumerConfig.EXCEPTION_ON_MESSAGE_DROPPED_CONFIG, "true");
     result.setProperty(LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG, "10000");
     result.setProperty(LiKafkaConsumerConfig.SEGMENT_DESERIALIZER_CLASS_CONFIG, DefaultSegmentDeserializer.class.getCanonicalName());
+
+    //apply overrides
+    if (overrides != null) {
+      result.putAll(overrides);
+    }
+
+    return result;
+  }
+
+  protected AdminClient createRawAdminClient(Properties overrides) {
+    Properties props = getAdminClientProperties(overrides);
+    return AdminClient.create(props);
+  }
+
+  protected Properties getAdminClientProperties(Properties overrides) {
+    Properties result = new Properties();
+
+    //populate defaults
+    result.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
+
+    setSecurityConfigs(result, "adminClient");
 
     //apply overrides
     if (overrides != null) {

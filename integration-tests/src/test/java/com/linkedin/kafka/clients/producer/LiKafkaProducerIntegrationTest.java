@@ -11,20 +11,34 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import org.apache.commons.lang.RandomStringUtils;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.CreateTopicsResult;
+import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.admin.TopicDescription;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -50,7 +64,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   /**
    * This test pushes test data into a temporary topic to a particular broker, and
-   * verifies all data are sent and can be consumed corerctly.
+   * verifies all data are sent and can be consumed correctly.
    *
    * @throws java.io.IOException
    * @throws InterruptedException
@@ -195,5 +209,79 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
     assertEquals(1, messageCount);
   }
 
+  @Test
+  public void testCustomPartitioningOfLargeMessage() throws Exception {
+    long seed = System.currentTimeMillis();
+    Random random = new Random(seed);
+    int numPartitions = 2 + random.nextInt(19); // [2-20]
+    String topic = "testCustomPartitioner-" + UUID.randomUUID();
+
+    AdminClient adminClient = createRawAdminClient(null);
+    CreateTopicsResult createTopicResult = adminClient.createTopics(Collections.singletonList(new NewTopic(topic, numPartitions, (short) 1)));
+    createTopicResult.all().get(1, TimeUnit.MINUTES);
+    TopicDescription topicDescription = adminClient.describeTopics(Collections.singletonList(topic)).all().get(1, TimeUnit.MINUTES).get(topic);
+    Assert.assertEquals(topicDescription.partitions().size(), numPartitions, "expected topic to have "
+        + numPartitions + " partitions. instead got " + topicDescription.partitions() + ". seed is " + seed);
+
+    Properties producerPropertyOverrides = new Properties();
+    producerPropertyOverrides.put(ProducerConfig.PARTITIONER_CLASS_CONFIG, RoundRobinPartitioner.class.getCanonicalName());
+    producerPropertyOverrides.put(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG, "true");
+
+    int msgSize = (int) (1.5 * DEFAULT_MAX_SEGMENT_BYTES);
+    int numExpectedRecords = (int) Math.ceil(((double) msgSize) / DEFAULT_MAX_SEGMENT_BYTES);
+    String randomLargeString = RandomStringUtils.randomAlphanumeric(msgSize);
+
+    try (LiKafkaProducer<String, String> producer =  createProducer(producerPropertyOverrides)) {
+      //no explicit partition set, timestamp = now
+      ProducerRecord<String, String> record = new ProducerRecord<>(topic, null, System.currentTimeMillis(), "key", randomLargeString);
+      producer.send(record).get();
+    }
+
+    List<TopicPartition> tps = topicDescription.partitions().stream()
+        .map(tpi -> new TopicPartition(topic, tpi.partition()))
+        .collect(Collectors.toList());
+
+    try (Consumer<byte[], byte[]> consumer = createRawConsumer()) {
+      Map<Integer, Integer> partToCount = new HashMap<>(); //histogram of partition to how many records seen on it
+      int recordsRead = 0;
+      consumer.assign(tps);
+      consumer.seekToBeginning(tps);
+      long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(2);
+      while (System.currentTimeMillis() < deadline && recordsRead < numExpectedRecords) {
+        ConsumerRecords<byte[], byte[]> records = consumer.poll(Duration.ofSeconds(1));
+        recordsRead += records.count();
+        for (ConsumerRecord<byte[], byte[]> rec : records) {
+          partToCount.compute(rec.partition(), (k, v) -> {
+            if (v == null) {
+              return 1;
+            }
+            return v + 1;
+          });
+        }
+      }
+      Assert.assertEquals(recordsRead, numExpectedRecords, "only read " + recordsRead + " within timeout. seed is " + seed);
+      Assert.assertEquals(partToCount.size(), 1, "segments should all land in the same partition. seed is " + seed);
+      Assert.assertEquals(partToCount.keySet().iterator().next().intValue(), 0, "payloads should have landed in partition 0. seed is " + seed);
+      Assert.assertTrue(partToCount.values().iterator().next() > 1, "expected to have more than a single segment. seed is " + seed);
+    }
+
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(null)) {
+      consumer.assign(tps);
+      consumer.seekToBeginning(tps);
+
+      long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(2);
+      ConsumerRecord<String, String> assembled = null;
+      while (System.currentTimeMillis() < deadline) {
+        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+        if (records.count() == 0) {
+          continue;
+        }
+        assembled = records.iterator().next();
+        break;
+      }
+      Assert.assertNotNull(assembled, "unable to read assembled record within timeout. seed is " + seed);
+      Assert.assertEquals(randomLargeString, assembled.value(), "assembled payload expected to match original. seed is " + seed);
+    }
+  }
 }
 

@@ -23,6 +23,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.RecordTooLargeException;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -53,9 +54,12 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
     Properties extra = new Properties();
     extra.setProperty(ProducerConfig.MAX_REQUEST_SIZE_CONFIG, "" + 1500);
     extra.setProperty(ProducerConfig.ACKS_CONFIG, "1");
-    Properties baseProducerConfig = getConsumerProperties(extra);
+    extra.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    extra.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    Properties baseProducerConfig = getProducerProperties(extra);
     LiKafkaInstrumentedProducerImpl<byte[], byte[]> producer = new LiKafkaInstrumentedProducerImpl<>(
         baseProducerConfig,
+        Collections.emptyMap(),
         (baseConfig, overrideConfig) ->
             new LiKafkaProducerImpl(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
         () -> mario.getUrl());

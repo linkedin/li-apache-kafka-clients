@@ -39,6 +39,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @param clusterGroup  The cluster group descriptor
    * @param timeoutMs  Timeout in milliseconds
    * @return The descriptor of the physical cluster where the topic is hosted
+   * @throws MetadataServiceClientException on errors
    */
   ClusterDescriptor getClusterForTopic(String topicName, ClusterGroupDescriptor clusterGroup, int timeoutMs)
       throws MetadataServiceClientException;
@@ -50,6 +51,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @param clusterGroup  The cluster group descriptor
    * @param timeoutMs        Timeout in milliseconds
    * @return Location lookup result.
+   * @throws MetadataServiceClientException on errors
    */
   PartitionLookupResult getClustersForTopicPartitions(Set<TopicPartition> topicPartitions,
       ClusterGroupDescriptor clusterGroup, int timeoutMs) throws MetadataServiceClientException;
@@ -61,6 +63,7 @@ public interface MetadataServiceClient extends Configurable, AutoCloseable {
    * @param clusterGroup  The cluster group descriptor
    * @param timeoutMs        Timeout in milliseconds
    * @return Location lookup result.
+   * @throws MetadataServiceClientException on errors
    */
   TopicLookupResult getClustersForTopics(Set<String> topics, ClusterGroupDescriptor clusterGroup,
       int timeoutMs) throws MetadataServiceClientException;

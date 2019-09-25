@@ -22,6 +22,7 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
   protected Map<Integer, EmbeddedBroker> _brokers = null;
   protected Set<Integer> _deadBrokers;
   protected String _bootstrapUrl;
+
   @Override
   public void setUp() {
     super.setUp();
@@ -127,7 +128,7 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
   /**
    * Kill broker by broker id
    * @param id id of broker
-   * @throws Exception
+   * @throws Exception if anything goes wrong
    */
   public void killBroker(int id) throws Exception {
     EmbeddedBroker broker = _brokers.get(id);
@@ -143,6 +144,7 @@ public abstract class AbstractKafkaIntegrationTestHarness extends AbstractZookee
    * Kill a random broker that is not alive.
    *
    * @return id of broker killed
+   * @throws Exception if anything goes wrong
    */
   public int killRandomBroker() throws Exception {
     int index = RANDOM.nextInt(_brokers.size());

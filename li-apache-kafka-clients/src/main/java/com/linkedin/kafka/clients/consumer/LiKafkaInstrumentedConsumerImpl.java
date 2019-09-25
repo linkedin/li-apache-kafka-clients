@@ -44,8 +44,8 @@ import org.slf4j.LoggerFactory;
  * an instrumented consumer is a decorator around a single delegate client
  * that supports registration with conductor, telemetry, and remote control
  * (for example, pushing config changes from conductor side)
- * @param <K>
- * @param <V>
+ * @param <K> key type
+ * @param <V> value type
  */
 public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer<K, V>, EventHandler {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaInstrumentedConsumerImpl.class);

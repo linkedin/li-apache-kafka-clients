@@ -83,6 +83,8 @@ public class ConsumerRecordsProcessResult<K, V> {
 
   /**
    * Returns true if any topic-partitions in the collection has an exception
+   * @param topicPartitions topic partitions to check for errors
+   * @return true if there's an error stored for any of the topic partitions given
    */
   public boolean hasError(Collection<TopicPartition> topicPartitions) {
     if (topicPartitions != null && !topicPartitions.isEmpty()) {

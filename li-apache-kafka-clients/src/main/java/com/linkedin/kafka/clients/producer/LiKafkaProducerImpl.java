@@ -13,6 +13,7 @@ import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -26,10 +27,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Partitioner;
 import org.apache.kafka.clients.producer.Producer;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
@@ -128,6 +130,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private Serializer<K> _keySerializer;
   private Serializer<V> _valueSerializer;
 
+  //custom partitioning
+  private Partitioner _partitioner;
+  private Method _waitOnMD;
+  private Field _mdClusterField;
+  private long _maxBlockMs;
+
   // raw byte producer
   protected final Producer<byte[], byte[]> _producer;
   /*package private for testing*/ Auditor<K, V> _auditor;
@@ -187,17 +195,35 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     try {
       // Instantiate the key serializer if necessary.
       _keySerializer = keySerializer != null ? keySerializer
-          : configs.getConfiguredInstance(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
+          : configs.getConfiguredInstance(LiKafkaProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, Serializer.class);
       _keySerializer.configure(configs.originals(), true);
       // Instantiate the key serializer if necessary.
       _valueSerializer = valueSerializer != null ? valueSerializer
-          : configs.getConfiguredInstance(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, Serializer.class);
+          : configs.getConfiguredInstance(LiKafkaProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, Serializer.class);
       _valueSerializer.configure(configs.originals(), false);
+
+      _partitioner = configs.getConfiguredInstance(LiKafkaProducerConfig.PARTITIONER_CLASS_CONFIG, Partitioner.class);
+      _maxBlockMs = configs.getLong(LiKafkaProducerConfig.MAX_BLOCK_MS_CONFIG);
 
       // prepare to handle large messages.
       _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
+
+      if (_largeMessageEnabled && _partitioner != null) {
+        //if large msg support is enabled and the user has provided a custom partitioner (our default for partitioner is null)
+        //we will sometimes need to invoke this partitioner ourselves. to do so we would need to get cluster metadata
+        //which is only accessible using a private method on the underlying producer.
+        try {
+          _waitOnMD = _producer.getClass().getDeclaredMethod("waitOnMetadata", String.class, Integer.class, long.class);
+          _waitOnMD.setAccessible(true);
+          _mdClusterField = Class.forName(KafkaProducer.class.getCanonicalName() + "$ClusterAndWaitTime").getDeclaredField("cluster");
+          _mdClusterField.setAccessible(true);
+        } catch (NoSuchMethodException | NoSuchFieldException | ClassNotFoundException e) {
+          throw new IllegalStateException("custom partitioner specified but cannot get access to waitOnMetadata method", e);
+        }
+      }
+
       _maxMessageSegmentSize = Math.min(configs.getInt(LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG),
-          configs.getInt(ProducerConfig.MAX_REQUEST_SIZE_CONFIG));
+          configs.getInt(LiKafkaProducerConfig.MAX_REQUEST_SIZE_CONFIG));
       Serializer<LargeMessageSegment> segmentSerializer = largeMessageSegmentSerializer != null ? largeMessageSegmentSerializer
           : configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
       segmentSerializer.configure(configs.originals(), false);
@@ -271,36 +297,66 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         _auditor.record(auditToken, topic, timestamp, 1L, 0L, AuditType.ATTEMPT);
         throw t;
       }
+
       int serializedKeyLength = serializedKey == null ? 0 : serializedKey.length;
       int serializedValueLength = serializedValue == null ? 0 : serializedValue.length;
       int sizeInBytes = serializedKeyLength + serializedValueLength;
       // Audit the attempt.
       _auditor.record(auditToken, topic, timestamp, 1L, (long) sizeInBytes, AuditType.ATTEMPT);
       // We wrap the user callback for error logging and auditing purpose.
-      Callback errorLoggingCallback =
-          new ErrorLoggingCallback<>(messageId, auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
-      if (_largeMessageEnabled && serializedValueLength > _maxMessageSegmentSize) {
-        // Split the payload into large message segments
-        List<ProducerRecord<byte[], byte[]>> segmentRecords =
-            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, headers);
-        Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
-        for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
-          future = _producer.send(segmentRecord, largeMessageCallback);
+      Callback errorLoggingCallback = new ErrorLoggingCallback<>(messageId, auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
+
+      if (_largeMessageEnabled) {
+        if (serializedValueLength > _maxMessageSegmentSize) {
+          //payload requires splitting
+
+          //if user didnt explicitely specify a destination partition, and is using a custom partitioner we
+          //call the custom partitioner at this point so its decision could apply to all segments (otherwise we
+          //risk the custom partitioner sending segments across multiple partitions). we know the kafka default
+          //partitioner is "safe" for this (as it only operates on the key, and all segments get the same key)
+          if (partition == null && _partitioner != null) {
+            partition = invokeCustomPartitioner(topic, key, serializedKey, value, serializedValue);
+          }
+
+          // Split the payload into large message segments (they will all have the same key and same partition)
+          List<ProducerRecord<byte[], byte[]>> segmentRecords =
+              _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, headers);
+
+          Callback largeMessageCallback = new LargeMessageCallback(segmentRecords.size(), errorLoggingCallback);
+          for (ProducerRecord<byte[], byte[]> segmentRecord : segmentRecords) {
+            //TODO - there is likely a bug here - we return the future for the last enqueued segment, but they could get out of order...
+            future = _producer.send(segmentRecord, largeMessageCallback);
+          }
+
+        } else if (_largeMessageSegmentWrappingRequired) {
+          //payload does not require splitting, but we wrap anyway
+
+          //if the user didnt specify a partition, and is running a custom partitioner, we invoke it here. this is done
+          //to prevent any custom partitioner code from seeing any large msg "envelope" bytes in serialized K and V.
+          //we dont need to do this with the default kafka partitioner since it only looks at key (which we dont modify
+          //for large msg support)
+          if (partition == null && _partitioner != null) {
+            partition = invokeCustomPartitioner(topic, key, serializedKey, value, serializedValue);
+          }
+
+          // Wrap the paylod with a large message segment, even if the payload is not big enough to split
+          List<ProducerRecord<byte[], byte[]>> wrappedRecord =
+              _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue,
+                  serializedValueLength, headers);
+          if (wrappedRecord.size() != 1) {
+            throw new IllegalStateException("Failed to create a large message segment wrapped message");
+          }
+          future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
+
+        } else {
+          // Do not wrap with a large message segment (any partitioner it will be called by the underlying producer)
+          future = _producer.send(new ProducerRecord<>(topic, partition, timestamp, serializedKey, serializedValue, headers), errorLoggingCallback);
         }
-      } else if (_largeMessageEnabled && _largeMessageSegmentWrappingRequired) {
-        // Wrap the paylod with a large message segment, even if the payload is not big enough to split
-        List<ProducerRecord<byte[], byte[]>> wrappedRecord =
-            _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue,
-                serializedValueLength, headers);
-        if (wrappedRecord.size() != 1) {
-          throw new IllegalStateException("Failed to create a large message segment wrapped message");
-        }
-        future = _producer.send(wrappedRecord.get(0), errorLoggingCallback);
       } else {
-        // Do not wrap with a large message segment
-        future = _producer.send(new ProducerRecord(topic, partition, timestamp, serializedKey, serializedValue, headers),
-            errorLoggingCallback);
+        // Do not wrap with a large message segment (any custom partitioner it will be called by the underlying producer)
+        future = _producer.send(new ProducerRecord<>(topic, partition, timestamp, serializedKey, serializedValue, headers), errorLoggingCallback);
       }
+
       failed = false;
       return future;
     } catch (SkippableException e) {
@@ -409,6 +465,23 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     _auditor.close(Math.max(0, deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
     _producer.close(Math.max(0, deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
     LOG.info("LiKafkaProducer shutdown complete in {} millis", (System.currentTimeMillis() - startTimeMs));
+  }
+
+  protected int invokeCustomPartitioner(String topic, K key, byte[] serializedKey, V value, byte[] serializedValue) {
+    Cluster cluster;
+    try {
+      Object md = _waitOnMD.invoke(_producer, topic, null, _maxBlockMs);
+      if (md == null) {
+        throw new IllegalStateException("couldnt get metadata for topic " + topic);
+      }
+      cluster = (Cluster) _mdClusterField.get(md);
+      if (cluster == null) {
+        throw new IllegalStateException("couldnt get metadata for topic " + topic);
+      }
+    } catch (Exception e) {
+      throw new IllegalStateException("while fetching metadata for topic " + topic, e);
+    }
+    return  _partitioner.partition(topic, key, serializedKey, value, serializedValue, cluster);
   }
 
   private static class ErrorLoggingCallback<K, V> implements Callback {

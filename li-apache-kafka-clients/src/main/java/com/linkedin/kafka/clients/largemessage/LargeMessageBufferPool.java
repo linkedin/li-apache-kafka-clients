@@ -100,7 +100,10 @@ public class LargeMessageBufferPool {
   }
 
   /**
-   * This will *not* clear any stale state.  Probably don't use this except for testing purposes.
+   * returns the current set of safe offsets.
+   * This will *not* clear any stale state.
+   * Probably don't use this except for testing purposes.
+   * @return the current safe offsets (keyed by TP)
    */
   public synchronized Map<TopicPartition, Long> safeOffsets() {
     return _offsetTracker.safeOffsets();
