@@ -120,8 +120,8 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
         mdsUrlSupplier,
         TimeUnit.MINUTES.toMillis(1),
         TimeUnit.HOURS.toMillis(1),
-        this.libraryVersions,
         translatedBaseConfig,
+        this.libraryVersions,
         this
     );
 
