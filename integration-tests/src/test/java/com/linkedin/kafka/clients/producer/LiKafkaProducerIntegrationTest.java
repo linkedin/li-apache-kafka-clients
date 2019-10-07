@@ -10,7 +10,6 @@ import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
-import java.io.IOException;
 import java.time.Duration;
 import java.util.BitSet;
 import java.util.Collections;
@@ -65,16 +64,14 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
   /**
    * This test pushes test data into a temporary topic to a particular broker, and
    * verifies all data are sent and can be consumed correctly.
-   *
-   * @throws java.io.IOException
-   * @throws InterruptedException
    */
   @Test
-  public void testSend() throws IOException, InterruptedException {
+  public void testSend() throws Exception {
     long startTime = System.currentTimeMillis();
     Properties props = new Properties();
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
-    final String tempTopic = "testTopic" + new Random().nextInt(1000000);
+    String tempTopic = "testTopic" + new Random().nextInt(1000000);
+    createTopic(tempTopic);
     try (LiKafkaProducer<String, String> producer = createProducer(props)) {
       for (int i = 0; i < RECORD_COUNT; ++i) {
         String value = Integer.toString(i);
@@ -107,19 +104,21 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testNullValue() {
+  public void testNullValue() throws Exception {
+    String topic = "testNullValue";
+    createTopic(topic);
     try (LiKafkaProducer<String, String> producer = createProducer(null)) {
-      producer.send(new ProducerRecord<>("testNullValue", "key", null));
+      producer.send(new ProducerRecord<>(topic, "key", null));
     }
     Properties consumerProps = new Properties();
     consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
     try (LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps)) {
-      consumer.subscribe(Collections.singleton("testNullValue"));
+      consumer.subscribe(Collections.singleton(topic));
       long startMs = System.currentTimeMillis();
       ConsumerRecords<String, String> records = ConsumerRecords.empty();
-      while (records.isEmpty() && System.currentTimeMillis() < startMs + 30000) {
-        records = consumer.poll(100);
+      while (records.isEmpty() && System.currentTimeMillis() < startMs + 60000) {
+        records = consumer.poll(Duration.ofMillis(100));
       }
       assertEquals(1, records.count());
       ConsumerRecord<String, String> record = records.iterator().next();
@@ -130,18 +129,23 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
 
   @Test
   public void testZeroLengthValue() throws Exception {
+    String topic = "testZeroLengthValue";
+    createTopic(topic);
+
     Properties producerPropertyOverrides = new Properties();
     producerPropertyOverrides.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
 
-    try (LiKafkaProducer producer =  createProducer(producerPropertyOverrides)) {
-      producer.send(new ProducerRecord<>("testZeroLengthValue", "key", new byte[0])).get();
+    //this is actually Producer<String, byte[]>
+    try (LiKafkaProducer producer = createProducer(producerPropertyOverrides)) {
+      //noinspection unchecked
+      producer.send(new ProducerRecord<>(topic, "key", new byte[0])).get();
     }
     Properties consumerProps = new Properties();
     consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     consumerProps.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
 
     try (LiKafkaConsumer consumer = createConsumer(consumerProps)) {
-      consumer.subscribe(Collections.singleton("testZeroLengthValue"));
+      consumer.subscribe(Collections.singleton(topic));
       long startMs = System.currentTimeMillis();
       ConsumerRecords records = ConsumerRecords.empty();
       while (records.isEmpty() && System.currentTimeMillis() < startMs + 30000) {
@@ -159,7 +163,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
    * verifies producer.send() will throw exception if and only if SKIP_RECORD_ON_SKIPPABLE_EXCEPTION_CONFIG is false
    */
   @Test
-  public void testSerializationException() {
+  public void testSerializationException() throws Exception {
 
     Serializer<String> stringSerializer = new StringSerializer();
     Serializer<String> errorThrowingSerializer = new Serializer<String>() {
@@ -184,12 +188,11 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
 
     Properties props = getProducerProperties(null);
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
-    final String tempTopic = "testTopic" + new Random().nextInt(1000000);
-    try (LiKafkaProducer<String, String> producer =
-        new LiKafkaProducerImpl<>(props, stringSerializer, errorThrowingSerializer, null, null)) {
+    String tempTopic = "testTopic" + new Random().nextInt(1000000);
+    createTopic(tempTopic);
+    try (LiKafkaProducer<String, String> producer = new LiKafkaProducerImpl<>(props, stringSerializer, errorThrowingSerializer, null, null)) {
       producer.send(new ProducerRecord<>(tempTopic, "ErrorBytes"));
       producer.send(new ProducerRecord<>(tempTopic, "value"));
-      producer.close();
     }
 
     Properties consumerProps = new Properties();
@@ -281,6 +284,12 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
       }
       Assert.assertNotNull(assembled, "unable to read assembled record within timeout. seed is " + seed);
       Assert.assertEquals(randomLargeString, assembled.value(), "assembled payload expected to match original. seed is " + seed);
+    }
+  }
+
+  private void createTopic(String topicName) throws Exception {
+    try (AdminClient adminClient = createRawAdminClient(null)) {
+      adminClient.createTopics(Collections.singletonList(new NewTopic(topicName, 2, (short) 1))).all().get(1, TimeUnit.MINUTES);
     }
   }
 }

@@ -18,6 +18,8 @@ import java.util.Collections;
 import java.util.Properties;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -47,7 +49,7 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
   @Test
   public void testProducerLiveConfigReload() throws Exception {
     String topic = "testProducerLiveConfigReload";
-
+    createTopic(topic, 1);
     MarioApplication mario = new MarioApplication(null);
     Random random = new Random();
 
@@ -60,9 +62,8 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
     LiKafkaInstrumentedProducerImpl<byte[], byte[]> producer = new LiKafkaInstrumentedProducerImpl<>(
         baseProducerConfig,
         Collections.emptyMap(),
-        (baseConfig, overrideConfig) ->
-            new LiKafkaProducerImpl(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
-        () -> mario.getUrl());
+        (baseConfig, overrideConfig) -> new LiKafkaProducerImpl<>(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        mario::getUrl);
 
     byte[] key = new byte[500];
     byte[] value = new byte[500];
@@ -99,5 +100,11 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
 
     producer.close(Duration.ofSeconds(30));
     mario.close();
+  }
+
+  private void createTopic(String topicName, int numPartitions) throws Exception {
+    try (AdminClient adminClient = createRawAdminClient(null)) {
+      adminClient.createTopics(Collections.singletonList(new NewTopic(topicName, numPartitions, (short) 1))).all().get(1, TimeUnit.MINUTES);
+    }
   }
 }

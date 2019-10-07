@@ -14,6 +14,7 @@ import java.util.Properties;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.io.FileUtils;
+import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 
@@ -92,6 +93,18 @@ public class KafkaTestUtils {
     KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
 
     return consumer;
+  }
+
+  public static AdminClient adminClientFor(EmbeddedBroker broker) {
+    String bootstrap = broker.getPlaintextAddr();
+    if (bootstrap == null) {
+      bootstrap = broker.getSslAddr();
+    }
+
+    Properties props = new Properties();
+    props.put("bootstrap.servers", bootstrap);
+
+    return AdminClient.create(props);
   }
 
   public static File newTempDir() {

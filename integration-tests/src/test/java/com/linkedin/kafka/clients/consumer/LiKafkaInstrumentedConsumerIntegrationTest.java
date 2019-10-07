@@ -23,6 +23,8 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -53,7 +55,7 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
   @Test
   public void testConsumerLiveConfigReload() throws Exception {
     String topic = "testConsumerLiveConfigReload";
-
+    createTopic(topic, 1);
     Producer<byte[], byte[]> producer = createRawProducer();
     for (int i = 0; i < 1000; i++) {
       byte[] key = new byte[1024];
@@ -83,9 +85,8 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     LiKafkaInstrumentedConsumerImpl<byte[], byte[]> consumer = new LiKafkaInstrumentedConsumerImpl<>(
         baseConsumerConfig,
         null,
-        (baseConfig, overrideConfig) ->
-            new LiKafkaConsumerImpl(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
-        () -> mario.getUrl());
+        (baseConfig, overrideConfig) -> new LiKafkaConsumerImpl<>(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        mario::getUrl);
 
     consumer.subscribe(Collections.singletonList(topic));
     AtomicReference<ConsumerRecords<byte[], byte[]>> recordsRef = new AtomicReference<>(null);
@@ -140,5 +141,11 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
 
     consumer.close(Duration.ofSeconds(30));
     mario.close();
+  }
+
+  private void createTopic(String topicName, int numPartitions) throws Exception {
+    try (AdminClient adminClient = createRawAdminClient(null)) {
+      adminClient.createTopics(Collections.singletonList(new NewTopic(topicName, numPartitions, (short) 1))).all().get(1, TimeUnit.MINUTES);
+    }
   }
 }

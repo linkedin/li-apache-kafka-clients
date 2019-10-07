@@ -50,7 +50,7 @@ project.ext {
     }
   }
   liKafkaVersion = "2.0.0.21"
-  marioVersion = "0.0.19"
+  marioVersion = "0.0.20"
 }
 
 subprojects {
@@ -70,6 +70,8 @@ subprojects {
 
     dependencies {
       testCompile 'org.testng:testng:6.11'
+      testRuntime 'log4j:log4j:1.2.17'
+      testRuntime 'org.slf4j:slf4j-log4j12:1.7.26'
     }
 
     compileJava {
@@ -86,7 +88,7 @@ subprojects {
       useTestNG()
       maxHeapSize = "1024m"
       testLogging {
-        events "passed", "failed", "skipped"
+        events "started", "passed", "failed", "skipped"
       }
     }
 

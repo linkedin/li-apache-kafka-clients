@@ -39,6 +39,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import kafka.server.KafkaConfig;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
@@ -114,6 +116,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   @Test
   public void advanceOffsetsWhenLargeMessageCanNotBeAssembled() throws Exception {
     String topic = "testOffsetDeliveryIssue";
+    createTopic(topic);
     produceSyntheticMessages(topic);
 
     // Bury under a bunch of non-large messages, some of the internal trimming logic is only triggered when
@@ -171,8 +174,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void advanceOffsetsWhenMessagesNotDelivered() {
+  public void advanceOffsetsWhenMessagesNotDelivered() throws Exception {
     String topic = "testUle";
+    createTopic(topic);
     produceSyntheticMessages(topic);
 
     // Commit offset with very large high watermark
@@ -221,8 +225,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     }
   }
   @Test
-  public void testSeek() {
+  public void testSeek() throws Exception {
     String topic = "testSeek";
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -295,8 +300,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testCommit() {
+  public void testCommit() throws Exception {
     String topic = "testCommit";
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -369,8 +375,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testCommitWithOffsetMap() {
+  public void testCommitWithOffsetMap() throws Exception {
     String topic = "testCommitWithOffsetMap";
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -441,8 +448,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test(expectedExceptions = TimeoutException.class)
-  public void testCommitWithTimeout() {
+  public void testCommitWithTimeout() throws Exception {
     String topic = "testCommitWithTimeout";
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -469,8 +477,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testSeekToBeginningAndEnd() {
+  public void testSeekToBeginningAndEnd() throws Exception {
     String topic = "testSeekToBeginningAndEnd";
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testSeekToBeginningAndEnd");
@@ -523,8 +532,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * 9: M5_SEG1(END)
    */
   @Test
-  public void testSeekToCommitted() {
+  public void testSeekToCommitted() throws Exception {
     String topic = "testSeekToCommitted";
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -577,6 +587,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   @Test
   public void testOffsetCommitCallback() throws Exception {
     String topic = "testOffsetCommitCallback";
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -641,9 +652,10 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testCommittedOnOffsetsCommittedByRawConsumer() {
+  public void testCommittedOnOffsetsCommittedByRawConsumer() throws Exception {
     String topic = "testCommittedOnOffsetsCommittedByRawConsumer";
     TopicPartition tp = new TopicPartition(topic, 0);
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -684,7 +696,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testSeekAfterAssignmentChange() {
+  public void testSeekAfterAssignmentChange() throws Exception {
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
     produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -719,7 +733,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testUnsubscribe() {
+  public void testUnsubscribe() throws Exception {
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
     produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -752,8 +768,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test
-  public void testPosition() {
+  public void testPosition() throws Exception {
     String topic = "testSeek";
+    createTopic(topic);
     TopicPartition tp = new TopicPartition(topic, 0);
     TopicPartition tp1 = new TopicPartition(topic, 1);
     produceSyntheticMessages(topic);
@@ -795,6 +812,8 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    */
   @Test
   public void testRebalance() throws Throwable {
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
     produceRecordsWithKafkaProducer(true);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -865,7 +884,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * @throws InterruptedException
    */
   @Test
-  public void testCommitAndResume() throws InterruptedException {
+  public void testCommitAndResume() throws Exception {
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
     produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     // Make sure we start to consume from the beginning.
@@ -928,13 +949,15 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * Test search offset by timestamp
    */
   @Test
-  public void testSearchOffsetByTimestamp() {
+  public void testSearchOffsetByTimestamp() throws Exception {
     Properties props = new Properties();
     // Make sure we start to consume from the beginning.
     props.setProperty("auto.offset.reset", "earliest");
     // All the consumers should have the same group id.
     props.setProperty("group.id", "testSearchOffsetByTimestamp");
     props.setProperty("enable.auto.commit", "false");
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
     produceRecordsWithKafkaProducer();
 
     try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
@@ -1108,20 +1131,26 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     testFuncList.forEach(
         testFunc -> {
           String topic = UUID.randomUUID().toString();
+          try {
+            createTopic(topic);
+          } catch (Exception e) {
+            fail("unable to create topic " + topic, e);
+          }
           produceSyntheticMessages(topic);
           LiKafkaConsumer<byte[], byte[]> consumer = createConsumerForExceptionProcessingTest();
           try {
             testExceptionProcessingByFunction(topic, consumer, testFunc);
           } catch (Exception e) {
-            fail("failed with unexpected exception");
+            fail("failed with unexpected exception", e);
           }
         }
     );
   }
 
   @Test
-  public void testExceptionInProcessingLargeMessage() {
+  public void testExceptionInProcessingLargeMessage() throws Exception {
     String topic = "testExceptionInProcessing";
+    createTopic(topic);
     produceSyntheticMessages(topic);
     Properties props = new Properties();
     // All the consumers should have the same group id.
@@ -1189,6 +1218,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         new UUIDFactory.DefaultUUIDFactory<>());
 
     String topic = "testGiganticLargeMessages";
+    createTopic(topic);
     TopicPartition tp = new TopicPartition(topic, 0);
     Collection<TopicPartition> tps = new ArrayList<>(Collections.singletonList(tp));
 
@@ -1267,6 +1297,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         new UUIDFactory.DefaultUUIDFactory<>());
 
     String topic = "testExceptionOnLargeMsgDropped";
+    createTopic(topic);
     TopicPartition tp = new TopicPartition(topic, 0);
     Collection<TopicPartition> tps = new ArrayList<>(Collections.singletonList(tp));
 
@@ -1350,7 +1381,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
   }
 
   @Test(dataProvider = "offsetResetStrategies")
-  public void testOffsetOutOfRangeForStrategy(LiOffsetResetStrategy strategy) {
+  public void testOffsetOutOfRangeForStrategy(LiOffsetResetStrategy strategy) throws Exception {
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
     produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     props.setProperty("auto.offset.reset", strategy.name());
@@ -1409,7 +1442,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * if the committed consumer offset expired. This test reproduces the former case (bootstrap) to assert the behavior.
    */
   @Test
-  public void testBootstrapWithLiClosest() {
+  public void testBootstrapWithLiClosest() throws Exception {
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
     produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     props.setProperty("auto.offset.reset", LiOffsetResetStrategy.LICLOSEST.name());
@@ -1443,7 +1478,9 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
    * - Verify that the offset reset returns the earliest available record
    */
   @Test
-  public void testFallOffStartWithLiClosest() throws InterruptedException {
+  public void testFallOffStartWithLiClosest() throws Exception {
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
     produceRecordsWithKafkaProducer();
     Properties props = new Properties();
     props.setProperty("auto.offset.reset", LiOffsetResetStrategy.LICLOSEST.name());
@@ -1477,7 +1514,7 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       consumer.assign(tpAsCollection);
       long giveUp = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
       while (consumerRecords.isEmpty() && System.currentTimeMillis() < giveUp) {
-        consumerRecords = consumer.poll(1000);
+        consumerRecords = consumer.poll(Duration.ofMillis(100));
       }
       if (consumerRecords.isEmpty()) {
         throw new IllegalStateException("failed to consume any records within timeout");
@@ -1700,6 +1737,12 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       fail("Produce synthetic data failed.", e);
     }
     producer.close();
+  }
+
+  private void createTopic(String topicName) throws Exception {
+    try (AdminClient adminClient = createRawAdminClient(null)) {
+      adminClient.createTopics(Collections.singletonList(new NewTopic(topicName, NUM_PARTITIONS, (short) 1))).all().get(1, TimeUnit.MINUTES);
+    }
   }
 
   private class RebalanceTestConsumerThread extends Thread {
