@@ -13,6 +13,10 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
+import java.util.Collections;
+import java.util.concurrent.TimeUnit;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -68,7 +72,12 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
   }
 
   @Test
-  public void testLargeMessage() {
+  public void testLargeMessage() throws Exception {
+    //create the test topic
+    try (AdminClient adminClient = createRawAdminClient(null)) {
+      adminClient.createTopics(Collections.singletonList(new NewTopic(TOPIC, NUM_PARTITIONS, (short) 1))).all().get(1, TimeUnit.MINUTES);
+    }
+
     long startTime = System.currentTimeMillis();
     Properties props = new Properties();
     props.setProperty("large.message.enabled", "true");

@@ -13,7 +13,10 @@ plugins {
 dependencies {
   compile project(':li-apache-kafka-clients')
   compile "com.linkedin.kafka:kafka-clients:${rootProject.ext.liKafkaVersion}"
-  compile 'org.apache.zookeeper:zookeeper:3.4.9' //matches kafka server dependency
+  //matches kafka server dependency
+  compile ("org.apache.zookeeper:zookeeper:3.4.9") {
+    exclude group: 'org.slf4j', module:'slf4j-log4j12'
+  }
   compile 'com.101tec:zkclient:0.10'
   compile 'commons-io:commons-io:2.6'
   compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
