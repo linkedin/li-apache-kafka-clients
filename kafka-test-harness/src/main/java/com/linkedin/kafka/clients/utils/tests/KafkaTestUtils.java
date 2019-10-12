@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.io.FileUtils;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -131,6 +132,32 @@ public class KafkaTestUtils {
     }
   }
 
+  public static void waitUntil(
+      String description,
+      UsableSupplier<Boolean> condition,
+      long sleepIncrements,
+      long timeout, TimeUnit timeoutUnit,
+      boolean allowExceptions
+  ) throws InterruptedException {
+    long start = System.currentTimeMillis();
+    long deadline = start + timeoutUnit.toMillis(timeout);
+    long now = start;
+    while (now < deadline) {
+      try {
+        if (condition.get()) {
+          return;
+        }
+      } catch (Exception e) {
+        if (!allowExceptions) {
+          throw new RuntimeException(e);
+        }
+      }
+      Thread.sleep(sleepIncrements);
+      now = System.currentTimeMillis();
+    }
+    throw new IllegalStateException("condition " + description + " did not turn true within " + timeout + " " + timeoutUnit);
+  }
+
   public static String getRandomString(int length) {
     char[] chars = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
     Random random = new Random();
@@ -154,5 +181,10 @@ public class KafkaTestUtils {
   @FunctionalInterface
   public interface Task {
     void run() throws Exception;
+  }
+
+  @FunctionalInterface
+  public interface UsableSupplier<T> {
+    T get() throws Exception;
   }
 }

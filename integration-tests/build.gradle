@@ -12,8 +12,11 @@ dependencies {
   testCompile (project(":kafka-test-harness")) {
     exclude group: 'org.slf4j', module:'slf4j-log4j12'
   }
-  testCompile ("com.linkedin.mario:mario-integration-tests:${rootProject.ext.marioVersion}") {
-    exclude group: 'org.apache.kafka'
+  testCompile ("com.linkedin.mario:mario-vertx:${rootProject.ext.marioVersion}") {
+
   }
+//  testCompile ("com.linkedin.mario:mario-integration-tests:${rootProject.ext.marioVersion}") {
+//    exclude group: 'org.apache.kafka'
+//  }
   testCompile "commons-lang:commons-lang:2.6"
 }

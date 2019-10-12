@@ -8,11 +8,11 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
+import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
 import com.linkedin.mario.common.models.v1.ClientConfigRule;
 import com.linkedin.mario.common.models.v1.ClientConfigRules;
 import com.linkedin.mario.common.models.v1.ClientPredicates;
 import com.linkedin.mario.server.MarioApplication;
-import com.linkedin.mario.test.TestUtils;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
@@ -91,7 +91,7 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
     mario.setConfigPolicy(new ClientConfigRules(Collections.singletonList(
         new ClientConfigRule(ClientPredicates.ALL, ImmutableMap.of("max.request.size", "" + 9000)))));
 
-    TestUtils.waitUntil("delegate recreated", () -> {
+    KafkaTestUtils.waitUntil("delegate recreated", () -> {
       Producer<byte[], byte[]> delegateNow = producer.getDelegate();
       return delegateNow != delegate;
     }, 1, 2, TimeUnit.MINUTES, false);

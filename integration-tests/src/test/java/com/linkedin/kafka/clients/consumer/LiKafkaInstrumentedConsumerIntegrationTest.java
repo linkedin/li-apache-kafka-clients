@@ -7,11 +7,11 @@ package com.linkedin.kafka.clients.consumer;
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
+import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
 import com.linkedin.mario.common.models.v1.ClientConfigRule;
 import com.linkedin.mario.common.models.v1.ClientConfigRules;
 import com.linkedin.mario.common.models.v1.ClientPredicates;
 import com.linkedin.mario.server.MarioApplication;
-import com.linkedin.mario.test.TestUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.time.Duration;
@@ -91,7 +91,7 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     consumer.subscribe(Collections.singletonList(topic));
     AtomicReference<ConsumerRecords<byte[], byte[]>> recordsRef = new AtomicReference<>(null);
     AtomicReference<Consumer<byte[], byte[]>> delegateBeforeRef = new AtomicReference<>(null);
-    TestUtils.waitUntil("1st record batch", () -> {
+    KafkaTestUtils.waitUntil("1st record batch", () -> {
       ConsumerRecords<byte[], byte[]> recs = consumer.poll(Duration.ofSeconds(10));
       if (recs.count() > 0) {
         recordsRef.set(recs);
@@ -115,12 +115,12 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     mario.setConfigPolicy(new ClientConfigRules(Collections.singletonList(
         new ClientConfigRule(ClientPredicates.ALL, ImmutableMap.of("max.poll.records", "" + afterBatchSize)))));
 
-    TestUtils.waitUntil("delegate recreated", () -> {
+    KafkaTestUtils.waitUntil("delegate recreated", () -> {
       Consumer<byte[], byte[]> delegateNow = consumer.getDelegate();
       return delegateNow != delegate;
     }, 1, 2, TimeUnit.MINUTES, false);
 
-    TestUtils.waitUntil("1nd record batch", () -> {
+    KafkaTestUtils.waitUntil("1nd record batch", () -> {
       ConsumerRecords<byte[], byte[]> recs = consumer.poll(Duration.ofSeconds(10));
       if (recs.count() > 0) {
         recordsRef.set(recs);
