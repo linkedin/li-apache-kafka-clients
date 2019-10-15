@@ -19,7 +19,7 @@ dependencies {
   }
   compile 'com.101tec:zkclient:0.10'
   compile 'commons-io:commons-io:2.6'
-  compile 'org.bouncycastle:bcpkix-jdk15on:1.54'
+  compile 'org.bouncycastle:bcpkix-jdk15on:1.59'
   runtime "com.linkedin.kafka:kafka_2.11:${rootProject.ext.liKafkaVersion}"
 }
 
