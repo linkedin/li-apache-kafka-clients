@@ -5,6 +5,8 @@
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.common.MetricsProxy;
+import com.linkedin.kafka.clients.utils.CloseableLock;
+import com.linkedin.kafka.clients.utils.KafkaConsumerLock;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.mario.client.EventHandler;
 import com.linkedin.mario.client.SimpleClient;
@@ -50,10 +52,12 @@ import org.slf4j.LoggerFactory;
 public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer<K, V>, EventHandler {
   private static final Logger LOG = LoggerFactory.getLogger(LiKafkaInstrumentedConsumerImpl.class);
 
+  @SuppressWarnings({"FieldCanBeLocal", "unused"})
   private final long initialConnectionTimeoutMs;
   private final ReadWriteLock delegateLock = new ReentrantReadWriteLock();
   private final Properties baseConfig;
   private final ConsumerFactory<K, V> consumerFactory;
+  @SuppressWarnings("FieldCanBeLocal")
   private final Map<String, String> libraryVersions;
   private final CountDownLatch initialConnectionLatch = new CountDownLatch(1);
   private final MetricsProxy metricsProxy = new MetricsProxy() {
@@ -63,7 +67,15 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
       return delegate == null ? Collections.emptyMap() : delegate.metrics();
     }
   };
+
+  //just like vanilla kafka clients, these keep track of the user thread currently operating the client
+  private final KafkaConsumerLock userLock = new KafkaConsumerLock();
+
+  //records when the client was closed and by whom
+  private volatile boolean closing = false;
+  private volatile Exception closer = null;
   private volatile Long closedAt = null;
+
   private volatile Map<String, String> configOverrides = null;
   private volatile Consumer<K, V> delegate;
   private final SimpleClient mdsClient;
@@ -193,8 +205,7 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
    * @return true if delegate client actually replaced
    */
   private boolean recreateDelegate(boolean abortIfExists) {
-    delegateLock.writeLock().lock();
-    try {
+    try (@SuppressWarnings("unused") CloseableLock swLock = new CloseableLock(delegateLock.writeLock())) {
       Set<TopicPartition> pausedPartitions = null;
       Consumer<K, V> prevConsumer = delegate;
       if (prevConsumer != null) {
@@ -212,6 +223,10 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
         } catch (Exception e) {
           LOG.error("error closing old delegate consumer", e);
         }
+      }
+
+      if (closing) {
+        return false;
       }
 
       delegate = consumerFactory.create(baseConfig, LiKafkaClientsUtils.convertConfigMapToProperties(configOverrides));
@@ -236,327 +251,302 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
         delegate.pause(pausedPartitions);
       }
       return true;
-    } finally {
-      delegateLock.writeLock().unlock();
     }
   }
 
   @Override
   public Set<TopicPartition> assignment() {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.assignment();
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Set<String> subscription() {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
+      //record
       return delegate.subscription();
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void subscribe(Collection<String> topics) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       subscribedTopics = topics;
       rebalanceListener = null;
       assignedPartitions = null;
       subscriptionPattern = null;
 
       delegate.subscribe(topics);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void subscribe(Collection<String> topics, ConsumerRebalanceListener callback) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       subscribedTopics = topics;
       rebalanceListener = callback;
       assignedPartitions = null;
       subscriptionPattern = null;
 
       delegate.subscribe(topics, callback);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void assign(Collection<TopicPartition> partitions) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       subscribedTopics = null;
       rebalanceListener = null;
       assignedPartitions = partitions;
       subscriptionPattern = null;
 
       delegate.assign(partitions);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void subscribe(Pattern pattern, ConsumerRebalanceListener callback) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       subscribedTopics = null;
       rebalanceListener = callback;
       assignedPartitions = null;
       subscriptionPattern = pattern;
 
       delegate.subscribe(pattern, callback);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void subscribe(Pattern pattern) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       subscribedTopics = null;
       rebalanceListener = null;
       assignedPartitions = null;
       subscriptionPattern = pattern;
 
       delegate.subscribe(pattern);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void unsubscribe() {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       subscribedTopics = null;
       rebalanceListener = null;
       assignedPartitions = null;
       subscriptionPattern = null;
 
       delegate.unsubscribe();
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   @Deprecated
   public ConsumerRecords<K, V> poll(long timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.poll(timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public ConsumerRecords<K, V> poll(Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.poll(timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void commitSync() {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.commitSync();
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void commitSync(Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.commitSync(timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.commitSync(offsets);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.commitSync(offsets, timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void commitAsync() {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.commitAsync();
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void commitAsync(OffsetCommitCallback callback) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.commitAsync(callback);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.commitAsync(offsets, callback);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void seek(TopicPartition partition, long offset) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.seek(partition, offset);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void seekToBeginning(Collection<TopicPartition> partitions) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.seekToBeginning(partitions);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void seekToEnd(Collection<TopicPartition> partitions) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.seekToEnd(partitions);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public long position(TopicPartition partition) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.position(partition);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public long position(TopicPartition partition, Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.position(partition, timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public OffsetAndMetadata committed(TopicPartition partition) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.committed(partition);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public OffsetAndMetadata committed(TopicPartition partition, Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.committed(partition, timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
@@ -568,198 +558,191 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
 
   @Override
   public List<PartitionInfo> partitionsFor(String topic) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.partitionsFor(topic);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public List<PartitionInfo> partitionsFor(String topic, Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.partitionsFor(topic, timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Map<String, List<PartitionInfo>> listTopics() {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.listTopics();
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Map<String, List<PartitionInfo>> listTopics(Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.listTopics(timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Set<TopicPartition> paused() {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.paused();
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void pause(Collection<TopicPartition> partitions) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.pause(partitions);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void resume(Collection<TopicPartition> partitions) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       delegate.resume(partitions);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.offsetsForTimes(timestampsToSearch);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch,
       Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.offsetsForTimes(timestampsToSearch, timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.beginningOffsets(partitions);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions, Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.beginningOffsets(partitions, timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.endOffsets(partitions);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions, Duration timeout) {
-    verifyOpen();
-
-    delegateLock.readLock().lock();
-    try {
+    try (
+        @SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock);
+        @SuppressWarnings("unused") CloseableLock srLock = new CloseableLock(delegateLock.readLock())
+    ) {
+      verifyOpen();
       return delegate.endOffsets(partitions, timeout);
-    } finally {
-      delegateLock.readLock().unlock();
     }
   }
 
   @Override
   public void close() {
-    if (!proceedClosing()) {
-      return;
-    }
-    try {
-      delegate.close();
-    } finally {
-      delegate = null;
-      closeMdsClient();
+    try (@SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock)) {
+      if (!proceedClosing()) {
+        return;
+      }
+      try {
+        delegate.close();
+      } finally {
+        delegate = null;
+        closeMdsClient();
+      }
     }
   }
 
   @Override
   @Deprecated
   public void close(long timeout, TimeUnit unit) {
-    if (!proceedClosing()) {
-      return;
-    }
-    try {
-      delegate.close(timeout, unit);
-    } finally {
-      delegate = null;
-      closeMdsClient();
+    try (@SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock)) {
+      if (!proceedClosing()) {
+        return;
+      }
+      try {
+        delegate.close(timeout, unit);
+      } finally {
+        delegate = null;
+        closeMdsClient();
+      }
     }
   }
 
   @Override
   public void close(Duration timeout) {
-    if (!proceedClosing()) {
-      return;
-    }
-    try {
-      delegate.close(timeout);
-    } finally {
-      delegate = null;
-      closeMdsClient();
+    try (@SuppressWarnings("unused") CloseableLock uLock = new CloseableLock(userLock)) {
+      if (!proceedClosing()) {
+        return;
+      }
+      try {
+        delegate.close(timeout);
+      } finally {
+        delegate = null;
+        closeMdsClient();
+      }
     }
   }
 
@@ -772,19 +755,22 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
     }
   }
 
+  /**
+   * ensures that close only happens once, also records who closed the client and when
+   * @return true if current call is the 1st close call and should proceed
+   */
   private boolean proceedClosing() {
     if (isClosed()) {
       return false;
     }
-    delegateLock.writeLock().lock();
-    try {
+    closing = true;
+    try (@SuppressWarnings("unused") CloseableLock swLock = new CloseableLock(delegateLock.writeLock())) {
       if (isClosed()) {
         return false;
       }
+      closer = new Exception(); //capture current stack
       closedAt = System.currentTimeMillis();
       return true;
-    } finally {
-      delegateLock.writeLock().unlock();
     }
   }
 
@@ -805,9 +791,9 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
    * there's also an assumption that unless closed, delegate is always != null
    */
   private void verifyOpen() {
-    if (isClosed()) {
+    if (closing) {
       //same exception thats thrown by a vanilla consumer
-      throw new IllegalStateException("This consumer has already been closed.");
+      throw new IllegalStateException("This consumer has already been closed. see following exception for point of close", closer);
     }
   }
 }

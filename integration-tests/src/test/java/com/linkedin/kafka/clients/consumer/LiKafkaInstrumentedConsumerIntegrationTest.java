@@ -11,12 +11,13 @@ import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
 import com.linkedin.mario.common.models.v1.ClientConfigRule;
 import com.linkedin.mario.common.models.v1.ClientConfigRules;
 import com.linkedin.mario.common.models.v1.ClientPredicates;
-import com.linkedin.mario.server.MarioApplication;
+import com.linkedin.mario.server.EmbeddableMario;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Properties;
 import java.util.Random;
@@ -29,6 +30,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
@@ -73,7 +75,7 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     producer.flush();
     producer.close(1, TimeUnit.MINUTES);
 
-    MarioApplication mario = new MarioApplication(null);
+    EmbeddableMario mario = new EmbeddableMario(null);
     Random random = new Random();
     int beforeBatchSize = 1 + random.nextInt(20); //[1, 20]
 
@@ -141,6 +143,75 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
 
     consumer.close(Duration.ofSeconds(30));
     mario.close();
+  }
+
+  @Test
+  public void testLongPollAndCloseInstrumentedConsumer() throws Exception {
+    Properties extra = new Properties();
+    extra.setProperty(ConsumerConfig.GROUP_ID_CONFIG, UUID.randomUUID().toString());
+    extra.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    Properties baseConsumerConfig = getConsumerProperties(extra);
+    LiKafkaInstrumentedConsumerImpl<byte[], byte[]> consumer = new LiKafkaInstrumentedConsumerImpl<>(
+        baseConsumerConfig,
+        null,
+        (baseConfig, overrideConfig) -> new LiKafkaConsumerImpl<>(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        () -> "bob",
+        1);
+
+    testLongPollAndCloseConsumer(consumer, "testLongPollAndCloseInstrumentedConsumer");
+  }
+
+  @Test
+  public void testLongPollAndCloseVanillaConsumer() throws Exception {
+    Properties extra = new Properties();
+    extra.setProperty(ConsumerConfig.GROUP_ID_CONFIG, UUID.randomUUID().toString());
+    extra.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    Properties baseConsumerConfig = getConsumerProperties(extra);
+    Consumer<byte[], byte[]> consumer = new KafkaConsumer<>(baseConsumerConfig);
+
+    testLongPollAndCloseConsumer(consumer, "testLongPollAndCloseVanillaConsumer");
+  }
+
+  //validates that attempting to close() a consumer while another thread is in poll() results in an exception
+  private void testLongPollAndCloseConsumer(Consumer<byte[], byte[]> consumer, String topicName) throws Exception {
+    createTopic(topicName, 1);
+
+    consumer.subscribe(Collections.singletonList(topicName));
+    Thread poller = Thread.currentThread();
+    AtomicReference<Exception> closerIssue = new AtomicReference<>(null);
+
+    Thread closer = new Thread(() -> {
+      try {
+        KafkaTestUtils.waitUntil("poll in progress", () -> {
+          StackTraceElement[] stack = poller.getStackTrace();
+          for (StackTraceElement frame : stack) {
+            if (frame.getMethodName().equals("poll")) {
+              return true;
+            }
+          }
+          return false;
+        }, 1, 1, TimeUnit.MINUTES, false);
+        System.err.println("closing");
+        consumer.close();
+        System.err.println("closed");
+      } catch (Exception e) {
+        closerIssue.set(e);
+        e.printStackTrace(System.err);
+      }
+    }, "closer");
+    closer.start();
+
+    ConsumerRecords<byte[], byte[]> records;
+
+    long start = System.currentTimeMillis();
+    records = consumer.poll(Duration.ofSeconds(5));
+    long end = System.currentTimeMillis();
+    long took = end - start;
+
+    Assert.assertNotNull(records, "poll should have returned");
+    Assert.assertTrue(closerIssue.get() instanceof ConcurrentModificationException,
+        "close should have thrown a ConcurrentModificationException, instead got " + closerIssue.get());
+    Assert.assertTrue(took >= TimeUnit.SECONDS.toMillis(5), "poll should have completed normally");
   }
 
   private void createTopic(String topicName, int numPartitions) throws Exception {
