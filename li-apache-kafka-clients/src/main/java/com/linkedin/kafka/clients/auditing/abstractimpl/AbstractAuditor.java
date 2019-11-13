@@ -157,7 +157,7 @@ public abstract class AbstractAuditor<K, V> extends Thread implements Auditor<K,
         try {
           onClosed(_currentStats, _nextStats, Math.max(0, shutdownBudgetRemaining));
         } catch (Exception e) {
-          LOG.error("error closing auditor", e);
+          LOG.warn("error closing auditor", e);
         }
       }
     } else {
