@@ -92,7 +92,7 @@ public class MessageSplitterImpl implements MessageSplitter {
     // Get original message size in bytes
     int messageSizeInBytes = serializedRecord.length;
     ByteBuffer bytebuffer = ByteBuffer.wrap(serializedRecord);
-
+    //messages with >1 segments absolutely must have a != null key set to guarantee they land in the same partition
     byte[] segmentKey = (key == null && numberOfSegments > 1) ? LiKafkaClientsUtils.uuidToBytes(segmentMessageId) : key;
     // Sequence number starts from 0.
     for (int seq = 0; seq < numberOfSegments; seq++) {

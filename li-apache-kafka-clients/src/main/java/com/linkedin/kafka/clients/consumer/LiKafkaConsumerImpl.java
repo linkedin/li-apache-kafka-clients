@@ -160,8 +160,9 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     int messageAssemblerCapacity = configs.getInt(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_BUFFER_CAPACITY_CONFIG);
     int messageAssemblerExpirationOffsetGap = configs.getInt(LiKafkaConsumerConfig.MESSAGE_ASSEMBLER_EXPIRATION_OFFSET_GAP_CONFIG);
     boolean exceptionOnMessageDropped = configs.getBoolean(LiKafkaConsumerConfig.EXCEPTION_ON_MESSAGE_DROPPED_CONFIG);
+    boolean treatBadSegmentsAsPayload = configs.getBoolean(LiKafkaConsumerConfig.TREAT_BAD_SEGMENTS_AS_PAYLOAD_CONFIG);
     MessageAssembler assembler = new MessageAssemblerImpl(messageAssemblerCapacity, messageAssemblerExpirationOffsetGap,
-                                                          exceptionOnMessageDropped, segmentDeserializer);
+                                                          exceptionOnMessageDropped, segmentDeserializer, treatBadSegmentsAsPayload);
 
     // Instantiate delivered message offset tracker if needed.
     int maxTrackedMessagesPerPartition = configs.getInt(LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG);

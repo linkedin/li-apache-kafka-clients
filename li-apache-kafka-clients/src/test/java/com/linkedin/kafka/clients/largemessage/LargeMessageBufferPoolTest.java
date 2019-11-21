@@ -220,7 +220,8 @@ public class LargeMessageBufferPoolTest {
       pool.tryCompleteMessage(tp, 0, segment);
       fail("Should throw large message exception for wrong segment size.");
     } catch (InvalidSegmentException ise) {
-      assertTrue(ise.getMessage().startsWith("Segment size should not be larger"));
+      assertTrue(ise.getMessage().toLowerCase().contains("segment size"));
+      assertTrue(ise.getMessage().toLowerCase().contains("should not be larger than message size"));
     }
   }
 
