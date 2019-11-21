@@ -33,6 +33,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String MESSAGE_ASSEMBLER_EXPIRATION_OFFSET_GAP_CONFIG = "message.assembler.expiration.offset.gap";
   public static final String MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG = "max.tracked.messages.per.partition";
   public static final String EXCEPTION_ON_MESSAGE_DROPPED_CONFIG = "exception.on.message.dropped";
+  public static final String TREAT_BAD_SEGMENTS_AS_PAYLOAD_CONFIG = "treat.bad.segments.as.payload";
   public static final String KEY_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
   public static final String VALUE_DESERIALIZER_CLASS_CONFIG = ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
   public static final String SEGMENT_DESERIALIZER_CLASS_CONFIG = "segment.deserializer.class";
@@ -70,6 +71,9 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   private static final String EXCEPTION_ON_MESSAGE_DROPPED_DOC = "The message assembler will drop message when buffer is " +
       "full or the incomplete message has expired. The consumer will throw a LargeMessageDroppedException if this " +
       "configuration is set to true. Otherwise the consumer will drop the message silently.";
+
+  private static final String TREAT_BAD_SEGMENTS_AS_PAYLOAD_DOC = "The message assembler will treat invalid message segments " +
+      " as payload. this can be used as a last resort when some arbitrary payloads accidentally pass as a large message segment";
 
   private static final String KEY_DESERIALIZER_CLASS_DOC = "The key deserializer class for the consumer.";
 
@@ -128,6 +132,11 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 "false",
                 Importance.LOW,
                 EXCEPTION_ON_MESSAGE_DROPPED_DOC)
+        .define(TREAT_BAD_SEGMENTS_AS_PAYLOAD_CONFIG,
+            Type.BOOLEAN,
+            "false",
+            Importance.LOW,
+            TREAT_BAD_SEGMENTS_AS_PAYLOAD_DOC)
         .define(KEY_DESERIALIZER_CLASS_CONFIG,
                 Type.CLASS,
                 ByteArrayDeserializer.class.getName(),

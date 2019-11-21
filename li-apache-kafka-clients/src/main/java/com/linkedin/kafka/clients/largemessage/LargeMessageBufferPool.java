@@ -179,27 +179,12 @@ public class LargeMessageBufferPool {
   }
 
   private LargeMessage validateSegmentAndGetMessage(TopicPartition tp, LargeMessageSegment segment, long offset) {
-    if (segment.payload == null) {
-      throw new InvalidSegmentException("Payload cannot be null");
-    }
+    segment.sanityCheck();
+
     segment.payload.rewind();
-    long segmentSize = segment.payload.remaining();
     UUID messageId = segment.messageId;
     int messageSizeInBytes = segment.messageSizeInBytes;
     int numberOfSegments = segment.numberOfSegments;
-    int seq = segment.sequenceNumber;
-
-    if (messageId == null) {
-      throw new InvalidSegmentException("Message Id can not be null");
-    }
-    if (segmentSize > messageSizeInBytes) {
-      throw new InvalidSegmentException("Segment size should not be larger than message size.");
-    }
-
-    if (seq < 0 || seq > numberOfSegments - 1) {
-      throw new InvalidSegmentException("Sequence number " + seq
-          + " should fall between [0," + (numberOfSegments - 1) + "].");
-    }
 
     // Create the incomplete message if needed.
     LargeMessage message = _incompleteMessageMap.get(messageId);

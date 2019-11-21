@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.UUID;
@@ -58,6 +59,29 @@ public class LargeMessageSegment {
       return payload.array();
     } else {
       return Arrays.copyOfRange(payload.array(), payload.arrayOffset(), payload.arrayOffset() + payload.limit());
+    }
+  }
+
+  public void sanityCheck() throws InvalidSegmentException {
+    if (messageId == null) {
+      throw new InvalidSegmentException("Message Id can not be null");
+    }
+    if (messageSizeInBytes < 0) {
+      throw new InvalidSegmentException("message size (" + messageSizeInBytes + ") should be >= 0");
+    }
+    if (payload == null) {
+      throw new InvalidSegmentException("payload cannot be null");
+    }
+    //this tries to handle cases where payload has not been flipped/rewound
+    long dataSize = payload.position() > 0 ? payload.position() : payload.limit();
+    if (dataSize > messageSizeInBytes) {
+      throw new InvalidSegmentException("segment size (" + dataSize + ") should not be larger than message size (" + messageSizeInBytes + ")");
+    }
+    if (numberOfSegments <= 0) {
+      throw new InvalidSegmentException("number of segments should be > 0, instead is " + numberOfSegments);
+    }
+    if (sequenceNumber < 0 || sequenceNumber > numberOfSegments - 1) {
+      throw new InvalidSegmentException("Sequence number " + sequenceNumber + " should fall between [0," + (numberOfSegments - 1) + "].");
     }
   }
 
