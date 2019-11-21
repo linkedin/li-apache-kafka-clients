@@ -34,6 +34,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG;
+import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG;
+import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG;
+import static org.apache.kafka.clients.CommonClientConfigs.CLIENT_ID_CONFIG;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.assertFalse;
@@ -69,6 +73,37 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
   @Override
   public void tearDown() {
     super.tearDown();
+  }
+
+  @Test
+  public void testAlwaysUseLargeMessageEnvelope() throws Exception {
+    //create the test topic
+    try (AdminClient adminClient = createRawAdminClient(null)) {
+      adminClient.createTopics(Collections.singletonList(new NewTopic(TOPIC, NUM_PARTITIONS, (short) 1))).all().get(1, TimeUnit.MINUTES);
+    }
+
+    {
+      long startTime = System.currentTimeMillis();
+      Properties props = new Properties();
+      props.setProperty(LARGE_MESSAGE_ENABLED_CONFIG, "true");
+      props.setProperty(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, "true");
+      props.setProperty(MAX_MESSAGE_SEGMENT_BYTES_CONFIG, "200");
+      props.setProperty(CLIENT_ID_CONFIG, "testProducer");
+      LiKafkaProducer<String, String> largeMessageProducer = createProducer(props);
+
+      // This is how large we expect the final message to be, including the version byte, checksum, segment info and
+      // the user payload itself.
+      final int expectedProducedMessageSize =
+        + Byte.BYTES
+        + Integer.BYTES
+        + LargeMessageSegment.SEGMENT_INFO_OVERHEAD
+        + "hello".length();
+
+      largeMessageProducer.send(new ProducerRecord<>(TOPIC, "hello"), (recordMetadata, e) -> {
+        assertEquals(recordMetadata.serializedValueSize(), expectedProducedMessageSize);
+      });
+      largeMessageProducer.close();
+    }
   }
 
   @Test
@@ -150,7 +185,7 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
 
   private static Properties buildConsumerProps() {
     Properties props = new Properties();
-    props.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "testLargeMessageConsumer");
+    props.setProperty(CLIENT_ID_CONFIG, "testLargeMessageConsumer");
     props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testLargeMessageConsumer");
     props.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "30000");
     props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");

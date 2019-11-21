@@ -30,21 +30,17 @@ public class DefaultSegmentSerializer implements Serializer<LargeMessageSegment>
 
   @Override
   public byte[] serialize(String s, LargeMessageSegment segment) {
-    if (segment.numberOfSegments > 1) {
-      ByteBuffer byteBuffer = ByteBuffer.allocate(1 + LargeMessageSegment.SEGMENT_INFO_OVERHEAD +
-          segment.payload.limit() + CHECKSUM_LENGTH);
-      byteBuffer.put(LargeMessageSegment.CURRENT_VERSION);
-      byteBuffer.putInt((int) (segment.messageId.getMostSignificantBits() + segment.messageId.getLeastSignificantBits()));
-      byteBuffer.putLong(segment.messageId.getMostSignificantBits());
-      byteBuffer.putLong(segment.messageId.getLeastSignificantBits());
-      byteBuffer.putInt(segment.sequenceNumber);
-      byteBuffer.putInt(segment.numberOfSegments);
-      byteBuffer.putInt(segment.messageSizeInBytes);
-      byteBuffer.put(segment.payload);
-      return byteBuffer.array();
-    } else {
-      return segment.payloadArray();
-    }
+    ByteBuffer byteBuffer = ByteBuffer.allocate(1 + LargeMessageSegment.SEGMENT_INFO_OVERHEAD +
+        segment.payload.limit() + CHECKSUM_LENGTH);
+    byteBuffer.put(LargeMessageSegment.CURRENT_VERSION);
+    byteBuffer.putInt((int) (segment.messageId.getMostSignificantBits() + segment.messageId.getLeastSignificantBits()));
+    byteBuffer.putLong(segment.messageId.getMostSignificantBits());
+    byteBuffer.putLong(segment.messageId.getLeastSignificantBits());
+    byteBuffer.putInt(segment.sequenceNumber);
+    byteBuffer.putInt(segment.numberOfSegments);
+    byteBuffer.putInt(segment.messageSizeInBytes);
+    byteBuffer.put(segment.payload);
+    return byteBuffer.array();
   }
 
   @Override
