@@ -94,6 +94,11 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
     Properties props = new Properties();
     props.setProperty(KafkaConfig.NumPartitionsProp(), Integer.toString(NUM_PARTITIONS));
     props.setProperty(KafkaConfig.LogRetentionTimeMillisProp(), "" + TimeUnit.DAYS.toMillis(1));
+    props.setProperty(KafkaConfig.LogRollTimeMillisProp(), "" + TimeUnit.SECONDS.toMillis(5)); //makes retention kick-in faster
+    props.setProperty(KafkaConfig.LogDeleteDelayMsProp(), "100"); //makes retention kick-in faster
+    props.setProperty(KafkaConfig.LogCleanerBackoffMsProp(), "" + TimeUnit.SECONDS.toMillis(1)); //makes retention kick-in faster
+    props.setProperty(KafkaConfig.LogCleanupIntervalMsProp(), "" + TimeUnit.SECONDS.toMillis(10)); //makes retention kick-in faster
+
     return props;
   }
 
@@ -1497,15 +1502,16 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
       long currentLso = initialLso;
       consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(initialLso, String.valueOf(consumer.safeOffset(tp)))));
       //wait for broker to truncate data that we have not read (we never called poll())
-      long giveUp = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
+      long timeout = TimeUnit.MINUTES.toMillis(5);
+      long giveUp = System.currentTimeMillis() + timeout;
       while (currentLso == initialLso && System.currentTimeMillis() < giveUp) {
-        Thread.sleep(5000);
+        Thread.sleep(1000);
         currentLso = consumer.beginningOffsets(tpAsCollection).get(tp);
         produceRecordsWithKafkaProducer();
       }
       if (currentLso == initialLso) {
         throw new IllegalStateException("nothing was truncated broker-side within timeout. LogStartOffset = " +
-            currentLso + " remains the same after " + giveUp + "ms.");
+            currentLso + " remains the same after " + timeout + "ms.");
       }
       truncatedStartOffset = currentLso;
     }
