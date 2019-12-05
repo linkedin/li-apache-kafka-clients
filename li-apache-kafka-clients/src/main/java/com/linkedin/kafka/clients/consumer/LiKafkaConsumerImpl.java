@@ -12,6 +12,7 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
+import com.linkedin.kafka.clients.utils.CompositeMap;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -78,9 +79,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final long _autoCommitInterval;
   private final LiOffsetResetStrategy _offsetResetStrategy;
   private long _lastAutoCommitMs;
-
-  private final MetricName _skippedRecordsMetricName;
-  private final Metric __skippedRecordsMetric;
+  private final Map<MetricName, Metric> _extraMetrics = new HashMap<>(1);
 
   private ConsumerRecordsProcessResult<K, V> _lastProcessedResult;
 
@@ -126,16 +125,16 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
     _clientId = LiKafkaClientsUtils.getClientId(_kafkaConsumer);
-    _skippedRecordsMetricName = new MetricName(
+    MetricName skippedRecordsMetricName = new MetricName(
         "records-skipped",
         "lnkd",
         "number of records skipped due to deserialization issues",
         Collections.singletonMap("client-id", _clientId)
     );
-    __skippedRecordsMetric = new Metric() {
+    Metric skippedRecordsMetric = new Metric() {
       @Override
       public MetricName metricName() {
-        return _skippedRecordsMetricName;
+        return skippedRecordsMetricName;
       }
 
       @Override
@@ -148,6 +147,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         return value();
       }
     };
+
+    _extraMetrics.put(skippedRecordsMetricName, skippedRecordsMetric);
 
     try {
 
@@ -724,9 +725,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
   @Override
   public Map<MetricName, ? extends Metric> metrics() {
-    Map<MetricName, Metric> fromDelegate = new HashMap<>(_kafkaConsumer.metrics());
-    fromDelegate.put(_skippedRecordsMetricName, __skippedRecordsMetric);
-    return fromDelegate;
+    //noinspection unchecked
+    return new CompositeMap<>((Map<MetricName, Metric>) _kafkaConsumer.metrics(), _extraMetrics);
   }
 
   @Override

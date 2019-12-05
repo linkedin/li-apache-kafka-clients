@@ -15,7 +15,6 @@ plugins {
 dependencies {
     compile "com.linkedin.kafka:kafka-clients:${rootProject.ext.liKafkaVersion}"
     compile "com.linkedin.mario:mario-client-all:${rootProject.ext.marioVersion}"
-    compile "com.linkedin.mario:common:${rootProject.ext.marioVersion}"
 
     testCompile "org.mockito:mockito-core:2.24.0"
 }
