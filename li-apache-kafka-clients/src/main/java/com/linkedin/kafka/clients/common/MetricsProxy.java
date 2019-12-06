@@ -13,7 +13,15 @@ import org.apache.kafka.common.MetricName;
 /**
  * this class allows delegating kafka metrics to an underlying delegate
  * kafka client, allowing the delegate to be replaced/recreated without
- * "invalidating" metrics maps user code may hold on to.
+ * "invalidating" metrics maps user code may hold on to. <br >
+ * it is meant to allow user code like the following to continue to "just work": <br >
+ *
+ *    KafkaClient client = ... <br >
+ *    Map&lt;MetricName, ? extends Metric&gt; metrics = client.getMetrics(); <br >
+ *    // ... long time later ... <br >
+ *    //do something with metrics map <br >
+ *
+ * while still allowing instrumented clients to replace the underlying kafka client
  */
 public abstract class MetricsProxy implements Map {
 
