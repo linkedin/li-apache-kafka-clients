@@ -41,15 +41,24 @@ public class DefaultSegmentDeserializer implements Deserializer<LargeMessageSegm
     int checksum = byteBuffer.getInt();
     long messageIdMostSignificantBits = byteBuffer.getLong();
     long messageIdLeastSignificantBits = byteBuffer.getLong();
-    if (checksum == 0 ||
-        checksum != ((int) (messageIdMostSignificantBits + messageIdLeastSignificantBits))) {
+    if (checksum != ((int) (messageIdMostSignificantBits + messageIdLeastSignificantBits))) {
       LOG.debug("Serialized segment checksum does not match. not large message segment.");
       return null;
     }
     UUID messageId = new UUID(messageIdMostSignificantBits, messageIdLeastSignificantBits);
-    int sequenceNumber = byteBuffer.getInt();
-    int numberOfSegments = byteBuffer.getInt();
-    int messageSizeInBytes = byteBuffer.getInt();
+    int sequenceNumber = byteBuffer.getInt();     //expected to be [0, numberOfSegments)
+    int numberOfSegments = byteBuffer.getInt();   //expected to be >0
+    int messageSizeInBytes = byteBuffer.getInt(); //expected to be >= bytes.length - headerLength
+    if (sequenceNumber < 0 || numberOfSegments <= 0 || sequenceNumber >= numberOfSegments) {
+      LOG.warn("Serialized segment sequence {} not in [0, {}). treating as regular payload", sequenceNumber, numberOfSegments);
+      return null;
+    }
+    int segmentPayloadSize = bytes.length - headerLength; //how much user data in this record
+    if (messageSizeInBytes < segmentPayloadSize) {
+      //there cannot be more data in a single segment than the total size of the assembled msg
+      LOG.warn("Serialized segment size {} bigger than assembled msg size {}, treating as regular payload", segmentPayloadSize, messageSizeInBytes);
+      return null;
+    }
     ByteBuffer payload = byteBuffer.slice();
     return new LargeMessageSegment(messageId, sequenceNumber, numberOfSegments, messageSizeInBytes, payload);
   }

@@ -4,7 +4,6 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
-import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.util.UUID;
 import org.apache.kafka.common.TopicPartition;
@@ -44,7 +43,7 @@ public class MessageAssemblerTest {
   public void testTreatBadSegmentAsPayload() {
     Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
-    MessageAssembler messageAssembler = new MessageAssemblerImpl(100, 100, true, segmentDeserializer, false);
+    MessageAssembler messageAssembler = new MessageAssemblerImpl(100, 100, true, segmentDeserializer);
     TopicPartition tp = new TopicPartition("topic", 0);
 
     UUID uuid = UUID.randomUUID();
@@ -53,14 +52,8 @@ public class MessageAssemblerTest {
     byte[] messageWrappedBytes = segmentSerializer.serialize(tp.topic(), badSegment);
     Assert.assertTrue(messageWrappedBytes.length > realPayload.length); //wrapping has been done
 
-    try {
-      messageAssembler.assemble(tp, 0, messageWrappedBytes);
-      Assert.fail("expected to throw");
-    } catch (InvalidSegmentException expected) {
+    messageAssembler.assemble(tp, 0, messageWrappedBytes);
 
-    }
-
-    messageAssembler = new MessageAssemblerImpl(100, 100, true, segmentDeserializer, true);
     MessageAssembler.AssembleResult assembleResult = messageAssembler.assemble(tp, 0, messageWrappedBytes);
     Assert.assertEquals(assembleResult.messageBytes(), messageWrappedBytes);
     Assert.assertEquals(assembleResult.messageStartingOffset(), 0);

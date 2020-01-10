@@ -4,7 +4,6 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
-import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
@@ -20,23 +19,23 @@ public class MessageAssemblerImpl implements MessageAssembler {
   private static final Logger LOG = LoggerFactory.getLogger(MessageAssemblerImpl.class);
   private final LargeMessageBufferPool _messagePool;
   private final Deserializer<LargeMessageSegment> _segmentDeserializer;
-  private final boolean _treatInvalidMessageSegmentsAsPayload;
 
   public MessageAssemblerImpl(long bufferCapacity,
                               long expirationOffsetGap,
                               boolean exceptionOnMessageDropped,
                               Deserializer<LargeMessageSegment> segmentDeserializer) {
-    this(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped, segmentDeserializer, false);
+    _messagePool = new LargeMessageBufferPool(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped);
+    _segmentDeserializer = segmentDeserializer;
   }
 
+  @Deprecated
   public MessageAssemblerImpl(long bufferCapacity,
                               long expirationOffsetGap,
                               boolean exceptionOnMessageDropped,
                               Deserializer<LargeMessageSegment> segmentDeserializer,
-                              boolean treatInvalidMessageSegmentsAsPayload) {
+                              @SuppressWarnings("unused") boolean treatInvalidMessageSegmentsAsPayload) {
     _messagePool = new LargeMessageBufferPool(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped);
     _segmentDeserializer = segmentDeserializer;
-    _treatInvalidMessageSegmentsAsPayload = treatInvalidMessageSegmentsAsPayload;
   }
 
   @Override
@@ -51,17 +50,8 @@ public class MessageAssemblerImpl implements MessageAssembler {
       return new AssembleResult(segmentBytes, offset, offset);
     } else {
       //sanity-check the segment
-      try {
-        segment.sanityCheck();
-      } catch (InvalidSegmentException e) {
-        if (_treatInvalidMessageSegmentsAsPayload) {
-          //behave as if this didnt look like a segment to us
-          LOG.warn("message at {}/{} may have been a false-positive segment and will be treated as regular payload", tp, offset, e);
-          return new AssembleResult(segmentBytes, offset, offset);
-        } else {
-          throw e;
-        }
-      }
+      segment.sanityCheck();
+
       // Return immediately if it is a single segment message.
       if (segment.numberOfSegments == 1) {
         return new AssembleResult(segment.payloadArray(), offset, offset);
