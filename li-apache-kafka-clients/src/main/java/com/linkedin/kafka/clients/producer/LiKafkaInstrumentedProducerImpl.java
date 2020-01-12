@@ -407,9 +407,12 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       return;
     }
     try {
-      delegate.close();
+      Producer<K, V> delegate = this.delegate;
+      if (delegate != null) {
+        delegate.close();
+      }
     } finally {
-      delegate = null;
+      this.delegate = null;
       closeMdsClient();
     }
   }
@@ -426,10 +429,13 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       return;
     }
     try {
-      //TODO - fix back after bumping up kafka
-      delegate.close(timeout.toMillis(), TimeUnit.MILLISECONDS);
+      Producer<K, V> delegate = this.delegate;
+      if (delegate != null) {
+        //TODO - fix back after bumping up kafka
+        delegate.close(timeout.toMillis(), TimeUnit.MILLISECONDS);
+      }
     } finally {
-      delegate = null;
+      this.delegate = null;
       closeMdsClient();
     }
   }
