@@ -1,6 +1,6 @@
 /*
  * Copyright 2017 LinkedIn Corp.
- * Licensed under the BSD 2-Clause License (the "License"). 
+ * Licensed under the BSD 2-Clause License (the "License").
  * See License in the project root for license information.
  */
 
@@ -50,7 +50,7 @@ project.ext {
     }
   }
   liKafkaVersion = "2.0.0.24"
-  marioVersion = "0.0.25"
+  marioVersion = "0.0.26"
 }
 
 subprojects {

@@ -707,9 +707,12 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
         return;
       }
       try {
-        delegate.close();
+        Consumer<K, V> delegate = this.delegate;
+        if (delegate != null) {
+          delegate.close();
+        }
       } finally {
-        delegate = null;
+        this.delegate = null;
         closeMdsClient();
       }
     }
@@ -723,9 +726,12 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
         return;
       }
       try {
-        delegate.close(timeout, unit);
+        Consumer<K, V> delegate = this.delegate;
+        if (delegate != null) {
+          delegate.close(timeout, unit);
+        }
       } finally {
-        delegate = null;
+        this.delegate = null;
         closeMdsClient();
       }
     }
@@ -738,9 +744,12 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
         return;
       }
       try {
-        delegate.close(timeout);
+        Consumer<K, V> delegate = this.delegate;
+        if (delegate != null) {
+          delegate.close(timeout);
+        }
       } finally {
-        delegate = null;
+        this.delegate = null;
         closeMdsClient();
       }
     }
