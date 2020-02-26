@@ -98,9 +98,13 @@ public class MarioMetadataServiceClientTest {
         new HashSet<>(Arrays.asList(CLUSTER_GROUP.getEnvironment())), new HashSet<>(Arrays.asList(TOPIC1)));
 
     List<KafkaClusterDescriptor> expectedClustersFromMario =
-        Arrays.asList(new KafkaClusterDescriptor(CLUSTER1_ID, 0, CLUSTER1.getName(), CLUSTER_GROUP.getName(), "",
-            CLUSTER1.getZkConnection(), CLUSTER1.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment()));
-    List<KafkaTopicModel> expectedTopicsFromMario = Arrays.asList(new KafkaTopicModel(CLUSTER1_ID, 0, TOPIC1, 1));
+        Arrays.asList(
+            new KafkaClusterDescriptor(CLUSTER1_ID, 0, CLUSTER1.getName(), CLUSTER_GROUP.getName(), "",
+                CLUSTER1.getZkConnection(), CLUSTER1.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment(), 0)
+        );
+    List<KafkaTopicModel> expectedTopicsFromMario = Arrays.asList(
+        new KafkaTopicModel(CLUSTER1_ID, 0, TOPIC1, CLUSTER1_ID, 1, 0, false)
+    );
     TopicQueryResults expectedTopicQueryResults =
         new TopicQueryResults(expectedClustersFromMario, expectedTopicsFromMario);
     CompletableFuture<TopicQueryResults> expectedFuture = new CompletableFuture();
@@ -121,11 +125,15 @@ public class MarioMetadataServiceClientTest {
     List<KafkaClusterDescriptor> expectedClustersFromMario =
         Arrays.asList(
             new KafkaClusterDescriptor(CLUSTER1_ID, 0, CLUSTER1.getName(), CLUSTER_GROUP.getName(), "",
-            CLUSTER1.getZkConnection(), CLUSTER1.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment()),
+                CLUSTER1.getZkConnection(), CLUSTER1.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment(), 0),
             new KafkaClusterDescriptor(CLUSTER2_ID, 0, CLUSTER2.getName(), CLUSTER_GROUP.getName(), "",
-                CLUSTER2.getZkConnection(), CLUSTER2.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment()));
+                CLUSTER2.getZkConnection(), CLUSTER2.getBootstrapUrl(), CLUSTER_GROUP.getEnvironment(), 0)
+        );
     List<KafkaTopicModel> expectedTopicsFromMario =
-        Arrays.asList(new KafkaTopicModel(CLUSTER1_ID, 0, TOPIC1, 1), new KafkaTopicModel(CLUSTER2_ID, 0, TOPIC2, 1));
+        Arrays.asList(
+            new KafkaTopicModel(CLUSTER1_ID, 0, TOPIC1, CLUSTER1_ID, 1, 0, false),
+            new KafkaTopicModel(CLUSTER2_ID, 0, TOPIC2, CLUSTER2_ID, 1, 0, false)
+        );
     CompletableFuture<TopicQueryResults> expectedFuture = new CompletableFuture();
     expectedFuture.complete(new TopicQueryResults(expectedClustersFromMario, expectedTopicsFromMario));
 
@@ -136,7 +144,11 @@ public class MarioMetadataServiceClientTest {
     Map<ClusterDescriptor, Set<TopicPartition>> expectedResult = new HashMap<>();
     expectedResult.put(CLUSTER1, new HashSet<>(Arrays.asList(topicPartition1)));
     expectedResult.put(CLUSTER2, new HashSet<>(Arrays.asList(topicPartition2)));
-    assertEquals(expectedResult, _marioMetadataServiceClient.getClustersForTopicPartitions(
-        new HashSet<>(Arrays.asList(topicPartition1, topicPartition2)), CLUSTER_GROUP, 1000).getPartitionsByCluster());
+    Map<ClusterDescriptor, Set<TopicPartition>> partitionsByCluster =
+        _marioMetadataServiceClient.getClustersForTopicPartitions(
+            new HashSet<>(Arrays.asList(topicPartition1, topicPartition2)), CLUSTER_GROUP, 1000
+        )
+        .getPartitionsByCluster();
+    assertEquals(expectedResult, partitionsByCluster);
   }
 }

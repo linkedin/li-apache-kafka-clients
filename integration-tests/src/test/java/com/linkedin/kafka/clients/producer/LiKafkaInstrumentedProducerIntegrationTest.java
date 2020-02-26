@@ -12,7 +12,7 @@ import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
 import com.linkedin.mario.common.models.v1.ClientConfigRule;
 import com.linkedin.mario.common.models.v1.ClientConfigRules;
 import com.linkedin.mario.common.models.v1.ClientPredicates;
-import com.linkedin.mario.server.MarioApplication;
+import com.linkedin.mario.server.EmbeddableMario;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
@@ -50,7 +50,7 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
   public void testProducerLiveConfigReload() throws Exception {
     String topic = "testProducerLiveConfigReload";
     createTopic(topic, 1);
-    MarioApplication mario = new MarioApplication(null);
+    EmbeddableMario mario = new EmbeddableMario(null);
     Random random = new Random();
 
     Properties extra = new Properties();
