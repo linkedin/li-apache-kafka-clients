@@ -1,6 +1,7 @@
 li-apache-kafka-clients
 ===================
-[![CircleCI](https://circleci.com/gh/linkedin/li-apache-kafka-clients/tree/master.svg?style=svg)](https://circleci.com/gh/linkedin/li-apache-kafka-clients/tree/master)
+[ ![CircleCI](https://circleci.com/gh/linkedin/li-apache-kafka-clients/tree/master.svg?style=svg) ](https://circleci.com/gh/linkedin/li-apache-kafka-clients/tree/master)
+[ ![Download](https://api.bintray.com/packages/linkedin/maven/li-apache-kafka-clients/images/download.svg) ](https://bintray.com/linkedin/maven/li-apache-kafka-clients/_latestVersion)
 
 ### Introduction ###
 li-apache-kafka-clients is a wrapper Kafka clients library built on top of vanilla Apache Kafka clients.
@@ -32,8 +33,8 @@ repositories {
 }
 
 dependencies {
-  compile 'com.linkedin.kafka.clients:li-apache-kafka-clients:0.0.15'
-  testCompile 'com.linkedin.kafka.clients:kafka-test-harness:0.0.15' //if you want to use the test harness 
+  compile 'com.linkedin.kafka.clients:li-apache-kafka-clients:1.0.39'
+  testCompile 'com.linkedin.kafka.clients:kafka-test-harness:1.0.39' //if you want to use the test harness 
 }
 ```
 
