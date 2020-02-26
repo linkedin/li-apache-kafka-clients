@@ -50,7 +50,7 @@ project.ext {
     }
   }
   liKafkaVersion = "2.0.0.24"
-  marioVersion = "0.0.26"
+  marioVersion = "0.0.27"
 }
 
 subprojects {
