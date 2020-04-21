@@ -24,6 +24,8 @@ import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.ExtendedDeserializer;
+import org.apache.kafka.common.serialization.ExtendedSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -421,7 +423,12 @@ public class ConsumerRecordsProcessor<K, V> {
     K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
     if (valueBytes != INCOMPLETE_RESULT) {
-      V value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
+      V value;
+      if (_valueDeserializer instanceof ExtendedDeserializer) {
+        value = ((ExtendedDeserializer<V>) _valueDeserializer).deserialize(tp.topic(), consumerRecord.headers(), valueBytes);
+      } else {
+        value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
+      }
       if (_auditor != null) {
         long sizeInBytes = (consumerRecord.key() == null ? 0 : consumerRecord.key().length) +
             (valueBytes == null ? 0 : valueBytes.length);

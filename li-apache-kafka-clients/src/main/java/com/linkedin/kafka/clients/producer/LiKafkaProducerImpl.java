@@ -42,6 +42,7 @@ import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.serialization.ExtendedSerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -290,7 +291,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       byte[] serializedValue;
       byte[] serializedKey;
       try {
-        serializedValue = _valueSerializer.serialize(topic, value);
+        // ExtendedSerializer is used to test Share dictionary compression
+        if (_valueSerializer instanceof ExtendedSerializer) {
+          serializedValue = ((ExtendedSerializer<V>) _valueSerializer).serialize(topic, headers, value);
+        } else {
+          serializedValue = _valueSerializer.serialize(topic, value);
+        }
         serializedKey = _keySerializer.serialize(topic, key);
       } catch (Throwable t) {
         // Audit the attempt and the failure.
