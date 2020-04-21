@@ -85,6 +85,7 @@ public class ConsumerRecordsProcessor<K, V> {
   private final Map<TopicPartition, ConsumerHighWatermarkState> _partitionConsumerHighWatermark;
   private final Auditor<K, V> _auditor;
   private final Function<TopicPartition, ConsumerHighWatermarkState> _storedConsumerHighWatermark;
+  private final DeserializeStrategy<V> _deserializeStrategy;
 
   private long recordsSkipped = 0;
 
@@ -126,6 +127,22 @@ public class ConsumerRecordsProcessor<K, V> {
       }
       return new ConsumerHighWatermarkState(consumerHighWatermark, offsetAndMetadata.offset());
     };
+    // Performance optimization to avoid a call to instanceof for every deserialization call
+    if (_valueDeserializer instanceof ExtendedDeserializer) {
+      _deserializeStrategy = new DeserializeStrategy<V>() {
+        @Override
+        public V deserialize(String topic, Headers headers, byte[] data) {
+          return ((ExtendedDeserializer<V>) _valueDeserializer).deserialize(topic, headers, data);
+        }
+      };
+    } else {
+      _deserializeStrategy = new DeserializeStrategy<V>() {
+        @Override
+        public V deserialize(String topic, Headers headers, byte[] data) {
+          return _valueDeserializer.deserialize(topic, data);
+        }
+      };
+    }
   }
 
   /**
@@ -423,12 +440,7 @@ public class ConsumerRecordsProcessor<K, V> {
     K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
     if (valueBytes != INCOMPLETE_RESULT) {
-      V value;
-      if (_valueDeserializer instanceof ExtendedDeserializer) {
-        value = ((ExtendedDeserializer<V>) _valueDeserializer).deserialize(tp.topic(), consumerRecord.headers(), valueBytes);
-      } else {
-        value = _valueDeserializer.deserialize(tp.topic(), valueBytes);
-      }
+      V value = (V) _deserializeStrategy.deserialize(tp.topic(), consumerRecord.headers(), valueBytes);
       if (_auditor != null) {
         long sizeInBytes = (consumerRecord.key() == null ? 0 : consumerRecord.key().length) +
             (valueBytes == null ? 0 : valueBytes.length);
@@ -527,4 +539,7 @@ public class ConsumerRecordsProcessor<K, V> {
     return hw > offset;
   }
 
+  private static interface DeserializeStrategy<V> {
+    V deserialize(String topic, Headers headers, byte[] data);
+  }
 }

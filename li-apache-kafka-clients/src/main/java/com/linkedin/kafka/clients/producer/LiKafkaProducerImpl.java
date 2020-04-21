@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
@@ -150,6 +151,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   // This is null if the underlying producer does not have an implementation for time-bounded flush
   private final Method _boundedFlushMethod;
   private final AtomicInteger _boundFlushThreadCount = new AtomicInteger();
+  private final SerializeStrategy<V> _serializeStrategy;
 
   public LiKafkaProducerImpl(Properties props) {
     this(new LiKafkaProducerConfig(props), null, null, null, null);
@@ -202,6 +204,23 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       _valueSerializer = valueSerializer != null ? valueSerializer
           : configs.getConfiguredInstance(LiKafkaProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, Serializer.class);
       _valueSerializer.configure(configs.originals(), false);
+
+      // Performance optimization to avoid a call to instanceof for every deserialization call
+      if (_valueSerializer instanceof ExtendedSerializer) {
+        _serializeStrategy = new SerializeStrategy<V>() {
+          @Override
+          public byte[] serialize(String topic, Headers headers, V data) {
+            return ((ExtendedSerializer<V>) _valueSerializer).serialize(topic, headers, data);
+          }
+        };
+      } else {
+        _serializeStrategy = new SerializeStrategy<V>() {
+          @Override
+          public byte[] serialize(String topic, Headers headers, V data) {
+            return _valueSerializer.serialize(topic, data);
+          }
+        };
+      }
 
       _partitioner = configs.getConfiguredInstance(LiKafkaProducerConfig.PARTITIONER_CLASS_CONFIG, Partitioner.class);
       _maxBlockMs = configs.getLong(LiKafkaProducerConfig.MAX_BLOCK_MS_CONFIG);
@@ -292,11 +311,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       byte[] serializedKey;
       try {
         // ExtendedSerializer is used to test Share dictionary compression
-        if (_valueSerializer instanceof ExtendedSerializer) {
-          serializedValue = ((ExtendedSerializer<V>) _valueSerializer).serialize(topic, headers, value);
-        } else {
-          serializedValue = _valueSerializer.serialize(topic, value);
-        }
+        serializedValue = _serializeStrategy.serialize(topic, headers, value);
         serializedKey = _keySerializer.serialize(topic, key);
       } catch (Throwable t) {
         // Audit the attempt and the failure.
@@ -557,5 +572,9 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   @Override
   public void abortTransaction() throws ProducerFencedException {
     _producer.abortTransaction();
+  }
+
+  private static interface SerializeStrategy<V> {
+    byte[] serialize(String topic, Headers headers, V data);
   }
 }
