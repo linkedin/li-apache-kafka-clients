@@ -25,7 +25,6 @@ import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.ExtendedDeserializer;
-import org.apache.kafka.common.serialization.ExtendedSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

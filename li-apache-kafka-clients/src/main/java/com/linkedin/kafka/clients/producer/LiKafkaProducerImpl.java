@@ -6,7 +6,6 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
-import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
