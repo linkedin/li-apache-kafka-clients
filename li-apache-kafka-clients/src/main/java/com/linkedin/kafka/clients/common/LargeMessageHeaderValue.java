@@ -32,7 +32,7 @@ public class LargeMessageHeaderValue {
   // SegmentSerializer/SegmentDeserializer interface to split
   // and assemble large message segments.
   public static final byte LEGACY = (byte) 0;
-  // This indicates that the segment metadata of a large message can be found in the record header and not in the payload
+  // Added new field - messageSizeInBytes to the header value
   public static final byte LEGACY_V2 = (byte) 1;
 
   public LargeMessageHeaderValue(byte type, UUID uuid, int segmentNumber, int numberOfSegments, int messageSizeInBytes) {
@@ -76,7 +76,7 @@ public class LargeMessageHeaderValue {
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getSegmentNumber(), serialized, byteOffset);
     byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for segment number
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getNumberOfSegments(), serialized, byteOffset);
-    if (largeMessageHeaderValue.getType() == LEGACY_V2) { // We serialize the new field - messageSize
+    if (largeMessageHeaderValue.getType() == LEGACY_V2) { 
       byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for message size
       PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getMessageSizeInBytes(), serialized, byteOffset);
     }
