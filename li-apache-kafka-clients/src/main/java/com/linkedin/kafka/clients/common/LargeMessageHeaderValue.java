@@ -22,6 +22,11 @@ public class LargeMessageHeaderValue {
   public static final UUID EMPTY_UUID = new UUID(0L, 0L);
   public static final int INVALID_SEGMENT_ID = -1;
   public static final int INVALID_MESSAGE_SIZE = -1;
+
+  private static final int LEGACY_HEADER_SIZE = 1 + PrimitiveEncoderDecoder.LONG_SIZE +
+      PrimitiveEncoderDecoder.LONG_SIZE + PrimitiveEncoderDecoder.INT_SIZE + PrimitiveEncoderDecoder.INT_SIZE;
+  // new field added in LEGACY_V2 - messageSizeInBytes
+  private static final int LEGACY_V2_HEADER_SIZE = LEGACY_HEADER_SIZE + PrimitiveEncoderDecoder.INT_SIZE;
   private final byte _type;
   private final UUID _uuid;
   private final int _segmentNumber;
@@ -64,7 +69,8 @@ public class LargeMessageHeaderValue {
   }
 
   public static byte[] toBytes(LargeMessageHeaderValue largeMessageHeaderValue) {
-    byte[] serialized = largeMessageHeaderValue.getType() == LEGACY ? new byte[25] : new byte[29];
+    byte[] serialized = largeMessageHeaderValue.getType() == LEGACY ? new byte[LEGACY_HEADER_SIZE]
+        : new byte[LEGACY_V2_HEADER_SIZE];
 
     int byteOffset = 0;
     serialized[byteOffset] = largeMessageHeaderValue.getType();
@@ -76,7 +82,7 @@ public class LargeMessageHeaderValue {
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getSegmentNumber(), serialized, byteOffset);
     byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for segment number
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getNumberOfSegments(), serialized, byteOffset);
-    if (largeMessageHeaderValue.getType() == LEGACY_V2) { 
+    if (largeMessageHeaderValue.getType() == LEGACY_V2) {
       byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for message size
       PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getMessageSizeInBytes(), serialized, byteOffset);
     }
@@ -95,7 +101,7 @@ public class LargeMessageHeaderValue {
     int segmentNumber = PrimitiveEncoderDecoder.decodeInt(bytes, byteOffset);
     byteOffset += PrimitiveEncoderDecoder.INT_SIZE;
     int numberOfSegments = PrimitiveEncoderDecoder.decodeInt(bytes, byteOffset);
-    if (bytes.length == 29) {
+    if (bytes.length == LEGACY_V2_HEADER_SIZE) {
       byteOffset += PrimitiveEncoderDecoder.INT_SIZE;
       int messageSizeInBytes = PrimitiveEncoderDecoder.decodeInt(bytes, byteOffset);
       return new LargeMessageHeaderValue(type, new UUID(mostSignificantBits, leastSignificantBits), segmentNumber, numberOfSegments, messageSizeInBytes);
