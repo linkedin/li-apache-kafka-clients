@@ -459,7 +459,9 @@ public class ConsumerRecordsProcessor<K, V> {
             largeMessageHeaderValue.getType(),
             LargeMessageHeaderValue.EMPTY_UUID,
             LargeMessageHeaderValue.INVALID_SEGMENT_ID,
-            largeMessageHeaderValue.getNumberOfSegments()
+            largeMessageHeaderValue.getNumberOfSegments(),
+            largeMessageHeaderValue.getType() == LargeMessageHeaderValue.LEGACY ?
+                LargeMessageHeaderValue.INVALID_MESSAGE_SIZE : largeMessageHeaderValue.getMessageSizeInBytes()
         );
         headers.add(Constants.LARGE_MESSAGE_HEADER, LargeMessageHeaderValue.toBytes(largeMessageHeaderValue));
       }
