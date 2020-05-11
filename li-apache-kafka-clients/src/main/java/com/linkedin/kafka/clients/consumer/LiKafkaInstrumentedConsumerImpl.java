@@ -150,7 +150,7 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
           LOG.error("exception waiting to contact {}, using user-provided configs as fallback",
               mdsClient.getLastAttemptedMarioUrl(), issue);
         } else {
-          LOG.error("unable to contact {} within timeout ({}), using user-provided configs as fallback",
+          LOG.warn("unable to contact {} within timeout ({}), using user-provided configs as fallback",
               mdsClient.getLastAttemptedMarioUrl(), initialConnectionTimeoutMs);
         }
       } else if (issue != null) {
