@@ -189,7 +189,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     try {
       producerSupportsBoundedFlush = _producer.getClass().getMethod("flush", long.class, TimeUnit.class);
     } catch (NoSuchMethodException e) {
-      LOG.warn("Wrapped KafkaProducer does not support time-bounded flush.", e);
+      LOG.debug("Wrapped KafkaProducer does not support time-bounded flush.", e);
       producerSupportsBoundedFlush = null;
     }
     _boundedFlushMethod = producerSupportsBoundedFlush;
