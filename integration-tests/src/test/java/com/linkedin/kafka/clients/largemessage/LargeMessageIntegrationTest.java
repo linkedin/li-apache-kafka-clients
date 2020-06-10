@@ -8,7 +8,6 @@ import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
 import com.linkedin.kafka.clients.utils.Constants;
-import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
@@ -162,7 +161,7 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
       }
       for (ConsumerRecord<String, String> consumerRecord : records) {
         // Verify headers
-        Map<String, byte[]> headers = LiKafkaClientsTestUtils.fetchSpecialHeaders(consumerRecord.headers());
+        Map<String, byte[]> headers = LiKafkaClientsUtils.fetchSpecialHeaders(consumerRecord.headers());
         assertTrue(headers.containsKey(Constants.TIMESTAMP_HEADER));
         assertEquals(PrimitiveEncoderDecoder.LONG_SIZE, headers.get(Constants.TIMESTAMP_HEADER).length);
         long eventTimestamp = PrimitiveEncoderDecoder.decodeLong(headers.get(Constants.TIMESTAMP_HEADER), 0);
