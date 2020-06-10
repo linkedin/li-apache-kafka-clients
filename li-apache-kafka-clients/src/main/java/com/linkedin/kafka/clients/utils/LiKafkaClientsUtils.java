@@ -236,20 +236,22 @@ public class LiKafkaClientsUtils {
    * @param headers ConsumerRecord headers
    * @return Returns null if _t does not exist otherwise returns the long value
    */
-  public static Long fetchTimestampHeader(Map<String, byte[]> headers) {
-    return headers.containsKey(Constants.TIMESTAMP_HEADER)
-        ? PrimitiveEncoderDecoder.decodeLong(headers.get(Constants.TIMESTAMP_HEADER), 0)
+  public static Long fetchTimestampHeader(Headers headers) {
+    Map<String, byte[]> specialHeaders = fetchSpecialHeaders(headers);
+    return specialHeaders.containsKey(Constants.TIMESTAMP_HEADER)
+        ? PrimitiveEncoderDecoder.decodeLong(specialHeaders.get(Constants.TIMESTAMP_HEADER), 0)
         : null;
   }
 
   /**
    * Fetch value of special large message header (_lm)
    * @param headers ConsumerRecord headers
-   * @return Returns null if _t does not exist otherwise returns the long value
+   * @return Returns null if _lm does not exist otherwise returns the long value
    */
-  public static LargeMessageHeaderValue fetchLargeMessageHeader(Map<String, byte[]> headers) {
-    return headers.containsKey(Constants.LARGE_MESSAGE_HEADER)
-        ? LargeMessageHeaderValue.fromBytes(headers.get(Constants.LARGE_MESSAGE_HEADER))
+  public static LargeMessageHeaderValue fetchLargeMessageHeader(Headers headers) {
+    Map<String, byte[]> specialHeaders = fetchSpecialHeaders(headers);
+    return specialHeaders.containsKey(Constants.LARGE_MESSAGE_HEADER)
+        ? LargeMessageHeaderValue.fromBytes(specialHeaders.get(Constants.LARGE_MESSAGE_HEADER))
         : null;
   }
 }

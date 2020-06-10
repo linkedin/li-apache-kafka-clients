@@ -7,9 +7,7 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
-import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
-import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
 import java.util.Collections;
@@ -37,9 +35,7 @@ import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_ME
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG;
 import static org.apache.kafka.clients.CommonClientConfigs.CLIENT_ID_CONFIG;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.*;
 
 
 /**
@@ -161,13 +157,10 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
       }
       for (ConsumerRecord<String, String> consumerRecord : records) {
         // Verify headers
-        Map<String, byte[]> headers = LiKafkaClientsUtils.fetchSpecialHeaders(consumerRecord.headers());
-        assertTrue(headers.containsKey(Constants.TIMESTAMP_HEADER));
-        assertEquals(PrimitiveEncoderDecoder.LONG_SIZE, headers.get(Constants.TIMESTAMP_HEADER).length);
-        long eventTimestamp = PrimitiveEncoderDecoder.decodeLong(headers.get(Constants.TIMESTAMP_HEADER), 0);
+        Long eventTimestamp = LiKafkaClientsUtils.fetchTimestampHeader(consumerRecord.headers());
+        assertNotNull(eventTimestamp);
         assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
-        assertTrue(headers.containsKey(Constants.LARGE_MESSAGE_HEADER));
-        LargeMessageHeaderValue largeMessageHeaderValue = LargeMessageHeaderValue.fromBytes(headers.get(Constants.LARGE_MESSAGE_HEADER));
+        LargeMessageHeaderValue largeMessageHeaderValue = LiKafkaClientsUtils.fetchLargeMessageHeader(consumerRecord.headers());
         assertEquals(largeMessageHeaderValue.getSegmentNumber(), -1);
         assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 6);
         assertEquals(largeMessageHeaderValue.getType(), LargeMessageHeaderValue.LEGACY_V2);
