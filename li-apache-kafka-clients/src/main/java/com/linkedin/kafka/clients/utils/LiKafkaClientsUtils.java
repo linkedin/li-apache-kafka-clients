@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.utils;
 
+import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.mario.common.versioning.VersioningUtils;
 import java.nio.ByteBuffer;
 import java.security.NoSuchAlgorithmException;
@@ -22,6 +23,8 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.Headers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -204,5 +207,51 @@ public class LiKafkaClientsUtils {
       throw new IllegalArgumentException("ambiguous client id from client: " + candidates);
     }
     return candidates.iterator().next();
+  }
+
+  /**
+   * Special header keys have a "_" prefix and are managed internally by the clients.
+   * @param headers
+   * @return
+   */
+  public static Map<String, byte[]> fetchSpecialHeaders(Headers headers) {
+    Map<String, byte[]> map = new HashMap<>();
+    for (Header header : headers) {
+
+      if (!header.key().startsWith("_")) {
+        // skip any non special header
+        continue;
+      }
+
+      if (map.containsKey(header.key())) {
+        throw new IllegalStateException("Duplicate special header found " + header.key());
+      }
+      map.put(header.key(), header.value());
+    }
+    return map;
+  }
+
+  /**
+   * Fetch value of special timestamp header (_t)
+   * @param headers ConsumerRecord headers
+   * @return Returns null if _t does not exist otherwise returns the long value
+   */
+  public static Long fetchTimestampHeader(Headers headers) {
+    Map<String, byte[]> specialHeaders = fetchSpecialHeaders(headers);
+    return specialHeaders.containsKey(Constants.TIMESTAMP_HEADER)
+        ? PrimitiveEncoderDecoder.decodeLong(specialHeaders.get(Constants.TIMESTAMP_HEADER), 0)
+        : null;
+  }
+
+  /**
+   * Fetch value of special large message header (_lm)
+   * @param headers ConsumerRecord headers
+   * @return Returns null if _lm does not exist otherwise returns the long value
+   */
+  public static LargeMessageHeaderValue fetchLargeMessageHeader(Headers headers) {
+    Map<String, byte[]> specialHeaders = fetchSpecialHeaders(headers);
+    return specialHeaders.containsKey(Constants.LARGE_MESSAGE_HEADER)
+        ? LargeMessageHeaderValue.fromBytes(specialHeaders.get(Constants.LARGE_MESSAGE_HEADER))
+        : null;
   }
 }

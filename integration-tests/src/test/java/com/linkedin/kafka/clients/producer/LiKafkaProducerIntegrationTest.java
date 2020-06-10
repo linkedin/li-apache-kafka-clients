@@ -7,7 +7,7 @@ package com.linkedin.kafka.clients.producer;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.utils.Constants;
-import com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils;
+import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import java.time.Duration;
@@ -89,7 +89,7 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
       while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
         ConsumerRecords<String, String> records = consumer.poll(100);
         for (ConsumerRecord<String, String> record : records) {
-          Map<String, byte[]> headers = LiKafkaClientsTestUtils.fetchSpecialHeaders(record.headers());
+          Map<String, byte[]> headers = LiKafkaClientsUtils.fetchSpecialHeaders(record.headers());
           assertTrue(headers.containsKey(Constants.TIMESTAMP_HEADER));
           long eventTimestamp = PrimitiveEncoderDecoder.decodeLong(headers.get(Constants.TIMESTAMP_HEADER), 0);
           assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
