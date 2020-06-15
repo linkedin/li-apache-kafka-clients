@@ -24,7 +24,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -54,7 +53,8 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
   private static final String BOUNDED_FLUSH_THREAD_PREFIX = "Bounded-Flush-Thread-";
 
   private final long initialConnectionTimeoutMs;
-  private final ReadWriteLock delegateLock = new ReentrantReadWriteLock();
+  private final ReentrantReadWriteLock delegateLock = new ReentrantReadWriteLock();
+  private final Object closeLock = new Object();
   private final Properties baseConfig;
   private final Map<String, String> libraryVersions;
   private final ProducerFactory<K, V> producerFactory;
@@ -198,6 +198,10 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
   private boolean recreateDelegate(boolean abortIfExists) {
     delegateLock.writeLock().lock();
     try {
+      if (isClosed()) {
+        LOG.debug("this producer has been closed, not creating a new delegate");
+        return false;
+      }
       Producer<K, V> prevProducer = delegate;
       if (prevProducer != null) {
         if (abortIfExists) {
@@ -312,6 +316,8 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
   public Future<RecordMetadata> send(ProducerRecord<K, V> record, Callback callback) {
     verifyOpen();
 
+    //the callback may try and obtain a write lock (say call producer.close())
+    //so we grab an update lock, which is upgradable to a write lock
     delegateLock.readLock().lock();
     try {
       return delegate.send(record, callback);
@@ -444,15 +450,38 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
     if (isClosed()) {
       return false;
     }
-    delegateLock.writeLock().lock();
-    try {
+    synchronized (closeLock) {
       if (isClosed()) {
-        return false;
+        return false; //someone beat us to it
       }
-      closedAt = System.currentTimeMillis();
-      return true;
-    } finally {
-      delegateLock.writeLock().unlock();
+      int holds = delegateLock.getReadHoldCount(); //this is for our thread
+      ReentrantReadWriteLock.ReadLock readLock = delegateLock.readLock();
+      ReentrantReadWriteLock.WriteLock writeLock = delegateLock.writeLock();
+      if (holds > 0) { //do we own a read lock ?
+        for (int i = 0; i < holds; i++) {
+          readLock.unlock();
+        }
+        //at this point we no longer hold a read lock, but any number of other
+        //readers/writers may slip past us
+      }
+      try {
+        writeLock.lock(); //wait for a write lock
+        try {
+          if (isClosed()) {
+            return false; //some other writer may have beaten us again
+          }
+          closedAt = System.currentTimeMillis();
+          return true;
+        } finally {
+          writeLock.unlock();
+        }
+      } finally {
+        if (holds > 0) { //restore our read lock holds (if we had any)
+          for (int i = 0; i < holds; i++) {
+            readLock.lock();
+          }
+        }
+      }
     }
   }
 

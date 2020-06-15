@@ -211,8 +211,8 @@ public class LiKafkaClientsUtils {
 
   /**
    * Special header keys have a "_" prefix and are managed internally by the clients.
-   * @param headers
-   * @return
+   * @param headers kafka headers object
+   * @return any "special" headers container in the argument map
    */
   public static Map<String, byte[]> fetchSpecialHeaders(Headers headers) {
     Map<String, byte[]> map = new HashMap<>();

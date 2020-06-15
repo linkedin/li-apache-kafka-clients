@@ -17,9 +17,12 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.Random;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -100,6 +103,78 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
 
     producer.close(Duration.ofSeconds(30));
     mario.close();
+  }
+
+  @Test
+  public void testCloseFromProduceCallbackOnSenderThread() throws Exception {
+    String topic = "testCloseFromProduceCallbackOnSenderThread";
+    createTopic(topic, 1);
+
+    Random random = new Random(666);
+    Properties extra = new Properties();
+    extra.setProperty(ProducerConfig.MAX_REQUEST_SIZE_CONFIG, "" + 50000000); //~50MB (larger than broker-size setting)
+    extra.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
+    extra.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    extra.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    Properties baseProducerConfig = getProducerProperties(extra);
+    LiKafkaInstrumentedProducerImpl<byte[], byte[]> producer = new LiKafkaInstrumentedProducerImpl<byte[], byte[]>(
+        baseProducerConfig,
+        Collections.emptyMap(),
+        (baseConfig, overrideConfig) -> new LiKafkaProducerImpl<byte[], byte[]>(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        () -> "bogus",
+        10 //dont wait for a mario connection
+    );
+
+    byte[] key = new byte[3000];
+    byte[] value = new byte[49000000];
+    random.nextBytes(key);
+    random.nextBytes(value); //random data is incompressible, making sure our request is large
+    ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, key, value);
+
+    AtomicReference<Throwable> issueRef = new AtomicReference<>();
+    Thread testThread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          final Thread ourThread = Thread.currentThread();
+          Future<RecordMetadata> future = producer.send(record, new Callback() {
+            @Override
+            public void onCompletion(RecordMetadata metadata, Exception exception) {
+              //we expect a RecordTooLargeException. we also expect this to happen
+              //on the same thread.
+              if (Thread.currentThread() != ourThread) {
+                issueRef.compareAndSet(null,
+                    new IllegalStateException("completion did not happen on caller thread by " + Thread.currentThread().getName())
+                );
+              }
+              producer.close(1, TimeUnit.SECONDS);
+            }
+          });
+          RecordMetadata recordMetadata = future.get(1, TimeUnit.MINUTES);
+        } catch (Throwable anything) {
+          issueRef.compareAndSet(null, anything);
+        }
+      }
+    }, "testCloseFromProduceCallbackOnSenderThread-thread");
+    testThread.setDaemon(true);
+    testThread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+      @Override
+      public void uncaughtException(Thread t, Throwable e) {
+        issueRef.compareAndSet(null, e);
+      }
+    });
+    testThread.start();
+
+    testThread.join(TimeUnit.MINUTES.toMillis(1));
+    Thread.State state = testThread.getState();
+    Assert.assertEquals(
+        state,
+        Thread.State.TERMINATED,
+        "thread was expected to finish, instead its " + state
+    );
+    Throwable issue = issueRef.get();
+    Throwable root = Throwables.getRootCause(issue);
+    Assert.assertTrue(root instanceof RecordTooLargeException, root.getMessage());
   }
 
   private void createTopic(String topicName, int numPartitions) throws Exception {
