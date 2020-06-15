@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.producer;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
@@ -469,19 +470,23 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
     long deadlineTimeMs = startTimeMs + budgetMs;
 
     _closed = true;
-    synchronized (_numThreadsInSend) {
-      long remainingMs = deadlineTimeMs - System.currentTimeMillis();
-      while (_numThreadsInSend.get() > 0 && remainingMs > 0) {
-        try {
-          _numThreadsInSend.wait(remainingMs);
-        } catch (InterruptedException e) {
-          LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.get());
-          break;
+
+    //wait for all producing threads to clear the auditor
+    //if there's a meaningful auditor.
+    if (!(_auditor instanceof NoOpAuditor)) {
+      synchronized (_numThreadsInSend) {
+        long remainingMs = deadlineTimeMs - System.currentTimeMillis();
+        while (_numThreadsInSend.get() > 0 && remainingMs > 0) {
+          try {
+            _numThreadsInSend.wait(remainingMs);
+          } catch (InterruptedException e) {
+            LOG.error("Interrupted when there are still {} sender threads.", _numThreadsInSend.get());
+            break;
+          }
+          remainingMs = deadlineTimeMs - System.currentTimeMillis();
         }
-        remainingMs = deadlineTimeMs - System.currentTimeMillis();
       }
     }
-
     _auditor.close(Math.max(0, deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
     _producer.close(Math.max(0, deadlineTimeMs - System.currentTimeMillis()), TimeUnit.MILLISECONDS);
     LOG.info("LiKafkaProducer shutdown complete in {} millis", (System.currentTimeMillis() - startTimeMs));
