@@ -117,8 +117,9 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       LOG.error("issues translating producer config to strings: {}", csv);
     }
 
+    String clientId = baseConfig.getProperty("client.id");
     mdsClient = new SimpleClient(
-        "LiKafkaInstrumentedProducer",
+        "LiKafkaInstrumentedProducer " + clientId,
         PubSubClientType.PRODUCER,
         mdsUrlSupplier,
         TimeUnit.MINUTES.toMillis(1),

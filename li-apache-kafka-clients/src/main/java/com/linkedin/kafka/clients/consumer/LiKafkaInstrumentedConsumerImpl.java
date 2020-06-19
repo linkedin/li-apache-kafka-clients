@@ -127,8 +127,9 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
       LOG.error("issues translating consumer config to strings: {}", csv);
     }
 
+    String clientId = baseConfig.getProperty("client.id");
     mdsClient = new SimpleClient(
-        "LiKafkaInstrumentedConsumer",
+        "LiKafkaInstrumentedConsumer " + clientId,
         PubSubClientType.CONSUMER,
         mdsUrlSupplier,
         TimeUnit.MINUTES.toMillis(1),
