@@ -9,6 +9,7 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.mario.client.EventHandler;
 import com.linkedin.mario.client.SimpleClient;
 import com.linkedin.mario.client.SimpleClientState;
+import com.linkedin.mario.common.websockets.PubSubClientType;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -117,12 +118,15 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
     }
 
     mdsClient = new SimpleClient(
+        "LiKafkaInstrumentedProducer",
+        PubSubClientType.PRODUCER,
         mdsUrlSupplier,
         TimeUnit.MINUTES.toMillis(1),
         TimeUnit.HOURS.toMillis(1),
         translatedBaseConfig,
         this.libraryVersions,
-        this
+        this,
+        null
     );
 
     boolean tryFallback;

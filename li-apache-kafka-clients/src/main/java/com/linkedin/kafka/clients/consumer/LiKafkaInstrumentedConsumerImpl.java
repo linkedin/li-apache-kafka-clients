@@ -11,6 +11,7 @@ import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.mario.client.EventHandler;
 import com.linkedin.mario.client.SimpleClient;
 import com.linkedin.mario.client.SimpleClientState;
+import com.linkedin.mario.common.websockets.PubSubClientType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -126,12 +127,16 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
       LOG.error("issues translating consumer config to strings: {}", csv);
     }
 
-    mdsClient = new SimpleClient(mdsUrlSupplier,
+    mdsClient = new SimpleClient(
+        "LiKafkaInstrumentedConsumer",
+        PubSubClientType.CONSUMER,
+        mdsUrlSupplier,
         TimeUnit.MINUTES.toMillis(1),
         TimeUnit.HOURS.toMillis(1),
         translatedBaseConfig,
         this.libraryVersions,
-        this
+        this,
+        null
     );
 
     boolean tryFallback;
