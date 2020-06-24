@@ -4,8 +4,12 @@
 
 package com.linkedin.kafka.clients.common;
 
+import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
+import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -27,6 +31,7 @@ public class LargeMessageHeaderValue {
       PrimitiveEncoderDecoder.LONG_SIZE + PrimitiveEncoderDecoder.INT_SIZE + PrimitiveEncoderDecoder.INT_SIZE;
   // new field added in LEGACY_V2 - messageSizeInBytes
   private static final int LEGACY_V2_HEADER_SIZE = LEGACY_HEADER_SIZE + PrimitiveEncoderDecoder.INT_SIZE;
+  private static final Logger LOG = LoggerFactory.getLogger(DefaultSegmentDeserializer.class);
   private final byte _type;
   private final UUID _uuid;
   private final int _segmentNumber;
@@ -39,6 +44,8 @@ public class LargeMessageHeaderValue {
   public static final byte LEGACY = (byte) 0;
   // Added new field - messageSizeInBytes to the header value
   public static final byte LEGACY_V2 = (byte) 1;
+  // Added new "type" - using header-based record for large message
+  public static final byte V3 = (byte) 2;
 
   public LargeMessageHeaderValue(byte type, UUID uuid, int segmentNumber, int numberOfSegments, int messageSizeInBytes) {
     _type = type;
@@ -82,7 +89,8 @@ public class LargeMessageHeaderValue {
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getSegmentNumber(), serialized, byteOffset);
     byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for segment number
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getNumberOfSegments(), serialized, byteOffset);
-    if (largeMessageHeaderValue.getType() == LEGACY_V2) {
+    // maintain compatibility for LEGACY_V2
+    if (largeMessageHeaderValue.getType() == LEGACY_V2 || largeMessageHeaderValue.getType() == V3) {
       byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for message size
       PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getMessageSizeInBytes(), serialized, byteOffset);
     }
@@ -107,5 +115,23 @@ public class LargeMessageHeaderValue {
       return new LargeMessageHeaderValue(type, new UUID(mostSignificantBits, leastSignificantBits), segmentNumber, numberOfSegments, messageSizeInBytes);
     }
     return new LargeMessageHeaderValue(type, new UUID(mostSignificantBits, leastSignificantBits), segmentNumber, numberOfSegments, INVALID_MESSAGE_SIZE);
+  }
+
+  /**
+   * Check if the value of this segment header is valid
+   * @return the check result
+   */
+  public boolean isValid() {
+    if (_type > LargeMessageSegment.CURRENT_VERSION) {
+      LOG.debug("Serialized version byte is greater than {}. not large message segment.",
+          LargeMessageSegment.CURRENT_VERSION);
+      return false;
+    }
+    if (_segmentNumber < 0 || _numberOfSegments <= 0 || _segmentNumber >= _numberOfSegments) {
+      LOG.warn("Serialized segment sequence {} not in [0, {}). treating as regular payload", _segmentNumber,
+          _numberOfSegments);
+      return false;
+    }
+    return true;
   }
 }

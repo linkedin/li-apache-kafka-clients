@@ -163,7 +163,7 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
         LargeMessageHeaderValue largeMessageHeaderValue = LiKafkaClientsUtils.fetchLargeMessageHeader(consumerRecord.headers());
         assertEquals(largeMessageHeaderValue.getSegmentNumber(), -1);
         assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 6);
-        assertEquals(largeMessageHeaderValue.getType(), LargeMessageHeaderValue.LEGACY_V2);
+        assertEquals(largeMessageHeaderValue.getType(), LargeMessageHeaderValue.V3);
 
         String messageId = consumerRecord.value().substring(0, 32);
         String origMessage = messages.get(messageId);

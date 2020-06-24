@@ -437,7 +437,10 @@ public class ConsumerRecordsProcessor<K, V> {
     TopicPartition tp = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
     ConsumerRecord<K, V> handledRecord = null;
     K key = _keyDeserializer.deserialize(tp.topic(), consumerRecord.key());
-    byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value());
+    // Create a new copy of the headers
+    Headers headers = new RecordHeaders(consumerRecord.headers());
+    Header largeMessageHeader = headers.lastHeader(Constants.LARGE_MESSAGE_HEADER);
+    byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value(), largeMessageHeader);
     if (valueBytes != INCOMPLETE_RESULT) {
       V value = (V) _deserializeStrategy.deserialize(tp.topic(), consumerRecord.headers(), valueBytes);
       if (_auditor != null) {
@@ -448,9 +451,6 @@ public class ConsumerRecordsProcessor<K, V> {
       }
 
       _partitionConsumerHighWatermark.computeIfAbsent(tp, _storedConsumerHighWatermark)._currentConsumerHighWatermark = consumerRecord.offset();
-      // Create a new copy of the headers
-      Headers headers = new RecordHeaders(consumerRecord.headers());
-      Header largeMessageHeader = headers.lastHeader(Constants.LARGE_MESSAGE_HEADER);
       if (largeMessageHeader != null) {
         LargeMessageHeaderValue largeMessageHeaderValue = LargeMessageHeaderValue.fromBytes(largeMessageHeader.value());
         // Once the large message header value is parsed, remove any such key from record headers
@@ -490,8 +490,17 @@ public class ConsumerRecordsProcessor<K, V> {
     return handledRecord;
   }
 
-  private byte[] parseAndMaybeTrackRecord(TopicPartition tp, long messageOffset, byte[] bytes) {
-    MessageAssembler.AssembleResult assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
+  private byte[] parseAndMaybeTrackRecord(TopicPartition tp,
+                                          long messageOffset,
+                                          byte[] bytes,
+                                          Header header) {
+    MessageAssembler.AssembleResult assembledResult;
+    if (header == null) {
+      assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
+    } else {
+      assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes, header);
+    }
+
     if (assembledResult.messageBytes() != INCOMPLETE_RESULT) {
       LOG.trace("Got message {} from partition {}", messageOffset, tp);
       boolean shouldSkip = shouldSkip(tp, messageOffset);

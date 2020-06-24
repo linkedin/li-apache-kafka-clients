@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -33,7 +34,7 @@ public class LargeMessageSegment {
   public final ByteBuffer payload;
   // The segment information over head bytes when serialize.
   public static final int SEGMENT_INFO_OVERHEAD = 16 + Integer.BYTES + Integer.BYTES + Integer.BYTES;
-  public static final byte CURRENT_VERSION = 0;
+  public static final byte CURRENT_VERSION = LargeMessageHeaderValue.V3;
 
   public LargeMessageSegment(UUID messageId,
                              int sequenceNumber,
@@ -44,6 +45,14 @@ public class LargeMessageSegment {
     this.sequenceNumber = sequenceNumber;
     this.numberOfSegments = numberOfSegments;
     this.messageSizeInBytes = messageSizeInBytes;
+    this.payload = payload;
+  }
+  public LargeMessageSegment(LargeMessageHeaderValue headerValue,
+      ByteBuffer payload) {
+    this.messageId = headerValue.getUuid();
+    this.sequenceNumber = headerValue.getSegmentNumber();
+    this.numberOfSegments = headerValue.getNumberOfSegments();
+    this.messageSizeInBytes = headerValue.getMessageSizeInBytes();
     this.payload = payload;
   }
 
