@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.largemessage;
 
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.header.Header;
 
 
 /**
@@ -26,6 +27,18 @@ public interface MessageAssembler {
    */
   AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes);
 
+  /**
+   * Assemble the message segments to the original message.
+   * When the segment provided can complete an original message, the original message will be returned. Otherwise it
+   * returns null.
+   *
+   * @param tp the partition of this segment.
+   * @param offset the offset of this segment.
+   * @param segmentBytes a message segment in byte array format created by {@link MessageSplitter}
+   * @param header record header of this segment
+   * @return The assemble result if a message is successfully assembled, otherwise returns null.
+   */
+  AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes, Header header);
   /**
    * Get the safe offset for a particular partition. When safe offset of a partition is not available, Long.Max_Value
    * will be returned.  This will also expire any large messages that can not be assembled if the interval between
@@ -56,6 +69,8 @@ public interface MessageAssembler {
    * Close the assembler.
    */
   void close();
+
+
 
   class AssembleResult {
     public static final byte[] INCOMPLETE_RESULT = new byte[0];
