@@ -81,6 +81,11 @@ public class DeliveredMessageOffsetTracker {
     return _offsetTrackerMap.computeIfAbsent(tp, topicPartition -> new PartitionOffsetTracker(offset));
   }
 
+  public long partitionSnag(TopicPartition tp) {
+    PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
+    return offsetTracker == null ? 0 : offsetTracker.partitionSnag();
+  }
+
   public Long safeOffset(TopicPartition tp) {
     PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
     return offsetTracker == null ? null : offsetTracker.currentSafeOffset();
@@ -183,6 +188,11 @@ public class DeliveredMessageOffsetTracker {
     private long _currentSafeOffset;
     private Long _delivered;
     private TreeSet<Long> _nonMessageOffsets;
+    /**
+     * Gives an idea about how far behind the safe offset of a partition is from its watermark. Hence, the snag distance
+     * for a partition is computed as (_delivered minus _currentSafeOffset).
+     */
+    private long _partitionSnag = 0;
 
     PartitionOffsetTracker(Long earliestTrackedOffset) {
       _currentSafeOffset = earliestTrackedOffset;
@@ -192,11 +202,34 @@ public class DeliveredMessageOffsetTracker {
     }
 
     void updateCurrentSafeOffset(long currentSafeOffset) {
+      if (_delivered != -1) {
+        if (currentSafeOffset == _delivered) {
+          _partitionSnag = 0;
+        } else {
+          if (currentSafeOffset > _currentSafeOffset) { // safe offset moves forward
+            _partitionSnag -= (currentSafeOffset - _currentSafeOffset);
+          } else if (currentSafeOffset < _currentSafeOffset) {  // safe offset moves backward
+            _partitionSnag += (_currentSafeOffset - currentSafeOffset);
+          }
+        }
+      }
       _currentSafeOffset = currentSafeOffset;
     }
 
     void updateDelivered(long delivered) {
+      if (_delivered != -1) {
+        if (delivered == _currentSafeOffset) {
+          _partitionSnag = 0;
+        } else {
+          if (delivered > _delivered) { // delivered offset moves forward
+            _partitionSnag += (delivered - _delivered);
+          } else if (delivered < _delivered) {  // delivered offset moves backward
+            _partitionSnag -= (_delivered - delivered);
+          }
+        }
+      }
       _delivered = delivered;
+
     }
 
     long currentSafeOffset() {
@@ -205,6 +238,10 @@ public class DeliveredMessageOffsetTracker {
 
     long earliestTrackedOffset() {
       return _earliestTrackedOffset;
+    }
+
+    long partitionSnag() {
+      return _partitionSnag;
     }
 
     /**

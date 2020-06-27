@@ -79,7 +79,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final long _autoCommitInterval;
   private final LiOffsetResetStrategy _offsetResetStrategy;
   private long _lastAutoCommitMs;
-  private final Map<MetricName, Metric> _extraMetrics = new HashMap<>(1);
+  private final Map<MetricName, Metric> _extraMetrics = new HashMap<>(2);
 
   private ConsumerRecordsProcessResult<K, V> _lastProcessedResult;
 
@@ -148,7 +148,32 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
     };
 
+    MetricName consumerSnagMetricName = new MetricName(
+        "consumer-snag",
+        "lnkd",
+        "sum of snag distance values for all partitions, where snag distance of a partition "
+            + "shows how far behind the safe offset of a partition is from its watermark.",
+        Collections.singletonMap("client-id", _clientId)
+    );
+    Metric consumerSnagMetric = new Metric() {
+      @Override
+      public MetricName metricName() {
+        return consumerSnagMetricName;
+      }
+
+      @Override
+      public double value() {
+        return (double) _consumerRecordsProcessor.getConsumerSnag();
+      }
+
+      @Override
+      public Object metricValue() {
+        return value();
+      }
+    };
+
     _extraMetrics.put(skippedRecordsMetricName, skippedRecordsMetric);
+    _extraMetrics.put(consumerSnagMetricName, consumerSnagMetric);
 
     try {
 
