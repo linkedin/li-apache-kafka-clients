@@ -88,14 +88,14 @@ public class ConsumerRecordsProcessor<K, V> {
 
   private long recordsSkipped = 0;
   /**
-   * Gives an idea about how far behind the safe offset of a partition is from the watermark. Hence, the snag distance
-   * for a partition is computed as (watermark minus safeoffset).
+   * Gives an idea about how far behind the safe offset of a partition is from the watermark. Hence, the
+   * offset-watermark span or a partition is computed as (watermark minus safeoffset).
    * This metric is a sum of
-   * {@link com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker#partitionSnag} distances for all
+   * {@link com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker#offsetWatermarkSpan} for all
    * assigned partitions that have currently undelivered large messages in the consumer. It is computed on query of
    * the metric each time and hence, stores the last known value for this metric.
    */
-  private long _consumerSnag = -1;
+  private long _consumerOffsetWatermarkSpan = -1;
 
   /**
    *
@@ -442,13 +442,13 @@ public class ConsumerRecordsProcessor<K, V> {
     return recordsSkipped;
   }
 
-  public long getConsumerSnag() {
-    long snag = 0;
+  public long getConsumerOffsetWatermarkSpan() {
+    long span = 0;
     for (TopicPartition tp : knownPartitions()) {
-      snag += _deliveredMessageOffsetTracker.partitionSnag(tp);
+      span += _deliveredMessageOffsetTracker.offsetWatermarkSpan(tp);
     }
-    _consumerSnag = snag;
-    return _consumerSnag;
+    _consumerOffsetWatermarkSpan = span;
+    return _consumerOffsetWatermarkSpan;
   }
 
   private ConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {

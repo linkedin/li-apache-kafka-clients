@@ -148,22 +148,22 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       }
     };
 
-    MetricName consumerSnagMetricName = new MetricName(
-        "consumer-snag",
+    MetricName consumerOffsetWatermarkSpan = new MetricName(
+        "consumer-offset-watermark-span",
         "lnkd",
-        "sum of snag distance values for all partitions, where snag distance of a partition "
+        "sum of offset-watermark-span for all partitions, where offset-watermark-span of a partition "
             + "shows how far behind the safe offset of a partition is from its watermark.",
         Collections.singletonMap("client-id", _clientId)
     );
-    Metric consumerSnagMetric = new Metric() {
+    Metric consumerOffsetWatermarkSpanMetric = new Metric() {
       @Override
       public MetricName metricName() {
-        return consumerSnagMetricName;
+        return consumerOffsetWatermarkSpan;
       }
 
       @Override
       public double value() {
-        return (double) _consumerRecordsProcessor.getConsumerSnag();
+        return (double) _consumerRecordsProcessor.getConsumerOffsetWatermarkSpan();
       }
 
       @Override
@@ -173,7 +173,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     };
 
     _extraMetrics.put(skippedRecordsMetricName, skippedRecordsMetric);
-    _extraMetrics.put(consumerSnagMetricName, consumerSnagMetric);
+    _extraMetrics.put(consumerOffsetWatermarkSpan, consumerOffsetWatermarkSpanMetric);
 
     try {
 
