@@ -435,9 +435,11 @@ public class ConsumerRecordsProcessorTest {
     // Let consumer record 1 be a large message segment
     ConsumerRecord<byte[], byte[]> consumerRecord1;
     if (diffVersion) {
-      consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage1.get(0).value(), splitLargeMessage1.get(0).headers());
+      consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
+                                             splitLargeMessage1.get(0).value(), splitLargeMessage1.get(0).headers());
     } else {
-      consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage1.get(0).value());
+      consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
+                                             splitLargeMessage1.get(0).value());
     }
 
     // Let consumer record 2 be a normal message
@@ -448,13 +450,16 @@ public class ConsumerRecordsProcessorTest {
         new ConsumerRecord<>("topic", 0, 3, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage2.get(0).value());
     // let record 4 completes record 3
     ConsumerRecord<byte[], byte[]> consumerRecord4 =
-        new ConsumerRecord<>("topic", 0, 4, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage2.get(1).value(), splitLargeMessage2.get(1).headers());
+        new ConsumerRecord<>("topic", 0, 4, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
+                             splitLargeMessage2.get(1).value(), splitLargeMessage2.get(1).headers());
     // let record 5 completes record 1
     ConsumerRecord<byte[], byte[]> consumerRecord5;
     if (diffVersion) {
-      consumerRecord5 = new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage1.get(1).value(), splitLargeMessage1.get(1).headers());
+      consumerRecord5 = new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
+                                             splitLargeMessage1.get(1).value(), splitLargeMessage1.get(1).headers());
     } else {
-      consumerRecord5 = new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage1.get(1).value());
+      consumerRecord5 =
+          new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage1.get(1).value());
     }
 
     // Construct the consumer records.
