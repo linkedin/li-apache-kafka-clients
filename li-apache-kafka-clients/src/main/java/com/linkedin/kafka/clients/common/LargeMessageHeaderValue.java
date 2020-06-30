@@ -5,7 +5,6 @@
 package com.linkedin.kafka.clients.common;
 
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
-import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -44,7 +43,9 @@ public class LargeMessageHeaderValue {
   public static final byte LEGACY = (byte) 0;
   // Added new field - messageSizeInBytes to the header value
   public static final byte LEGACY_V2 = (byte) 1;
-  // Added new "type" - using header-based record for large message
+  // Added new "type" - In the new version, header-based records
+  // will be used for large messages and this version tells the
+  // assembler to not expect any segment metadata(a.k.a payload header) in the payload.
   public static final byte V3 = (byte) 2;
 
   public LargeMessageHeaderValue(byte type, UUID uuid, int segmentNumber, int numberOfSegments, int messageSizeInBytes) {
@@ -89,8 +90,8 @@ public class LargeMessageHeaderValue {
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getSegmentNumber(), serialized, byteOffset);
     byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for segment number
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getNumberOfSegments(), serialized, byteOffset);
-    // maintain compatibility for LEGACY_V2
-    if (largeMessageHeaderValue.getType() == LEGACY_V2 || largeMessageHeaderValue.getType() == V3) {
+    // maintain compatibility for LEGACY_V2 and V3
+    if (largeMessageHeaderValue.getType() >= LEGACY_V2) {
       byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for message size
       PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getMessageSizeInBytes(), serialized, byteOffset);
     }
@@ -117,21 +118,4 @@ public class LargeMessageHeaderValue {
     return new LargeMessageHeaderValue(type, new UUID(mostSignificantBits, leastSignificantBits), segmentNumber, numberOfSegments, INVALID_MESSAGE_SIZE);
   }
 
-  /**
-   * Check if the value of this segment header is valid
-   * @return the check result
-   */
-  public boolean isValid() {
-    if (_type > LargeMessageSegment.CURRENT_VERSION) {
-      LOG.debug("Serialized version byte is greater than {}. not large message segment.",
-          LargeMessageSegment.CURRENT_VERSION);
-      return false;
-    }
-    if (_segmentNumber < 0 || _numberOfSegments <= 0 || _segmentNumber >= _numberOfSegments) {
-      LOG.warn("Serialized segment sequence {} not in [0, {}). treating as regular payload", _segmentNumber,
-          _numberOfSegments);
-      return false;
-    }
-    return true;
-  }
 }
