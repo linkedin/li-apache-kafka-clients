@@ -25,6 +25,7 @@ public interface MessageAssembler {
    * @param segmentBytes a message segment in byte array format created by {@link MessageSplitter}
    * @return The assemble result if a message is successfully assembled, otherwise returns null.
    */
+  // TODO: Mark this method to be deprecated for the next major version bump.
   AssembleResult assemble(TopicPartition tp, long offset, byte[] segmentBytes);
 
   /**

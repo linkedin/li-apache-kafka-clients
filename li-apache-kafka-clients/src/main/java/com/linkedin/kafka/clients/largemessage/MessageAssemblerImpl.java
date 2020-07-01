@@ -19,8 +19,6 @@ import static com.linkedin.kafka.clients.largemessage.MessageAssembler.AssembleR
  */
 public class MessageAssemblerImpl implements MessageAssembler {
   private static final int CHECKSUM_LENGTH = Integer.BYTES;
-  /* the length of the metadata in the payload which should be skipped to get real payload */
-  private static final int PAYLOAD_HEADER_LENGTH = 1 + LargeMessageSegment.SEGMENT_INFO_OVERHEAD + CHECKSUM_LENGTH;
   private final LargeMessageBufferPool _messagePool;
   private final Deserializer<LargeMessageSegment> _segmentDeserializer;
 
@@ -30,6 +28,13 @@ public class MessageAssemblerImpl implements MessageAssembler {
                               Deserializer<LargeMessageSegment> segmentDeserializer) {
     _messagePool = new LargeMessageBufferPool(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped);
     _segmentDeserializer = segmentDeserializer;
+  }
+
+  public MessageAssemblerImpl(long bufferCapacity,
+                              long expirationOffsetGap,
+                              boolean exceptionOnMessageDropped) {
+    _messagePool = new LargeMessageBufferPool(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped);
+    _segmentDeserializer = null;
   }
 
   @Deprecated
@@ -72,10 +77,7 @@ public class MessageAssemblerImpl implements MessageAssembler {
       return assemble(tp, offset, segmentBytes);
     }
     LargeMessageSegment segment = null;
-    ByteBuffer byteBuffer = ByteBuffer.wrap(segmentBytes);
-    // skip payload header
-    byteBuffer.position(PAYLOAD_HEADER_LENGTH);
-    ByteBuffer payload = byteBuffer.slice();
+    ByteBuffer payload = ByteBuffer.wrap(segmentBytes);
     // create segment if it has a valid segment header
     if (segmentHeader.isValid()) {
       segment = new LargeMessageSegment(segmentHeader, payload);

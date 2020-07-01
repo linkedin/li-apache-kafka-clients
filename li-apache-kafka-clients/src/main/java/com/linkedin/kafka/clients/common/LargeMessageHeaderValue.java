@@ -44,7 +44,9 @@ public class LargeMessageHeaderValue {
   public static final byte LEGACY = (byte) 0;
   // Added new field - messageSizeInBytes to the header value
   public static final byte LEGACY_V2 = (byte) 1;
-  // Added new "type" - using header-based record for large message
+  // Added new "type" - In the new version, header-based record
+  // will be used for large messages and the assembler shall be
+  // told not to expect any segment header in the payload
   public static final byte V3 = (byte) 2;
 
   public LargeMessageHeaderValue(byte type, UUID uuid, int segmentNumber, int numberOfSegments, int messageSizeInBytes) {
@@ -90,7 +92,7 @@ public class LargeMessageHeaderValue {
     byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for segment number
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getNumberOfSegments(), serialized, byteOffset);
     // maintain compatibility for LEGACY_V2 and V3
-    if (largeMessageHeaderValue.getType() == LEGACY_V2 || largeMessageHeaderValue.getType() == V3) {
+    if (largeMessageHeaderValue.getType() >= LEGACY_V2) {
       byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for message size
       PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getMessageSizeInBytes(), serialized, byteOffset);
     }

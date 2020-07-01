@@ -111,9 +111,10 @@ public class ConsumerRecordsProcessorTest {
   /* Test if records from Producer without record header can be handled by Consumer with
    both record header and payload header support */
   @Test
-  public void testCompatibility() {
+  public void testRecordHeadersCompatibility() {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    ConsumerRecords<byte[], byte[]> consumerRecords = getConsumerRecords(true);
+    // TODO: change getConsumerRecords(false) to getConsumerRecords(true) and add an interface to change CURRENT_VERSION
+    ConsumerRecords<byte[], byte[]> consumerRecords = getConsumerRecords(false);
     ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(consumerRecords).consumerRecords();
     assertEquals(processedRecords.count(), 4, "There should be 4 records");
     Iterator<ConsumerRecord<String, String>> iter = processedRecords.iterator();
@@ -408,10 +409,10 @@ public class ConsumerRecordsProcessorTest {
 
   /**
    * A helper function for generating ConsumerRecords*
-   * @param diffVersion a flag to notify if we want to generate records with different LMSegment version
+   * @param ifNewVersionUsed a flag to notify if we want to generate records with new LMSegment version
    * @return ConsumerRecords
    * */
-  private ConsumerRecords<byte[], byte[]> getConsumerRecords(boolean diffVersion) {
+  private ConsumerRecords<byte[], byte[]> getConsumerRecords(boolean ifNewVersionUsed) {
     Serializer<String> stringSerializer = new StringSerializer();
     Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     // Create two large messages.
@@ -421,8 +422,8 @@ public class ConsumerRecordsProcessorTest {
     byte[] largeMessage1Bytes = stringSerializer.serialize("topic", LiKafkaClientsTestUtils.getRandomString(600));
     List<ProducerRecord<byte[], byte[]>> splitLargeMessage1 =
         splitter.split("topic", largeMessageId1, largeMessage1Bytes);
-    if (diffVersion) {
-      modifyLargeMessageTypeOfRecords(splitLargeMessage1, LargeMessageHeaderValue.LEGACY_V2);
+    if (ifNewVersionUsed) {
+      modifyLargeMessageTypeOfRecords(splitLargeMessage1, LargeMessageHeaderValue.V3);
     }
 
     UUID largeMessageId2 = LiKafkaClientsUtils.randomUUID();
@@ -434,7 +435,7 @@ public class ConsumerRecordsProcessorTest {
         new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message0"));
     // Let consumer record 1 be a large message segment
     ConsumerRecord<byte[], byte[]> consumerRecord1;
-    if (diffVersion) {
+    if (ifNewVersionUsed) {
       consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
                                              splitLargeMessage1.get(0).value(), splitLargeMessage1.get(0).headers());
     } else {
@@ -454,7 +455,7 @@ public class ConsumerRecordsProcessorTest {
                              splitLargeMessage2.get(1).value(), splitLargeMessage2.get(1).headers());
     // let record 5 completes record 1
     ConsumerRecord<byte[], byte[]> consumerRecord5;
-    if (diffVersion) {
+    if (ifNewVersionUsed) {
       consumerRecord5 = new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
                                              splitLargeMessage1.get(1).value(), splitLargeMessage1.get(1).headers());
     } else {
