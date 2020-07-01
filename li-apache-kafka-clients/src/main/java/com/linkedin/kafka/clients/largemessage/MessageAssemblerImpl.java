@@ -67,6 +67,10 @@ public class MessageAssemblerImpl implements MessageAssembler {
     }
     // retrieve segment header
     LargeMessageHeaderValue segmentHeader = LargeMessageHeaderValue.fromBytes(header.value());
+    // check version, if it is older than V3, still use payload header solution
+    if (segmentHeader.getType() < LargeMessageHeaderValue.V3) {
+      return assemble(tp, offset, segmentBytes);
+    }
     LargeMessageSegment segment = null;
     ByteBuffer byteBuffer = ByteBuffer.wrap(segmentBytes);
     // skip payload header

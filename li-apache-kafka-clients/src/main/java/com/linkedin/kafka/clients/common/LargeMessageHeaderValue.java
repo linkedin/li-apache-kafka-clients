@@ -89,7 +89,7 @@ public class LargeMessageHeaderValue {
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getSegmentNumber(), serialized, byteOffset);
     byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for segment number
     PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getNumberOfSegments(), serialized, byteOffset);
-    // maintain compatibility for LEGACY_V2
+    // maintain compatibility for LEGACY_V2 and V3
     if (largeMessageHeaderValue.getType() == LEGACY_V2 || largeMessageHeaderValue.getType() == V3) {
       byteOffset += PrimitiveEncoderDecoder.INT_SIZE; // for message size
       PrimitiveEncoderDecoder.encodeInt(largeMessageHeaderValue.getMessageSizeInBytes(), serialized, byteOffset);

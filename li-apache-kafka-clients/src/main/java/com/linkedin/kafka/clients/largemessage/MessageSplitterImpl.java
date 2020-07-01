@@ -113,8 +113,7 @@ public class MessageSplitterImpl implements MessageSplitter {
       Headers temporaryHeaders = new RecordHeaders(headers);
       temporaryHeaders.remove(Constants.LARGE_MESSAGE_HEADER);
       LargeMessageHeaderValue largeMessageHeaderValue = new LargeMessageHeaderValue(
-          // use new version mark
-          LargeMessageHeaderValue.V3,
+          LargeMessageHeaderValue.LEGACY_V2,
           messageId,
           seq,
           numberOfSegments,
