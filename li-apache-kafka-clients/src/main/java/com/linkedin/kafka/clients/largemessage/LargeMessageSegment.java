@@ -34,7 +34,8 @@ public class LargeMessageSegment {
   public final ByteBuffer payload;
   // The segment information over head bytes when serialize.
   public static final int SEGMENT_INFO_OVERHEAD = 16 + Integer.BYTES + Integer.BYTES + Integer.BYTES;
-  // TODO: migrate the version to V3 when we bump major version which will only use record headers for LM support instead of using payload header in the payload
+  // TODO: migrate to V3 version(i.e. changing CURRENT_VERSION to V3) when bumping major version
+  // In the new major version, we shall only uses record headers for LM support instead of using both payload header and record header
   public static final byte CURRENT_VERSION = LargeMessageHeaderValue.LEGACY;
 
   public LargeMessageSegment(UUID messageId,

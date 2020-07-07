@@ -43,9 +43,9 @@ public class LargeMessageHeaderValue {
   public static final byte LEGACY = (byte) 0;
   // Added new field - messageSizeInBytes to the header value
   public static final byte LEGACY_V2 = (byte) 1;
-  // Added new "type" - In the new version, header-based record
-  // will be used for large messages and the assembler shall be
-  // told not to expect any segment header in the payload
+  // Added new "type" - In the new version, header-based records
+  // will be used for large messages and this version tells the
+  // assembler to not expect any segment metadata(a.k.a payload header) in the payload.
   public static final byte V3 = (byte) 2;
 
   public LargeMessageHeaderValue(byte type, UUID uuid, int segmentNumber, int numberOfSegments, int messageSizeInBytes) {
