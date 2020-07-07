@@ -119,21 +119,4 @@ public class LargeMessageHeaderValue {
     return new LargeMessageHeaderValue(type, new UUID(mostSignificantBits, leastSignificantBits), segmentNumber, numberOfSegments, INVALID_MESSAGE_SIZE);
   }
 
-  /**
-   * Check if the value of this segment header is valid
-   * @return the check result
-   */
-  public boolean isValid() {
-    if (_type > LargeMessageSegment.CURRENT_VERSION) {
-      LOG.debug("Serialized version byte is greater than {}. not large message segment.",
-          LargeMessageSegment.CURRENT_VERSION);
-      return false;
-    }
-    if (_segmentNumber < 0 || _numberOfSegments <= 0 || _segmentNumber >= _numberOfSegments) {
-      LOG.warn("Serialized segment sequence {} not in [0, {}). treating as regular payload", _segmentNumber,
-          _numberOfSegments);
-      return false;
-    }
-    return true;
-  }
 }

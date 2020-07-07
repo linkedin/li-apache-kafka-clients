@@ -18,7 +18,6 @@ import static com.linkedin.kafka.clients.largemessage.MessageAssembler.AssembleR
  * The implementation of {@link MessageAssembler}
  */
 public class MessageAssemblerImpl implements MessageAssembler {
-  private static final int CHECKSUM_LENGTH = Integer.BYTES;
   private final LargeMessageBufferPool _messagePool;
   private final Deserializer<LargeMessageSegment> _segmentDeserializer;
 
@@ -76,12 +75,10 @@ public class MessageAssemblerImpl implements MessageAssembler {
     if (segmentHeader.getType() < LargeMessageHeaderValue.V3) {
       return assemble(tp, offset, segmentBytes);
     }
-    LargeMessageSegment segment = null;
     ByteBuffer payload = ByteBuffer.wrap(segmentBytes);
-    // create segment if it has a valid segment header
-    if (segmentHeader.isValid()) {
-      segment = new LargeMessageSegment(segmentHeader, payload);
-    }
+
+    // create segment
+    LargeMessageSegment segment = new LargeMessageSegment(segmentHeader, payload);
     return assembleSegment(tp, offset, segmentBytes, segment);
   }
 
