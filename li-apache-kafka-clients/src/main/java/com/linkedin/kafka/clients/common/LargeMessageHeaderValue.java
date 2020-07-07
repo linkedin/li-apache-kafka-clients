@@ -5,7 +5,6 @@
 package com.linkedin.kafka.clients.common;
 
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
-import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.UUID;
 import org.slf4j.Logger;

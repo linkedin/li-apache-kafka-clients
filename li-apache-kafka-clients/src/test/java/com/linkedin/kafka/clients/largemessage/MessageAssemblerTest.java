@@ -4,9 +4,14 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
+import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
+import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import java.util.UUID;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.header.Headers;
+import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.testng.Assert;
@@ -40,6 +45,29 @@ public class MessageAssemblerTest {
   }
 
   @Test
+  public void testSingleMessageSegmentWithRecordHeader() {
+    byte[] messageBytes = "message".getBytes();
+    // create record header
+    Headers headers = new RecordHeaders();
+    LargeMessageHeaderValue largeMessageHeaderValue =
+        new LargeMessageHeaderValue(LargeMessageHeaderValue.V3, LiKafkaClientsUtils.randomUUID(), 0, 1,
+            messageBytes.length);
+    headers.add(Constants.LARGE_MESSAGE_HEADER, LargeMessageHeaderValue.toBytes(largeMessageHeaderValue));
+
+    MessageAssembler messageAssembler = new MessageAssemblerImpl(100, 100, true);
+
+    MessageAssembler.AssembleResult assembleResult =
+        messageAssembler.assemble(new TopicPartition("topic", 0), 0, messageBytes,
+            headers.lastHeader(Constants.LARGE_MESSAGE_HEADER));
+
+    assertNotNull(assembleResult.messageBytes());
+    assertEquals(assembleResult.messageStartingOffset(), 0, "The message starting offset should be 0");
+    assertEquals(assembleResult.messageEndingOffset(), 0, "The message ending offset should be 0");
+  }
+
+
+
+  @Test
   public void testTreatBadSegmentAsPayload() {
     Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
@@ -59,6 +87,20 @@ public class MessageAssemblerTest {
     Assert.assertEquals(assembleResult.messageStartingOffset(), 0);
     Assert.assertEquals(assembleResult.messageEndingOffset(), 0);
   }
+  // TODO: discuss with navina about if we should throw exception when treating bad segments
+  @Test(expectedExceptions = InvalidSegmentException.class)
+  public void testTreatBadSegmentAsPayloadWithRecord() {
+    byte[] messageBytes = "message".getBytes();
+    // create record header
+    Headers headers = new RecordHeaders();
+    LargeMessageHeaderValue badLargeMessageHeaderValue =
+        new LargeMessageHeaderValue(LargeMessageHeaderValue.V3, LiKafkaClientsUtils.randomUUID(), -1, 100, -1);
+    headers.add(Constants.LARGE_MESSAGE_HEADER, LargeMessageHeaderValue.toBytes(badLargeMessageHeaderValue));
+
+    MessageAssembler messageAssembler = new MessageAssemblerImpl(100, 100, true);
+    TopicPartition tp = new TopicPartition("topic", 0);
+    messageAssembler.assemble(tp, 0, messageBytes, headers.lastHeader(Constants.LARGE_MESSAGE_HEADER));
+  }
 
   @Test
   public void testNonLargeMessageSegmentBytes() {
@@ -69,6 +111,21 @@ public class MessageAssemblerTest {
     byte[] bytes = new byte[100];
     MessageAssembler.AssembleResult assembleResult =
         messageAssembler.assemble(new TopicPartition("topic", 0), 0, bytes);
+    assertEquals(assembleResult.messageBytes(), bytes, "The bytes should be returned as is");
+    assertEquals(assembleResult.messageStartingOffset(), 0, "The message starting offset should be 0");
+    assertEquals(assembleResult.messageEndingOffset(), 0, "The message ending offset should be 0");
+  }
+
+  @Test
+  public void testNonLargeMessageSegmentBytesWithHeader() {
+    Deserializer<LargeMessageSegment> segmentDeserializer = new DefaultSegmentDeserializer();
+
+    MessageAssembler messageAssembler = new MessageAssemblerImpl(100, 100, true, segmentDeserializer);
+
+    byte[] bytes = new byte[100];
+    // record header is null in this case
+    MessageAssembler.AssembleResult assembleResult =
+        messageAssembler.assemble(new TopicPartition("topic", 0), 0, bytes, null);
     assertEquals(assembleResult.messageBytes(), bytes, "The bytes should be returned as is");
     assertEquals(assembleResult.messageStartingOffset(), 0, "The message starting offset should be 0");
     assertEquals(assembleResult.messageEndingOffset(), 0, "The message ending offset should be 0");
