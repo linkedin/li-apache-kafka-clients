@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.ENCRYPTION_ENABLED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG;
@@ -84,6 +85,7 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
       props.setProperty(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, "true");
       props.setProperty(MAX_MESSAGE_SEGMENT_BYTES_CONFIG, "200");
       props.setProperty(CLIENT_ID_CONFIG, "testProducer");
+      props.setProperty(ENCRYPTION_ENABLED_CONFIG, "true");
       LiKafkaProducer<String, String> largeMessageProducer = createProducer(props);
 
       // This is how large we expect the final message to be, including the version byte, checksum, segment info and
@@ -113,6 +115,8 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
     props.setProperty("large.message.enabled", "true");
     props.setProperty("max.message.segment.size", "200");
     props.setProperty("client.id", "testProducer");
+    props.setProperty(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, "true");
+    props.setProperty(ENCRYPTION_ENABLED_CONFIG, "true");
     LiKafkaProducer<String, String> largeMessageProducer = createProducer(props);
     Properties consumerProps = buildConsumerProps();
     consumerProps.setProperty("auto.offset.reset", "earliest");
@@ -162,7 +166,7 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
         assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
         LargeMessageHeaderValue largeMessageHeaderValue = LiKafkaClientsUtils.fetchLargeMessageHeader(consumerRecord.headers());
         assertEquals(largeMessageHeaderValue.getSegmentNumber(), -1);
-        assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 6);
+        assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 7);
         assertEquals(largeMessageHeaderValue.getType(), LargeMessageHeaderValue.LEGACY_V2);
 
         String messageId = consumerRecord.value().substring(0, 32);

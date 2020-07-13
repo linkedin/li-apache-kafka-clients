@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.producer;
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentSerializer;
+import com.linkedin.kafka.clients.security.DefaultEncrypterDecrypter;
 
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -22,6 +23,8 @@ import org.apache.kafka.common.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG;
+import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.MESSAGE_ENCRYPTER_DECRYPTER_CLASS_DOC;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 
 /**
@@ -51,6 +54,9 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String MAX_REQUEST_SIZE_CONFIG = ProducerConfig.MAX_REQUEST_SIZE_CONFIG;
   public static final String LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG =
       "li.large.message.segment.wrapping.required";
+  public static final String ENCRYPTION_ENABLED_CONFIG = "encryption.enabled";
+  // TODO: discuss with mentor if we should add topic encrypter
+//    LINKEDIN_TOPIC_ENCRYPTER_DECRYPTER_MANAGER_CLASS = "com.linkedin.kafka.linkedinclients.security.LinkedInTopicEncrypterDecrypterManager";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +
@@ -97,6 +103,11 @@ public class LiKafkaProducerConfig extends AbstractConfig {
       "payload in a large message segment, even if the original payload is smaller than max.message.segment.bytes " +
       "and thus not split into multiple messages. This configuration does not have any effect if large message is " +
       "not enabled.";
+  public static final String ENCRYPTION_ENABLED_DOC =
+      "Configure the producer and consumer to support encryption or not. "
+          + "If topic encrypter/decrypter manager is enabled, the producer will encrypt messages per topic. "
+          + "If not, the producer will apply same encrypter to all messages";
+
 
   static {
     // TODO: Add a default metadata service client class.
@@ -120,7 +131,10 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM,
             LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_DOC)
         .define(METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG, Type.INT, Integer.MAX_VALUE, Importance.MEDIUM,
-            METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC);
+            METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC)
+        .define(ENCRYPTION_ENABLED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM, ENCRYPTION_ENABLED_DOC)
+        .define(MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG, Type.CLASS, DefaultEncrypterDecrypter.class.getName(),
+            Importance.MEDIUM, MESSAGE_ENCRYPTER_DECRYPTER_CLASS_DOC);
     ;
   }
 

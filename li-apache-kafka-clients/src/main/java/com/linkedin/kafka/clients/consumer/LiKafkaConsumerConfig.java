@@ -8,6 +8,7 @@ import com.linkedin.kafka.clients.auditing.NoOpAuditor;
 import com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs;
 import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 
+import com.linkedin.kafka.clients.security.DefaultEncrypterDecrypter;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.config.AbstractConfig;
@@ -20,6 +21,8 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG;
+import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.MESSAGE_ENCRYPTER_DECRYPTER_CLASS_DOC;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 
 /**
@@ -209,7 +212,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 60 * 1000,
                 atLeast(0),
                 Importance.MEDIUM,
-                ConsumerConfig.DEFAULT_API_TIMEOUT_MS_DOC);
+                ConsumerConfig.DEFAULT_API_TIMEOUT_MS_DOC)
+        .define(MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG,
+                Type.CLASS,
+                DefaultEncrypterDecrypter.class.getName(),
+                Importance.MEDIUM,
+                MESSAGE_ENCRYPTER_DECRYPTER_CLASS_DOC);
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {

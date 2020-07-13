@@ -1,9 +1,9 @@
 /*
  * Copyright 2020 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License").  See License in the project root for license information.
  */
-package com.linkedin.kafka.clients.encryption;
+package com.linkedin.kafka.clients.security;
 
-import com.linkedin.kafka.clients.encryption.errors.EncryptionException;
+import com.linkedin.kafka.clients.security.errors.EncryptionException;
 
 
 public interface MessageEncrypterDecrypter {
