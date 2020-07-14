@@ -88,12 +88,8 @@ public class MessageAssemblerTest {
     Assert.assertEquals(assembleResult.messageEndingOffset(), 0);
   }
 
-  // TODO: discuss with navina about if we should throw exception when treating bad segments.
-  // Some points: In default deserializer, we do sanity check and return null when finding bad segment;
-  // In avro deserializer, we do not have such check in deserializer.
-  // My opinion is that we should throw exception here but are welcome to reasonable modification
   @Test(expectedExceptions = InvalidSegmentException.class)
-  public void testTreatBadSegmentAsPayloadWithRecord() {
+  public void testBadSegmentInHeaderThrows() {
     byte[] messageBytes = "message".getBytes();
     // create record header
     Headers headers = new RecordHeaders();

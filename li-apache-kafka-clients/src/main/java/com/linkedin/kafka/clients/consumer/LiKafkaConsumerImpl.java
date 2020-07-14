@@ -12,7 +12,7 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageAssembler;
 import com.linkedin.kafka.clients.largemessage.MessageAssemblerImpl;
 import com.linkedin.kafka.clients.largemessage.errors.ConsumerRecordsProcessingException;
-import com.linkedin.kafka.clients.security.MessageEncrypterDecrypter;
+import com.linkedin.kafka.clients.security.TopicEncrypterDecrypterManager;
 import com.linkedin.kafka.clients.utils.CompositeMap;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import java.time.Duration;
@@ -49,7 +49,8 @@ import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG;
+import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG;
+
 
 /**
  * The implementation of {@link LiKafkaConsumer}
@@ -124,7 +125,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
                               Deserializer<V> valueDeserializer,
                               Deserializer<LargeMessageSegment> largeMessageSegmentDeserializer,
                               Auditor<K, V> consumerAuditor,
-                              MessageEncrypterDecrypter messageEncrypterDecrypter) {
+                              TopicEncrypterDecrypterManager topicEncrypterDecrypterManager) {
 
     _autoCommitEnabled = configs.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG);
     _autoCommitInterval = configs.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG);
@@ -199,14 +200,21 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         configs.getConfiguredInstance(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
     vDeserializer.configure(configs.originals(), false);
     // Instantiate message decrypter
-    MessageEncrypterDecrypter mEncrypterDecrypter = messageEncrypterDecrypter != null ? messageEncrypterDecrypter
-        : configs.getConfiguredInstance(MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG, MessageEncrypterDecrypter.class);
+    TopicEncrypterDecrypterManager tEncrypterDecrypterManager;
+      if (topicEncrypterDecrypterManager == null) {
+        LOG.warn("Cannot detect customized {}. The default one will be used.",
+            TopicEncrypterDecrypterManager.class.getSimpleName());
+        tEncrypterDecrypterManager = configs.getConfiguredInstance(TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG,
+            TopicEncrypterDecrypterManager.class);
+      } else {
+        tEncrypterDecrypterManager = topicEncrypterDecrypterManager;
+      }
 
 
     // Instantiate consumer record processor
 
     _consumerRecordsProcessor = new ConsumerRecordsProcessor<>(assembler, kDeserializer, vDeserializer,
-        messageOffsetTracker, auditor, _kafkaConsumer::committed, mEncrypterDecrypter);
+        messageOffsetTracker, auditor, _kafkaConsumer::committed, tEncrypterDecrypterManager);
 
     // Instantiate consumer rebalance listener
     _consumerRebalanceListener = new LiKafkaConsumerRebalanceListener<>(_consumerRecordsProcessor,

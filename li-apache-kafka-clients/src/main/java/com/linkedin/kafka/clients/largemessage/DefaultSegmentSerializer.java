@@ -21,7 +21,8 @@ import java.util.Map;
  * X bytes  - payload
  */
 public class DefaultSegmentSerializer implements Serializer<LargeMessageSegment> {
-  public static final int PAYLOAD_HEADER_OVERHEAD = 1 + LargeMessageSegment.SEGMENT_INFO_OVERHEAD + Integer.BYTES;
+  // 1 is for version byte; Integer.BYTES is for checksum; SEGMENT_INFO_OVERHEAD is for other metadata
+  public static final int PAYLOAD_HEADER_OVERHEAD = 1 + Integer.BYTES  + LargeMessageSegment.SEGMENT_INFO_OVERHEAD;
 
   @Override
   public void configure(Map<String, ?> configs, boolean isKey) {

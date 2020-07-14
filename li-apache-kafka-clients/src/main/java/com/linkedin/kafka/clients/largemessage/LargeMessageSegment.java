@@ -49,14 +49,6 @@ public class LargeMessageSegment {
     this.messageSizeInBytes = messageSizeInBytes;
     this.payload = payload;
   }
-  public LargeMessageSegment(LargeMessageHeaderValue headerValue,
-      ByteBuffer payload) {
-    this.messageId = headerValue.getUuid();
-    this.sequenceNumber = headerValue.getSegmentNumber();
-    this.numberOfSegments = headerValue.getNumberOfSegments();
-    this.messageSizeInBytes = headerValue.getMessageSizeInBytes();
-    this.payload = payload;
-  }
 
   /**
    * Notice that the payload as a ByteBuffer does not guarantee to have a dedicated underlying byte array. So calling

@@ -22,10 +22,11 @@ public final class LiKafkaCommonClientConfigs {
   public static final String CLUSTER_ENVIRONMENT_CONFIG = "li.cluster.environment";
   public static final String CLUSTER_ENVIRONMENT_DOC = "The location of the cluster group";
 
-  public static final String MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG = "security.message.encrypter.decrypter";
-  public static final String MESSAGE_ENCRYPTER_DECRYPTER_CLASS_DOC = "The class of message encrypter/decrypter. The encrypter/decrypter " +
-      "will be used to encrypt/decrypt messages when encryption is enabled for LiKafkaProducer and LiKafkaConsumer.";
 
+  public static final String TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG = "security.topicEncrypterDecrypterManager.class";
+  public static final String TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC = "The class used to manage message encrypter/decrypter for each topic. "
+      + "The encrypter/decrypter will be used to encrypt/decrypt messages "
+      + "when encryption is enabled for LiKafkaProducer and LiKafkaConsumer.";
   private LiKafkaCommonClientConfigs() {
     // Not called. Just to avoid style check error.
   }

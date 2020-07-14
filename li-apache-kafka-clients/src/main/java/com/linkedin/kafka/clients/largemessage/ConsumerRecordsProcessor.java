@@ -8,7 +8,7 @@ import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
-import com.linkedin.kafka.clients.security.MessageEncrypterDecrypter;
+import com.linkedin.kafka.clients.security.TopicEncrypterDecrypterManager;
 import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
@@ -86,7 +86,7 @@ public class ConsumerRecordsProcessor<K, V> {
   private final Auditor<K, V> _auditor;
   private final Function<TopicPartition, ConsumerHighWatermarkState> _storedConsumerHighWatermark;
   private final DeserializeStrategy<V> _deserializeStrategy;
-  private final MessageEncrypterDecrypter _messageEncrypterDecrypter;
+  private final TopicEncrypterDecrypterManager _topicEncrypterDecrypterManager;
   private long recordsSkipped = 0;
 
   /**
@@ -98,7 +98,7 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param auditor This may be null otherwise auditing is called when messages are complete.
    * @param storedOffset non-null.  A function that returns the offset information stored in Kafka.   This may
    *                      be a blocking call and should return null if the information is not available.
-   * @param messageEncrypterDecrypter This may be null otherwise decryption will be executed when messages are complete
+   * @param topicEncrypterDecrypterManager This may be null otherwise decryption will be executed when messages are complete
    */
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
                                   Deserializer<K> keyDeserializer,
@@ -106,13 +106,13 @@ public class ConsumerRecordsProcessor<K, V> {
                                   DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
                                   Auditor<K, V> auditor,
                                   Function<TopicPartition, OffsetAndMetadata> storedOffset,
-                                  MessageEncrypterDecrypter messageEncrypterDecrypter) {
+                                  TopicEncrypterDecrypterManager topicEncrypterDecrypterManager) {
     _messageAssembler = messageAssembler;
     _keyDeserializer = keyDeserializer;
     _valueDeserializer = valueDeserializer;
     _deliveredMessageOffsetTracker = deliveredMessageOffsetTracker;
     _auditor = auditor;
-    _messageEncrypterDecrypter = messageEncrypterDecrypter;
+    _topicEncrypterDecrypterManager = topicEncrypterDecrypterManager;
     _partitionConsumerHighWatermark = new HashMap<>();
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
@@ -458,8 +458,9 @@ public class ConsumerRecordsProcessor<K, V> {
 
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value(), largeMessageHeader);
     if (valueBytes != INCOMPLETE_RESULT) {
-      if (encryptionHeader != null) {
-        valueBytes = _messageEncrypterDecrypter.decrypt(valueBytes);
+      if (encryptionHeader != null && valueBytes != null) {
+        valueBytes = _topicEncrypterDecrypterManager.getEncrypterDecrypter(consumerRecord.topic()).decrypt(valueBytes);
+
       }
       V value = (V) _deserializeStrategy.deserialize(tp.topic(), consumerRecord.headers(), valueBytes);
       if (_auditor != null) {

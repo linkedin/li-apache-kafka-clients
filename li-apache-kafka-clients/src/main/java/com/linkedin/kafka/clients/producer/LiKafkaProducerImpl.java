@@ -12,7 +12,7 @@ import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
 import com.linkedin.kafka.clients.largemessage.MessageSplitterImpl;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
-import com.linkedin.kafka.clients.security.MessageEncrypterDecrypter;
+import com.linkedin.kafka.clients.security.TopicEncrypterDecrypterManager;
 import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.lang.reflect.Field;
@@ -49,7 +49,9 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG;
+
+import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG;
+
 
 /**
  * This producer is the implementation of {@link LiKafkaProducer}.
@@ -131,7 +133,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final MessageSplitter _messageSplitter;
   private final boolean _largeMessageSegmentWrappingRequired;
   private final boolean _encryptionEnabled;
-  private final MessageEncrypterDecrypter _messageEncrypterDecrypter;
+  private final TopicEncrypterDecrypterManager _topicEncrypterDecrypterManager;
 
   // serializers
   private Serializer<K> _keySerializer;
@@ -180,15 +182,15 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
   public LiKafkaProducerImpl(Map<String, ?> configs, Serializer<K> keySerializer, Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer, Auditor<K, V> auditor,
-      MessageEncrypterDecrypter messageEncrypterDecrypter) {
+      TopicEncrypterDecrypterManager topicEncrypterDecrypterManager) {
     this(new LiKafkaProducerConfig(configs), keySerializer, valueSerializer, largeMessageSegmentSerializer, auditor,
-        messageEncrypterDecrypter);
+        topicEncrypterDecrypterManager);
   }
 
   @SuppressWarnings("unchecked")
   private LiKafkaProducerImpl(LiKafkaProducerConfig configs, Serializer<K> keySerializer, Serializer<V> valueSerializer,
       Serializer<LargeMessageSegment> largeMessageSegmentSerializer, Auditor<K, V> auditor,
-      MessageEncrypterDecrypter messageEncrypterDecrypter) {
+      TopicEncrypterDecrypterManager topicEncrypterDecrypterManager) {
     // Instantiate the open source producer, which always sents raw bytes.
     _producer = new KafkaProducer<>(configs.originals(), new ByteArraySerializer(), new ByteArraySerializer());
     // TODO: This hack remains until bounded flush is added to apache/kafka
@@ -236,10 +238,18 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
 
       _encryptionEnabled = configs.getBoolean(LiKafkaProducerConfig.ENCRYPTION_ENABLED_CONFIG);
       if (_encryptionEnabled) {
-        _messageEncrypterDecrypter = messageEncrypterDecrypter != null ? messageEncrypterDecrypter
-            : configs.getConfiguredInstance(MESSAGE_ENCRYPTER_DECRYPTER_CLASS_CONFIG, MessageEncrypterDecrypter.class);
+        if (topicEncrypterDecrypterManager == null) {
+          LOG.warn("Cannot detect customized {}. The default one will be used.",
+              TopicEncrypterDecrypterManager.class.getSimpleName());
+          _topicEncrypterDecrypterManager = configs.getConfiguredInstance(TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG,
+              TopicEncrypterDecrypterManager.class);
+        } else {
+
+          _topicEncrypterDecrypterManager = topicEncrypterDecrypterManager;
+        }
+
       } else {
-        _messageEncrypterDecrypter = null;
+        _topicEncrypterDecrypterManager = null;
       }
 
       if (_largeMessageEnabled && _partitioner != null) {
@@ -334,9 +344,11 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       }
       // encrypt serialized value; it is possible that the length of encrypted value is different from the original serialized value
       if (_encryptionEnabled) {
-        serializedValue = _messageEncrypterDecrypter.encrypt(serializedValue);
+        if (serializedValue != null) {
+           serializedValue = _topicEncrypterDecrypterManager.getEncrypterDecrypter(topic).encrypt(serializedValue);
+        }
         // the value of ENCRYPTION_HEADER can be used for specific encryption method; in our default encryption implementation, this field is not used here
-        headers.add(Constants.ENCRYPTION_HEADER, null);
+        headers.add(Constants.ENCRYPTION_HEADER, PrimitiveEncoderDecoder.encodeInt(1));
       }
 
       int serializedKeyLength = serializedKey == null ? 0 : serializedKey.length;

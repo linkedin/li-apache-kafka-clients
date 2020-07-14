@@ -32,8 +32,7 @@ public class MessageAssemblerImpl implements MessageAssembler {
   public MessageAssemblerImpl(long bufferCapacity,
                               long expirationOffsetGap,
                               boolean exceptionOnMessageDropped) {
-    _messagePool = new LargeMessageBufferPool(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped);
-    _segmentDeserializer = null;
+    this(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped, null);
   }
 
   @Deprecated
@@ -70,15 +69,16 @@ public class MessageAssemblerImpl implements MessageAssembler {
       return assemble(tp, offset, segmentBytes);
     }
     // retrieve segment header
-    LargeMessageHeaderValue segmentHeader = LargeMessageHeaderValue.fromBytes(header.value());
+    LargeMessageHeaderValue largeMessageHeader = LargeMessageHeaderValue.fromBytes(header.value());
     // check version, if it is older than V3, still use assembler with payload header
-    if (segmentHeader.getType() < LargeMessageHeaderValue.V3) {
+    if (largeMessageHeader.getType() < LargeMessageHeaderValue.V3) {
       return assemble(tp, offset, segmentBytes);
     }
     ByteBuffer payload = ByteBuffer.wrap(segmentBytes);
 
     // create segment
-    LargeMessageSegment segment = new LargeMessageSegment(segmentHeader, payload);
+    LargeMessageSegment segment = new LargeMessageSegment(largeMessageHeader.getUuid(), largeMessageHeader.getSegmentNumber(),
+            largeMessageHeader.getNumberOfSegments(), largeMessageHeader.getMessageSizeInBytes(), payload);
     return assembleSegment(tp, offset, segmentBytes, segment);
   }
 

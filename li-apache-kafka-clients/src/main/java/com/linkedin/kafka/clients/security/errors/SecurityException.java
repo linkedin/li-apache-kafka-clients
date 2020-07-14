@@ -10,17 +10,17 @@ import org.apache.kafka.common.KafkaException;
  * Exceptions for encryption and decryption.
  */
 
-public class EncryptionException extends KafkaException {
+public class SecurityException extends KafkaException {
 
-  public EncryptionException(String message, Throwable cause) {
+  public SecurityException(String message, Throwable cause) {
     super(message, cause);
   }
 
-  public EncryptionException(String message) {
+  public SecurityException(String message) {
     super(message);
   }
 
-  public EncryptionException(Throwable cause) {
+  public SecurityException(Throwable cause) {
     super(cause);
   }
 }

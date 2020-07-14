@@ -14,7 +14,6 @@ import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -31,10 +30,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
-import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.ENCRYPTION_ENABLED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG;
+import static com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils.*;
 import static org.apache.kafka.clients.CommonClientConfigs.CLIENT_ID_CONFIG;
 import static org.testng.Assert.*;
 
@@ -85,7 +84,6 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
       props.setProperty(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, "true");
       props.setProperty(MAX_MESSAGE_SEGMENT_BYTES_CONFIG, "200");
       props.setProperty(CLIENT_ID_CONFIG, "testProducer");
-      props.setProperty(ENCRYPTION_ENABLED_CONFIG, "true");
       LiKafkaProducer<String, String> largeMessageProducer = createProducer(props);
 
       // This is how large we expect the final message to be, including the version byte, checksum, segment info and
@@ -115,8 +113,6 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
     props.setProperty("large.message.enabled", "true");
     props.setProperty("max.message.segment.size", "200");
     props.setProperty("client.id", "testProducer");
-    props.setProperty(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, "true");
-    props.setProperty(ENCRYPTION_ENABLED_CONFIG, "true");
     LiKafkaProducer<String, String> largeMessageProducer = createProducer(props);
     Properties consumerProps = buildConsumerProps();
     consumerProps.setProperty("auto.offset.reset", "earliest");
@@ -166,7 +162,7 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
         assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
         LargeMessageHeaderValue largeMessageHeaderValue = LiKafkaClientsUtils.fetchLargeMessageHeader(consumerRecord.headers());
         assertEquals(largeMessageHeaderValue.getSegmentNumber(), -1);
-        assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 7);
+        assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 6);
         assertEquals(largeMessageHeaderValue.getType(), LargeMessageHeaderValue.LEGACY_V2);
 
         String messageId = consumerRecord.value().substring(0, 32);
@@ -179,25 +175,5 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
     assertEquals(messages.size(), 0, "All the messages sent should have been consumed.");
   }
 
-  private static Properties buildConsumerProps() {
-    Properties props = new Properties();
-    props.setProperty(CLIENT_ID_CONFIG, "testLargeMessageConsumer");
-    props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "testLargeMessageConsumer");
-    props.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "30000");
-    props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
-    props.setProperty(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "5000");
-    props.setProperty(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, "blah");
-    props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-    props.setProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, "1");
-    props.setProperty(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, "100");
-    props.setProperty(ConsumerConfig.METADATA_MAX_AGE_CONFIG, "30000");
-    props.setProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "1048576");
-    props.setProperty(ConsumerConfig.SEND_BUFFER_CONFIG, "131072");
-    props.setProperty(ConsumerConfig.RECEIVE_BUFFER_CONFIG, "32768");
-    props.setProperty(ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG, "50");
-    props.setProperty(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG, "6000");
-    props.setProperty(ConsumerConfig.CHECK_CRCS_CONFIG, "true");
-    props.setProperty(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, "org.apache.kafka.clients.consumer.RangeAssignor");
-    return props;
-  }
+
 }

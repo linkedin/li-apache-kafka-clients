@@ -254,4 +254,16 @@ public class LiKafkaClientsUtils {
         ? LargeMessageHeaderValue.fromBytes(specialHeaders.get(Constants.LARGE_MESSAGE_HEADER))
         : null;
   }
+
+  /**
+   * Fetch value of special encryption message header (_encrypt)
+   * @param headers ConsumerRecord headers
+   * @return Returns null if _encrypt does not exist otherwise returns the int value
+   */
+  public static Integer fetchEncryptionHeader(Headers headers) {
+    Map<String, byte[]> specialHeaders = fetchSpecialHeaders(headers);
+    return specialHeaders.containsKey(Constants.ENCRYPTION_HEADER)
+        ? PrimitiveEncoderDecoder.decodeInt(specialHeaders.get(Constants.ENCRYPTION_HEADER), 0)
+        : null;
+  }
 }
