@@ -4,11 +4,8 @@
 
 package com.linkedin.kafka.clients.common;
 
-import com.linkedin.kafka.clients.largemessage.DefaultSegmentDeserializer;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -30,7 +27,8 @@ public class LargeMessageHeaderValue {
       PrimitiveEncoderDecoder.LONG_SIZE + PrimitiveEncoderDecoder.INT_SIZE + PrimitiveEncoderDecoder.INT_SIZE;
   // new field added in LEGACY_V2 - messageSizeInBytes
   private static final int LEGACY_V2_HEADER_SIZE = LEGACY_HEADER_SIZE + PrimitiveEncoderDecoder.INT_SIZE;
-  private static final Logger LOG = LoggerFactory.getLogger(DefaultSegmentDeserializer.class);
+  // same as LEGACY_V2_HEADER_SIZE
+  private static final int LEGACY_V3_HEADER_SIZE = LEGACY_V2_HEADER_SIZE;
   private final byte _type;
   private final UUID _uuid;
   private final int _segmentNumber;
@@ -78,7 +76,7 @@ public class LargeMessageHeaderValue {
 
   public static byte[] toBytes(LargeMessageHeaderValue largeMessageHeaderValue) {
     byte[] serialized = largeMessageHeaderValue.getType() == LEGACY ? new byte[LEGACY_HEADER_SIZE]
-        : new byte[LEGACY_V2_HEADER_SIZE];
+        : new byte[LEGACY_V3_HEADER_SIZE];
 
     int byteOffset = 0;
     serialized[byteOffset] = largeMessageHeaderValue.getType();
@@ -110,7 +108,7 @@ public class LargeMessageHeaderValue {
     int segmentNumber = PrimitiveEncoderDecoder.decodeInt(bytes, byteOffset);
     byteOffset += PrimitiveEncoderDecoder.INT_SIZE;
     int numberOfSegments = PrimitiveEncoderDecoder.decodeInt(bytes, byteOffset);
-    if (bytes.length == LEGACY_V2_HEADER_SIZE) {
+    if (bytes.length == LEGACY_V3_HEADER_SIZE) {
       byteOffset += PrimitiveEncoderDecoder.INT_SIZE;
       int messageSizeInBytes = PrimitiveEncoderDecoder.decodeInt(bytes, byteOffset);
       return new LargeMessageHeaderValue(type, new UUID(mostSignificantBits, leastSignificantBits), segmentNumber, numberOfSegments, messageSizeInBytes);

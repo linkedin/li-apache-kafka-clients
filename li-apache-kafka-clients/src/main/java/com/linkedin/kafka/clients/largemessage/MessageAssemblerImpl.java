@@ -32,8 +32,7 @@ public class MessageAssemblerImpl implements MessageAssembler {
   public MessageAssemblerImpl(long bufferCapacity,
                               long expirationOffsetGap,
                               boolean exceptionOnMessageDropped) {
-    _messagePool = new LargeMessageBufferPool(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped);
-    _segmentDeserializer = null;
+    this(bufferCapacity, expirationOffsetGap, exceptionOnMessageDropped, null);
   }
 
   @Deprecated
