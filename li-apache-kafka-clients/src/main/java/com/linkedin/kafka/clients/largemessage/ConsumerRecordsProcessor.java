@@ -12,6 +12,7 @@ import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -87,15 +88,6 @@ public class ConsumerRecordsProcessor<K, V> {
   private final DeserializeStrategy<V> _deserializeStrategy;
 
   private long recordsSkipped = 0;
-  /**
-   * Gives an idea about how far behind the safe offset of a partition is from the watermark. Hence, the
-   * offset-watermark span or a partition is computed as (watermark minus safeoffset).
-   * This metric is a sum of
-   * {@link com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker#offsetWatermarkSpan} for all
-   * assigned partitions that have currently undelivered large messages in the consumer. It is computed on query of
-   * the metric each time and hence, stores the last known value for this metric.
-   */
-  private long _consumerOffsetWatermarkSpan = -1;
 
   /**
    *
@@ -442,13 +434,22 @@ public class ConsumerRecordsProcessor<K, V> {
     return recordsSkipped;
   }
 
+  /**
+   * Gives an idea about how far behind the safe offset of a partition is from the watermark. Hence, the
+   * offset-watermark span or a partition is computed as (watermark minus safeoffset).
+   * This metric is a sum of
+   * {@link com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker#offsetWatermarkSpan} for all
+   * assigned partitions that have currently undelivered large messages in the consumer. It is computed on query of
+   * the metric each time.
+   */
   public long getConsumerOffsetWatermarkSpan() {
     long span = 0;
-    for (TopicPartition tp : knownPartitions()) {
+    // mem copy to avoid ConcurrentModificationException, in case known partition set changes
+    final Set<TopicPartition> knownPartitions = new HashSet<>(knownPartitions());
+    for (TopicPartition tp : knownPartitions) {
       span += _deliveredMessageOffsetTracker.offsetWatermarkSpan(tp);
     }
-    _consumerOffsetWatermarkSpan = span;
-    return _consumerOffsetWatermarkSpan;
+    return span;
   }
 
   private ConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
