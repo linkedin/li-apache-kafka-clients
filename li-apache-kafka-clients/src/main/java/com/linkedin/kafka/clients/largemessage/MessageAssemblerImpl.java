@@ -77,7 +77,8 @@ public class MessageAssemblerImpl implements MessageAssembler {
     ByteBuffer payload = ByteBuffer.wrap(segmentBytes);
 
     // create segment
-    LargeMessageSegment segment = new LargeMessageSegment(largeMessageHeader, payload);
+    LargeMessageSegment segment = new LargeMessageSegment(largeMessageHeader.getUuid(), largeMessageHeader.getSegmentNumber(),
+            largeMessageHeader.getNumberOfSegments(), largeMessageHeader.getMessageSizeInBytes(), payload);
     return assembleSegment(tp, offset, segmentBytes, segment);
   }
 
