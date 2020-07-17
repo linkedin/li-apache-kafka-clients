@@ -87,9 +87,9 @@ public class MessageAssemblerTest {
     Assert.assertEquals(assembleResult.messageStartingOffset(), 0);
     Assert.assertEquals(assembleResult.messageEndingOffset(), 0);
   }
-  
+
   @Test(expectedExceptions = InvalidSegmentException.class)
-  public void testTreatBadSegmentWithRecordHeader() {
+  public void testBadSegmentInHeaderThrows() {
     byte[] messageBytes = "message".getBytes();
     // create record header
     Headers headers = new RecordHeaders();
