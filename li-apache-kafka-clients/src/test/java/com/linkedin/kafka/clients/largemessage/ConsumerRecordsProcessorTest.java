@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.largemessage.errors.OffsetNotTrackedException;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
@@ -83,7 +84,7 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testCorrectness() {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
+    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(getConsumerRecords(true)).consumerRecords();
     assertEquals(processedRecords.count(), 4, "There should be 4 records");
     Iterator<ConsumerRecord<String, String>> iter = processedRecords.iterator();
     ConsumerRecord<String, String> record = iter.next();
@@ -102,6 +103,31 @@ public class ConsumerRecordsProcessorTest {
         PrimitiveEncoderDecoder.decodeLong(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER).value(), 0),
         1L
     );
+    record = iter.next();
+    assertEquals(record.offset(), 5, "Message offset should b 5");
+    assertNull(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER));
+  }
+
+  /* Test if records from Producer without record header can be handled by Consumer with
+   both record header and payload header support */
+  @Test
+  public void testRecordHeadersCompatibility() {
+    ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
+    ConsumerRecords<byte[], byte[]> consumerRecords = getConsumerRecords(false);
+
+    ConsumerRecords<String, String> processedRecords = consumerRecordsProcessor.process(consumerRecords).consumerRecords();
+    assertEquals(processedRecords.count(), 4, "There should be 4 records");
+    Iterator<ConsumerRecord<String, String>> iter = processedRecords.iterator();
+    ConsumerRecord<String, String> record = iter.next();
+    assertEquals(record.offset(), 0, "Message offset should b 0");
+    assertNull(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER));
+
+    record = iter.next();
+    assertEquals(record.offset(), 2, "Message offset should b 2");
+    assertEquals(PrimitiveEncoderDecoder.decodeLong(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER).value(), 0), 1L);
+    record = iter.next();
+    assertEquals(record.offset(), 4, "Message offset should b 4");
+    assertEquals(PrimitiveEncoderDecoder.decodeLong(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER).value(), 0), 1L);
     record = iter.next();
     assertEquals(record.offset(), 5, "Message offset should b 5");
     assertNull(record.headers().lastHeader(Constants.SAFE_OFFSET_HEADER));
@@ -156,7 +182,7 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testSafeOffsetWithLargeMessage() throws IOException {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
+    consumerRecordsProcessor.process(getConsumerRecords(true)).consumerRecords();
 
     // check safe offsets
     TopicPartition tp = new TopicPartition("topic", 0);
@@ -191,7 +217,7 @@ public class ConsumerRecordsProcessorTest {
     MessageSplitter splitter = new MessageSplitterImpl(500, segmentSerializer, new UUIDFactory.DefaultUUIDFactory<>());
 
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
+    consumerRecordsProcessor.process(getConsumerRecords(true)).consumerRecords();
     // The offset tracker now has 2, 4, 5 in it.
     TopicPartition tp = new TopicPartition("topic", 0);
 
@@ -235,7 +261,7 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void verifyStartingOffset() {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
+    consumerRecordsProcessor.process(getConsumerRecords(true)).consumerRecords();
 
     TopicPartition tp = new TopicPartition("topic", 0);
     assertEquals(consumerRecordsProcessor.startingOffset(tp, 4L), 3, "Starting offset of large message 2 should be 3");
@@ -284,7 +310,7 @@ public class ConsumerRecordsProcessorTest {
   @Test
   public void testLastDelivered() {
     ConsumerRecordsProcessor<String, String> consumerRecordsProcessor = createConsumerRecordsProcessor();
-    consumerRecordsProcessor.process(getConsumerRecords()).consumerRecords();
+    consumerRecordsProcessor.process(getConsumerRecords(true)).consumerRecords();
 
     assertEquals(consumerRecordsProcessor.delivered(new TopicPartition("topic", 0)).longValue(), 5L,
                  "The last deivered message should be 5");
@@ -367,7 +393,46 @@ public class ConsumerRecordsProcessorTest {
     assertFalse(result.hasException());
   }
 
-  private ConsumerRecords<byte[], byte[]> getConsumerRecords() {
+  //  Modify records to given target type(version)
+  private List<ProducerRecord<byte[], byte[]>> convertToRecordsWithoutPayloadHeader(List<ProducerRecord<byte[], byte[]>> records) {
+
+    List<ProducerRecord<byte[], byte[]>> modifiedRecords = new ArrayList<>();
+
+    for (ProducerRecord<byte[], byte[]> record : records) {
+      if (LargeMessageSegment.CURRENT_VERSION < LargeMessageHeaderValue.V3) {
+        LargeMessageHeaderValue headerValue =
+            LargeMessageHeaderValue.fromBytes(record.headers().lastHeader(Constants.LARGE_MESSAGE_HEADER).value());
+        record.headers().remove(Constants.LARGE_MESSAGE_HEADER);
+        LargeMessageHeaderValue headerValueWithOldVer = new LargeMessageHeaderValue(
+            // use target version mark
+            LargeMessageHeaderValue.V3, headerValue.getUuid(), headerValue.getSegmentNumber(),
+            headerValue.getNumberOfSegments(), headerValue.getMessageSizeInBytes());
+        record.headers().add(Constants.LARGE_MESSAGE_HEADER, LargeMessageHeaderValue.toBytes(headerValueWithOldVer));
+        // create records without payload header
+        // these records shall be same with records from V3 Producer
+
+        byte[] rawPayload = record.value();
+        byte[] newPayload = new byte[rawPayload.length - DefaultSegmentSerializer.PAYLOAD_HEADER_OVERHEAD];
+        // skip payload header
+        System.arraycopy(rawPayload, DefaultSegmentSerializer.PAYLOAD_HEADER_OVERHEAD, newPayload, 0,
+            newPayload.length);
+        ProducerRecord<byte[], byte[]> modifiedRecord =
+            new ProducerRecord<>(record.topic(), record.partition(), record.timestamp(), record.key(), newPayload,
+                record.headers());
+        modifiedRecords.add(modifiedRecord);
+      } else {
+        modifiedRecords.add(record);
+      }
+    }
+    return modifiedRecords;
+  }
+
+  /**
+   * A helper function for generating ConsumerRecords*
+   * @param ifPayloadHeaderUsed a flag to notify if the generated records should have payload header(i.e. segment metadata in the payload)
+   * @return ConsumerRecords
+   * */
+  private ConsumerRecords<byte[], byte[]> getConsumerRecords(boolean ifPayloadHeaderUsed) {
     Serializer<String> stringSerializer = new StringSerializer();
     Serializer<LargeMessageSegment> segmentSerializer = new DefaultSegmentSerializer();
     // Create two large messages.
@@ -377,6 +442,9 @@ public class ConsumerRecordsProcessorTest {
     byte[] largeMessage1Bytes = stringSerializer.serialize("topic", LiKafkaClientsTestUtils.getRandomString(600));
     List<ProducerRecord<byte[], byte[]>> splitLargeMessage1 =
         splitter.split("topic", largeMessageId1, largeMessage1Bytes);
+    if (ifPayloadHeaderUsed) {
+      splitLargeMessage1 = convertToRecordsWithoutPayloadHeader(splitLargeMessage1);
+    }
 
     UUID largeMessageId2 = LiKafkaClientsUtils.randomUUID();
     byte[] largeMessage2Bytes = stringSerializer.serialize("topic", LiKafkaClientsTestUtils.getRandomString(600));
@@ -385,22 +453,36 @@ public class ConsumerRecordsProcessorTest {
 
     // Let consumer record 0 be a normal record.
     ConsumerRecord<byte[], byte[]> consumerRecord0 =
-        new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message0"));
+        new ConsumerRecord<>("topic", 0, 0, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message0"));
     // Let consumer record 1 be a large message segment
-    ConsumerRecord<byte[], byte[]> consumerRecord1 =
-        new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage1.get(0).value());
+    ConsumerRecord<byte[], byte[]> consumerRecord1;
+    if (ifPayloadHeaderUsed) {
+      consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
+                                             splitLargeMessage1.get(0).value(), splitLargeMessage1.get(0).headers());
+    } else {
+      consumerRecord1 = new ConsumerRecord<>("topic", 0, 1, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
+                                             splitLargeMessage1.get(0).value());
+    }
+
     // Let consumer record 2 be a normal message
     ConsumerRecord<byte[], byte[]> consumerRecord2 =
-        new ConsumerRecord<>("topic", 0, 2, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message1"));
+        new ConsumerRecord<>("topic", 0, 2, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), stringSerializer.serialize("topic", "message1"));
     // Let record 3 be a new large message segment
     ConsumerRecord<byte[], byte[]> consumerRecord3 =
-        new ConsumerRecord<>("topic", 0, 3, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage2.get(0).value());
+        new ConsumerRecord<>("topic", 0, 3, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage2.get(0).value());
     // let record 4 completes record 3
     ConsumerRecord<byte[], byte[]> consumerRecord4 =
-        new ConsumerRecord<>("topic", 0, 4, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage2.get(1).value());
+        new ConsumerRecord<>("topic", 0, 4, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
+                             splitLargeMessage2.get(1).value());
     // let record 5 completes record 1
-    ConsumerRecord<byte[], byte[]> consumerRecord5 =
-        new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0, 0, 0, "key".getBytes(), splitLargeMessage1.get(1).value());
+    ConsumerRecord<byte[], byte[]> consumerRecord5;
+    if (ifPayloadHeaderUsed) {
+      consumerRecord5 = new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(),
+                                             splitLargeMessage1.get(1).value(), splitLargeMessage1.get(1).headers());
+    } else {
+      consumerRecord5 =
+          new ConsumerRecord<>("topic", 0, 5, 0L, TimestampType.CREATE_TIME, 0L, 0, 0, "key".getBytes(), splitLargeMessage1.get(1).value());
+    }
 
     // Construct the consumer records.
     List<ConsumerRecord<byte[], byte[]>> recordList = new ArrayList<>();

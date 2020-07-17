@@ -21,7 +21,8 @@ import java.util.Map;
  * X bytes  - payload
  */
 public class DefaultSegmentSerializer implements Serializer<LargeMessageSegment> {
-  private final int CHECKSUM_LENGTH = Integer.BYTES;
+  // 1 is for version byte; Integer.BYTES is for checksum; SEGMENT_INFO_OVERHEAD is for other metadata
+  public static final int PAYLOAD_HEADER_OVERHEAD = 1 + Integer.BYTES  + LargeMessageSegment.SEGMENT_INFO_OVERHEAD;
 
   @Override
   public void configure(Map<String, ?> configs, boolean isKey) {
@@ -30,8 +31,7 @@ public class DefaultSegmentSerializer implements Serializer<LargeMessageSegment>
 
   @Override
   public byte[] serialize(String s, LargeMessageSegment segment) {
-    ByteBuffer byteBuffer = ByteBuffer.allocate(1 + LargeMessageSegment.SEGMENT_INFO_OVERHEAD +
-        segment.payload.limit() + CHECKSUM_LENGTH);
+    ByteBuffer byteBuffer = ByteBuffer.allocate(PAYLOAD_HEADER_OVERHEAD + segment.payload.limit());
     byteBuffer.put(LargeMessageSegment.CURRENT_VERSION);
     byteBuffer.putInt((int) (segment.messageId.getMostSignificantBits() + segment.messageId.getLeastSignificantBits()));
     byteBuffer.putLong(segment.messageId.getMostSignificantBits());

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.largemessage;
 
+import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.largemessage.errors.InvalidSegmentException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -33,7 +34,9 @@ public class LargeMessageSegment {
   public final ByteBuffer payload;
   // The segment information over head bytes when serialize.
   public static final int SEGMENT_INFO_OVERHEAD = 16 + Integer.BYTES + Integer.BYTES + Integer.BYTES;
-  public static final byte CURRENT_VERSION = 0;
+  // TODO: migrate to V3 version(i.e. changing CURRENT_VERSION to V3) when bumping major version
+  // In the new major version, we shall only uses record headers for LM support instead of using both payload header and record header
+  public static final byte CURRENT_VERSION = LargeMessageHeaderValue.LEGACY;
 
   public LargeMessageSegment(UUID messageId,
                              int sequenceNumber,
