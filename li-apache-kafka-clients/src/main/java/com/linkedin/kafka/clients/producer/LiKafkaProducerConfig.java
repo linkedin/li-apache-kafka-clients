@@ -103,9 +103,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
       "not enabled.";
   public static final String ENCRYPTION_ENABLED_DOC =
       "Configure the producer and consumer to support encryption or not. "
-          + "If topic encrypter/decrypter manager is enabled, the producer will encrypt messages per topic. "
-          + "If not, the producer will apply same encrypter to all messages";
-
+          + "If it is enabled, the producer will encrypt messages per topic with topic encrypter manager. ";
 
   static {
     // TODO: Add a default metadata service client class.
