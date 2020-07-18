@@ -102,12 +102,12 @@ public class ConsumerRecordsProcessor<K, V> {
    * @param topicEncrypterDecrypterManager This may be null otherwise decryption will be executed when messages are complete
    */
   public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
-                                  Deserializer<K> keyDeserializer,
-                                  Deserializer<V> valueDeserializer,
-                                  DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
-                                  Auditor<K, V> auditor,
-                                  Function<TopicPartition, OffsetAndMetadata> storedOffset,
-                                  TopicEncrypterDecrypterManager topicEncrypterDecrypterManager) {
+      Deserializer<K> keyDeserializer,
+      Deserializer<V> valueDeserializer,
+      DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
+      Auditor<K, V> auditor,
+      Function<TopicPartition, OffsetAndMetadata> storedOffset,
+      TopicEncrypterDecrypterManager topicEncrypterDecrypterManager) {
     _messageAssembler = messageAssembler;
     _keyDeserializer = keyDeserializer;
     _valueDeserializer = valueDeserializer;
@@ -269,7 +269,7 @@ public class ConsumerRecordsProcessor<K, V> {
    * @return the safe offset map that user should use to commit offsets.
    */
   public Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit(Map<TopicPartition, OffsetAndMetadata> offsetsToCommit,
-                                                                    boolean ignoreConsumerHighWatermark) {
+      boolean ignoreConsumerHighWatermark) {
     Map<TopicPartition, OffsetAndMetadata> safeOffsetsToCommit = new HashMap<>(offsetsToCommit.size());
     for (TopicPartition tp : offsetsToCommit.keySet()) {
       ConsumerHighWatermarkState highWatermarkState =
@@ -484,7 +484,7 @@ public class ConsumerRecordsProcessor<K, V> {
         long sizeInBytes = (consumerRecord.key() == null ? 0 : consumerRecord.key().length) +
             (valueBytes == null ? 0 : valueBytes.length);
         _auditor.record(_auditor.auditToken(key, value), tp.topic(), consumerRecord.timestamp(), 1L,
-                        sizeInBytes, AuditType.SUCCESS);
+            sizeInBytes, AuditType.SUCCESS);
       }
 
       _partitionConsumerHighWatermark.computeIfAbsent(tp, _storedConsumerHighWatermark)._currentConsumerHighWatermark = consumerRecord.offset();
@@ -528,9 +528,9 @@ public class ConsumerRecordsProcessor<K, V> {
   }
 
   private byte[] parseAndMaybeTrackRecord(TopicPartition tp,
-                                          long messageOffset,
-                                          byte[] bytes,
-                                          Header header) {
+      long messageOffset,
+      byte[] bytes,
+      Header header) {
     MessageAssembler.AssembleResult assembledResult;
     if (header == null) {
       assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
@@ -544,14 +544,14 @@ public class ConsumerRecordsProcessor<K, V> {
       // The safe offset is the smaller one of the current message offset + 1 and current safe offset.
       long safeOffset = Math.min(messageOffset + 1, _messageAssembler.safeOffset(tp, messageOffset));
       _deliveredMessageOffsetTracker.track(tp,
-                                           messageOffset,
-                                           safeOffset,
-                                           assembledResult.messageStartingOffset(),
-                                           !shouldSkip);
+          messageOffset,
+          safeOffset,
+          assembledResult.messageStartingOffset(),
+          !shouldSkip);
       // We skip the messages whose offset is smaller than the high watermark.
       if (shouldSkip) {
         LOG.trace("Skipping message {} from partition {} because its offset is smaller than the high watermark",
-                  messageOffset, tp);
+            messageOffset, tp);
         return INCOMPLETE_RESULT;
       } else {
         return assembledResult.messageBytes();
