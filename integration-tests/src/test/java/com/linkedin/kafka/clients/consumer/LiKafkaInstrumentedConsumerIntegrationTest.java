@@ -11,6 +11,7 @@ import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
 import com.linkedin.mario.common.models.v1.ClientConfigRule;
 import com.linkedin.mario.common.models.v1.ClientConfigRules;
 import com.linkedin.mario.common.models.v1.ClientPredicates;
+import com.linkedin.mario.common.models.v1.KafkaClusterDescriptor;
 import com.linkedin.mario.server.EmbeddableMario;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -78,6 +79,20 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     EmbeddableMario mario = new EmbeddableMario(null);
     Random random = new Random();
     int beforeBatchSize = 1 + random.nextInt(20); //[1, 20]
+
+    // register kafka cluster to EmbeddableMario
+    KafkaClusterDescriptor kafkaClusterDescriptor = new KafkaClusterDescriptor(
+        null,
+        0,
+        "test",
+        "test",
+        "test",
+        zkConnect(),
+        bootstrapServers(),
+        "test",
+        0L
+    );
+    mario.addKafkaCluster(kafkaClusterDescriptor).get();
 
     Properties extra = new Properties();
     extra.setProperty(ConsumerConfig.GROUP_ID_CONFIG, UUID.randomUUID().toString());

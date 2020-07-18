@@ -528,9 +528,9 @@ public class ConsumerRecordsProcessor<K, V> {
   }
 
   private byte[] parseAndMaybeTrackRecord(TopicPartition tp,
-      long messageOffset,
-      byte[] bytes,
-      Header header) {
+                                          long messageOffset,
+                                          byte[] bytes,
+                                          Header header) {
     MessageAssembler.AssembleResult assembledResult;
     if (header == null) {
       assembledResult = _messageAssembler.assemble(tp, messageOffset, bytes);
