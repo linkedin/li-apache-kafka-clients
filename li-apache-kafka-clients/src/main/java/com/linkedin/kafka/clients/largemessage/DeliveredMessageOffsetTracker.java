@@ -81,6 +81,11 @@ public class DeliveredMessageOffsetTracker {
     return _offsetTrackerMap.computeIfAbsent(tp, topicPartition -> new PartitionOffsetTracker(offset));
   }
 
+  public long offsetWatermarkSpan(TopicPartition tp) {
+    PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
+    return offsetTracker == null ? 0 : offsetTracker.partitionOffsetWatermarkSpan();
+  }
+
   public Long safeOffset(TopicPartition tp) {
     PartitionOffsetTracker offsetTracker = _offsetTrackerMap.get(tp);
     return offsetTracker == null ? null : offsetTracker.currentSafeOffset();
@@ -197,6 +202,7 @@ public class DeliveredMessageOffsetTracker {
 
     void updateDelivered(long delivered) {
       _delivered = delivered;
+
     }
 
     long currentSafeOffset() {
@@ -205,6 +211,14 @@ public class DeliveredMessageOffsetTracker {
 
     long earliestTrackedOffset() {
       return _earliestTrackedOffset;
+    }
+
+    /**
+     * Gives an idea about how far behind the safe offset of a partition is from its watermark. Hence, the snag distance
+     * for a partition is computed as (_delivered minus _currentSafeOffset).
+     */
+    long partitionOffsetWatermarkSpan() {
+      return  _delivered == -1 ? 0 : _delivered - _currentSafeOffset;
     }
 
     /**

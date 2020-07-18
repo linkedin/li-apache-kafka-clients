@@ -15,6 +15,7 @@ import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -113,7 +114,7 @@ public class ConsumerRecordsProcessor<K, V> {
     _deliveredMessageOffsetTracker = deliveredMessageOffsetTracker;
     _auditor = auditor;
     _topicEncrypterDecrypterManager = topicEncrypterDecrypterManager;
-    _partitionConsumerHighWatermark = new HashMap<>();
+    _partitionConsumerHighWatermark = new ConcurrentHashMap<>();
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
     }
@@ -445,6 +446,22 @@ public class ConsumerRecordsProcessor<K, V> {
 
   public long getRecordsSkipped() {
     return recordsSkipped;
+  }
+
+  /**
+   * Gives an idea about how far behind the safe offset of a partition is from the watermark. Hence, the
+   * offset-watermark span or a partition is computed as (watermark minus safeoffset).
+   * This metric is a sum of
+   * {@link com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker#offsetWatermarkSpan} for all
+   * assigned partitions that have currently undelivered large messages in the consumer. It is computed on query of
+   * the metric each time.
+   */
+  public long getConsumerOffsetWatermarkSpan() {
+    long span = 0;
+    for (TopicPartition tp : knownPartitions()) {
+      span += _deliveredMessageOffsetTracker.offsetWatermarkSpan(tp);
+    }
+    return span;
   }
 
   private ConsumerRecord<K, V> handleConsumerRecord(ConsumerRecord<byte[], byte[]> consumerRecord) {
