@@ -33,7 +33,8 @@ import java.util.Set;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG;
 import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG;
-import static com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils.*;
+
+import static com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils.buildConsumerProps;
 import static org.apache.kafka.clients.CommonClientConfigs.CLIENT_ID_CONFIG;
 import static org.testng.Assert.*;
 

@@ -13,7 +13,7 @@ import java.util.Random;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 
-import static org.apache.kafka.clients.CommonClientConfigs.*;
+import static org.apache.kafka.clients.CommonClientConfigs.CLIENT_ID_CONFIG;
 import static org.testng.Assert.assertEquals;
 
 /**

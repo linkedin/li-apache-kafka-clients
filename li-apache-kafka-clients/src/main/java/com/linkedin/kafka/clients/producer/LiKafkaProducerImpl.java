@@ -244,10 +244,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
           _topicEncrypterDecrypterManager = configs.getConfiguredInstance(TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG,
               TopicEncrypterDecrypterManager.class);
         } else {
-
           _topicEncrypterDecrypterManager = topicEncrypterDecrypterManager;
         }
-
       } else {
         _topicEncrypterDecrypterManager = null;
       }
@@ -348,7 +346,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
            serializedValue = _topicEncrypterDecrypterManager.getEncrypterDecrypter(topic).encrypt(serializedValue);
         }
         // the value of ENCRYPTION_HEADER can be used for specific encryption method; in our default encryption implementation, this field is not used here
-        headers.add(Constants.ENCRYPTION_HEADER, PrimitiveEncoderDecoder.encodeInt(1));
+        headers.add(Constants.ENCRYPTION_HEADER, PrimitiveEncoderDecoder.encodeBoolean(true));
       }
 
       int serializedKeyLength = serializedKey == null ? 0 : serializedKey.length;

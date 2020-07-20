@@ -29,8 +29,11 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.*;
-import static com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils.*;
+import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.ENCRYPTION_ENABLED_CONFIG;
+import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG;
+import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG;
+import static com.linkedin.kafka.clients.producer.LiKafkaProducerConfig.MAX_MESSAGE_SEGMENT_BYTES_CONFIG;
+import static com.linkedin.kafka.clients.utils.LiKafkaClientsTestUtils.buildConsumerProps;
 import static org.apache.kafka.clients.CommonClientConfigs.CLIENT_ID_CONFIG;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -111,11 +114,11 @@ public class EncryptionIntegrationTest extends AbstractKafkaClientsIntegrationTe
           Long eventTimestamp = LiKafkaClientsUtils.fetchTimestampHeader(consumerRecord.headers());
           assertNotNull(eventTimestamp);
 
-          Integer encryptedFlag = LiKafkaClientsUtils.fetchEncryptionHeader(consumerRecord.headers());
+          Boolean encryptedFlag = LiKafkaClientsUtils.fetchEncryptionHeader(consumerRecord.headers());
           assertNotNull(encryptedFlag);
 
           assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
-          assertEquals(1, encryptedFlag.intValue());
+          assertTrue(encryptedFlag);
           String messageId = consumerRecord.value().substring(0, 32);
           String origMessage = messages.get(messageId);
           assertEquals(consumerRecord.value(), origMessage, "Messages should be the same");
@@ -169,9 +172,9 @@ public class EncryptionIntegrationTest extends AbstractKafkaClientsIntegrationTe
         assertNotNull(eventTimestamp);
         assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
 
-        Integer encryptedFlag = LiKafkaClientsUtils.fetchEncryptionHeader(consumerRecord.headers());
+        Boolean encryptedFlag = LiKafkaClientsUtils.fetchEncryptionHeader(consumerRecord.headers());
         assertNotNull(encryptedFlag);
-        assertEquals(1, encryptedFlag.intValue());
+        assertTrue(true);
         LargeMessageHeaderValue largeMessageHeaderValue =
             LiKafkaClientsUtils.fetchLargeMessageHeader(consumerRecord.headers());
         assertNotNull(largeMessageHeaderValue);
