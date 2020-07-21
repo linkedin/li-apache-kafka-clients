@@ -23,8 +23,6 @@ import org.apache.kafka.common.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG;
-import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 
 /**
@@ -129,8 +127,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG, Type.INT, Integer.MAX_VALUE, Importance.MEDIUM,
             METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC)
         .define(ENCRYPTION_ENABLED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM, ENCRYPTION_ENABLED_DOC)
-        .define(TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG, Type.CLASS, DefaultTopicEncrypterDecrypterManager.class.getName(),
-            Importance.MEDIUM, TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC);
+        .define(LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG, Type.CLASS, DefaultTopicEncrypterDecrypterManager.class.getName(),
+            Importance.MEDIUM, LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC);
   }
 
   LiKafkaProducerConfig(Map<?, ?> props) {

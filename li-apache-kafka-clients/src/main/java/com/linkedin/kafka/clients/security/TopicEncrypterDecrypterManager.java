@@ -27,12 +27,12 @@ public interface TopicEncrypterDecrypterManager {
   void configure(Map<String, ?> configs);
 
   /**
-   * Method used to retrieve the {@link MessageEncrypterDecrypter} instance associated with a given topic. It is
-   * left upto the implementing class on whether the {@link MessageEncrypterDecrypter} instance returned is a
+   * Method used to retrieve the {@link KafkaMessageEncrypterDecrypter} instance associated with a given topic. It is
+   * left upto the implementing class on whether the {@link KafkaMessageEncrypterDecrypter} instance returned is a
    * singleton or unique per-topic.
    *
    * @param topic String representing the name of the topic
-   * @return Returns a non-null instance of {@link MessageEncrypterDecrypter}
+   * @return Returns a non-null instance of {@link KafkaMessageEncrypterDecrypter}
    */
-  MessageEncrypterDecrypter getEncrypterDecrypter(String topic);
+  KafkaMessageEncrypterDecrypter getEncrypterDecrypter(String topic);
 }

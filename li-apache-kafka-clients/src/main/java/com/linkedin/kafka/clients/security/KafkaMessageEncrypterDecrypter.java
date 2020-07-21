@@ -10,7 +10,7 @@ import com.linkedin.kafka.clients.security.errors.SecurityException;
  *
  * The implementing interface is expected to manage the encryption context and/or encryption keys, as appropriate.
  */
-public interface MessageEncrypterDecrypter {
+public interface KafkaMessageEncrypterDecrypter {
   /**
    * Encrypt the plaintext provided as a byte array
    *

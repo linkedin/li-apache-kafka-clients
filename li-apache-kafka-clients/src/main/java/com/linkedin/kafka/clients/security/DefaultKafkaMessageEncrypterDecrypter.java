@@ -5,17 +5,8 @@ package com.linkedin.kafka.clients.security;
 import com.linkedin.kafka.clients.security.errors.SecurityException;
 import java.util.Base64;
 
-public class DefaultMessageEncrypterDecrypter implements MessageEncrypterDecrypter {
+public class DefaultKafkaMessageEncrypterDecrypter implements KafkaMessageEncrypterDecrypter {
 
-  private final String _key;
-
-  public DefaultMessageEncrypterDecrypter(String topic) {
-    _key = topic;
-  }
-
-  public DefaultMessageEncrypterDecrypter() {
-    _key = "defaultKey";
-  }
 
   @Override
   public byte[] encrypt(byte[] plainText) throws SecurityException {

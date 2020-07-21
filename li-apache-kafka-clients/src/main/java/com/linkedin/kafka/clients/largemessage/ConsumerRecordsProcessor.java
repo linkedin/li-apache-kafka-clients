@@ -471,10 +471,11 @@ public class ConsumerRecordsProcessor<K, V> {
     // Create a new copy of the headers
     Headers headers = new RecordHeaders(consumerRecord.headers());
     Header largeMessageHeader = headers.lastHeader(Constants.LARGE_MESSAGE_HEADER);
-    Header encryptionHeader = headers.lastHeader(Constants.ENCRYPTION_HEADER);
+
 
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value(), largeMessageHeader);
     if (valueBytes != INCOMPLETE_RESULT) {
+      Header encryptionHeader = headers.lastHeader(Constants.ENCRYPTION_HEADER);
       if (encryptionHeader != null && valueBytes != null) {
         valueBytes = _topicEncrypterDecrypterManager.getEncrypterDecrypter(consumerRecord.topic()).decrypt(valueBytes);
 

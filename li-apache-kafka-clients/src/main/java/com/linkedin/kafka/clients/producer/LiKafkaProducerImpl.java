@@ -344,9 +344,9 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       if (_encryptionEnabled) {
         if (serializedValue != null) {
            serializedValue = _topicEncrypterDecrypterManager.getEncrypterDecrypter(topic).encrypt(serializedValue);
+          // the value of ENCRYPTION_HEADER can be used for specific encryption method; in our default encryption implementation, this field is not used here
+          headers.add(Constants.ENCRYPTION_HEADER, PrimitiveEncoderDecoder.encodeBoolean(true));
         }
-        // the value of ENCRYPTION_HEADER can be used for specific encryption method; in our default encryption implementation, this field is not used here
-        headers.add(Constants.ENCRYPTION_HEADER, PrimitiveEncoderDecoder.encodeBoolean(true));
       }
 
       int serializedKeyLength = serializedKey == null ? 0 : serializedKey.length;

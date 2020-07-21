@@ -5,6 +5,7 @@
 package com.linkedin.kafka.clients.consumer;
 
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs;
 import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessResult;
 import com.linkedin.kafka.clients.largemessage.ConsumerRecordsProcessor;
 import com.linkedin.kafka.clients.largemessage.DeliveredMessageOffsetTracker;
@@ -48,8 +49,6 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG;
 
 
 /**
@@ -229,7 +228,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       if (topicEncrypterDecrypterManager == null) {
         LOG.warn("Cannot detect customized {}. The default one will be used.",
             TopicEncrypterDecrypterManager.class.getSimpleName());
-        tEncrypterDecrypterManager = configs.getConfiguredInstance(TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG,
+        tEncrypterDecrypterManager = configs.getConfiguredInstance(LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG,
             TopicEncrypterDecrypterManager.class);
       } else {
         tEncrypterDecrypterManager = topicEncrypterDecrypterManager;

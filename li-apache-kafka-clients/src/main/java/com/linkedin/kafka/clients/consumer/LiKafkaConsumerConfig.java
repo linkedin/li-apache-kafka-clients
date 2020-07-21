@@ -21,9 +21,6 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import java.util.HashMap;
 import java.util.Map;
 
-
-import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG;
-import static com.linkedin.kafka.clients.common.LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 
 /**
@@ -214,11 +211,11 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 atLeast(0),
                 Importance.MEDIUM,
                 ConsumerConfig.DEFAULT_API_TIMEOUT_MS_DOC)
-        .define(TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG,
+        .define(LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG,
                 Type.CLASS,
                 DefaultTopicEncrypterDecrypterManager.class.getName(),
                 Importance.MEDIUM,
-                TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC);;
+                LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC);;
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {

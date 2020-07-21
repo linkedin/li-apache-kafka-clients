@@ -12,7 +12,7 @@ public class DefaultMessageEncrypterDecrypterTest {
 
   @Test
   public void testCorrectness() {
-    MessageEncrypterDecrypter encrypterDecrypter = new DefaultMessageEncrypterDecrypter();
+    KafkaMessageEncrypterDecrypter encrypterDecrypter = new DefaultKafkaMessageEncrypterDecrypter();
 
     String text = "message";
     byte[] encryptedText = encrypterDecrypter.encrypt(text.getBytes());
@@ -25,7 +25,7 @@ public class DefaultMessageEncrypterDecrypterTest {
 
   @Test(expectedExceptions = SecurityException.class)
   public void testBadEncryptionMessage() {
-    MessageEncrypterDecrypter encrypterDecrypter = new DefaultMessageEncrypterDecrypter();
+    KafkaMessageEncrypterDecrypter encrypterDecrypter = new DefaultKafkaMessageEncrypterDecrypter();
     byte[] encryptedText = new byte[]{0, 0, 0, 0}; // not valid Base64 encoding result
     byte[] res = encrypterDecrypter.decrypt(encryptedText);
   }
