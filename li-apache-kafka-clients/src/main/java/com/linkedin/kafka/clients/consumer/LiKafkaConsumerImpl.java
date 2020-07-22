@@ -238,7 +238,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     // Instantiate consumer record processor
 
     _consumerRecordsProcessor = new ConsumerRecordsProcessor<>(assembler, kDeserializer, vDeserializer,
-        messageOffsetTracker, auditor, _kafkaConsumer::committed, tEncrypterDecrypterManager);
+        messageOffsetTracker, auditor, _kafkaConsumer::committed, tEncrypterDecrypterManager, shouldDecryptionSkipped);
 
     // Instantiate consumer rebalance listener
     _consumerRebalanceListener = new LiKafkaConsumerRebalanceListener<>(_consumerRecordsProcessor,

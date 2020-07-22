@@ -90,25 +90,24 @@ public class ConsumerRecordsProcessor<K, V> {
   private final DeserializeStrategy<V> _deserializeStrategy;
   private final TopicEncrypterDecrypterManager _topicEncrypterDecrypterManager;
   private long recordsSkipped = 0;
+  private final boolean _shouldDecryptionSkipped;
 
   /**
-   *
-   * @param messageAssembler non-null.  Assembles large segments segments
+   *  @param messageAssembler non-null.  Assembles large segments segments
    * @param keyDeserializer non-null.
    * @param valueDeserializer non-null
    * @param deliveredMessageOffsetTracker non-null.  Keeps a history of safe offsets.
    * @param auditor This may be null otherwise auditing is called when messages are complete.
    * @param storedOffset non-null.  A function that returns the offset information stored in Kafka.   This may
-   *                      be a blocking call and should return null if the information is not available.
+*                      be a blocking call and should return null if the information is not available.
    * @param topicEncrypterDecrypterManager This may be null otherwise decryption will be executed when messages are complete
+   * @param shouldDecryptionSkipped decide if the consumer should skip decrypt messages. This should be
+   *                   used in special cases like mirror-maker wants to copy over data without decrypting
    */
-  public ConsumerRecordsProcessor(MessageAssembler messageAssembler,
-      Deserializer<K> keyDeserializer,
-      Deserializer<V> valueDeserializer,
-      DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
-      Auditor<K, V> auditor,
-      Function<TopicPartition, OffsetAndMetadata> storedOffset,
-      TopicEncrypterDecrypterManager topicEncrypterDecrypterManager) {
+  public ConsumerRecordsProcessor(MessageAssembler messageAssembler, Deserializer<K> keyDeserializer,
+      Deserializer<V> valueDeserializer, DeliveredMessageOffsetTracker deliveredMessageOffsetTracker,
+      Auditor<K, V> auditor, Function<TopicPartition, OffsetAndMetadata> storedOffset,
+      TopicEncrypterDecrypterManager topicEncrypterDecrypterManager, boolean shouldDecryptionSkipped) {
     _messageAssembler = messageAssembler;
     _keyDeserializer = keyDeserializer;
     _valueDeserializer = valueDeserializer;
@@ -116,6 +115,7 @@ public class ConsumerRecordsProcessor<K, V> {
     _auditor = auditor;
     _topicEncrypterDecrypterManager = topicEncrypterDecrypterManager;
     _partitionConsumerHighWatermark = new ConcurrentHashMap<>();
+    _shouldDecryptionSkipped = shouldDecryptionSkipped;
     if (_auditor == null) {
       LOG.info("Auditing is disabled because no auditor is defined.");
     }
@@ -157,7 +157,7 @@ public class ConsumerRecordsProcessor<K, V> {
       Auditor<K, V> auditor,
       Function<TopicPartition, OffsetAndMetadata> storedOffset) {
     this(messageAssembler, keyDeserializer, valueDeserializer, deliveredMessageOffsetTracker, auditor, storedOffset,
-        null);
+        null, false);
   }
 
   /**
@@ -477,7 +477,8 @@ public class ConsumerRecordsProcessor<K, V> {
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value(), largeMessageHeader);
     if (valueBytes != INCOMPLETE_RESULT) {
       Header encryptionHeader = headers.lastHeader(Constants.ENCRYPTION_HEADER);
-      if (encryptionHeader != null && valueBytes != null && EncryptionHeaderValue.CURRENT_VERSION > EncryptionHeaderValue.V1) {
+      if (!_shouldDecryptionSkipped && encryptionHeader != null && valueBytes != null
+          && EncryptionHeaderValue.CURRENT_VERSION > EncryptionHeaderValue.V1) {
         valueBytes = _topicEncrypterDecrypterManager.getEncrypterDecrypter(consumerRecord.topic()).decrypt(valueBytes);
       }
       V value = (V) _deserializeStrategy.deserialize(tp.topic(), consumerRecord.headers(), valueBytes);
