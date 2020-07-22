@@ -18,6 +18,8 @@ public class DefaultTopicEncrypterDecrypterManager implements TopicEncrypterDecr
 
   @Override
   public KafkaMessageEncrypterDecrypter getEncrypterDecrypter(String topic) {
+    // this is a simple implementation by creating a new DefaultKafkaMessageEncrypterDecrypter each time.
+    // To optimize, cache can be utilized.
     return new DefaultKafkaMessageEncrypterDecrypter();
   }
 }

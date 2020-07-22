@@ -8,7 +8,6 @@ import com.linkedin.kafka.clients.security.errors.SecurityException;
 /**
  * Interface to handle basic byte encryption and decryption
  *
- * The implementing interface is expected to manage the encryption context and/or encryption keys, as appropriate.
  */
 public interface KafkaMessageEncrypterDecrypter {
   /**

@@ -201,6 +201,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     boolean treatBadSegmentsAsPayload = configs.getBoolean(LiKafkaConsumerConfig.TREAT_BAD_SEGMENTS_AS_PAYLOAD_CONFIG);
     MessageAssembler assembler = new MessageAssemblerImpl(messageAssemblerCapacity, messageAssemblerExpirationOffsetGap,
                                                           exceptionOnMessageDropped, segmentDeserializer, treatBadSegmentsAsPayload);
+    boolean shouldDecryptionSkipped = configs.getBoolean(LiKafkaConsumerConfig.SKIP_DECRYPTION_CONFIG);
 
     // Instantiate delivered message offset tracker if needed.
     int maxTrackedMessagesPerPartition = configs.getInt(LiKafkaConsumerConfig.MAX_TRACKED_MESSAGES_PER_PARTITION_CONFIG);

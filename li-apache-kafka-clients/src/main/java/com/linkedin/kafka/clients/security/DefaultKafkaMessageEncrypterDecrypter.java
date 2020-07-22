@@ -5,6 +5,7 @@ package com.linkedin.kafka.clients.security;
 import com.linkedin.kafka.clients.security.errors.SecurityException;
 import java.util.Base64;
 
+// A basic implementation based on Base64 encoding and decoding
 public class DefaultKafkaMessageEncrypterDecrypter implements KafkaMessageEncrypterDecrypter {
 
 
