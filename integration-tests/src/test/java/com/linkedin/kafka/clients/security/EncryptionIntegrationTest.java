@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.security;
 
+import com.linkedin.kafka.clients.common.EncryptionHeaderValue;
 import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
@@ -114,11 +115,10 @@ public class EncryptionIntegrationTest extends AbstractKafkaClientsIntegrationTe
           Long eventTimestamp = LiKafkaClientsUtils.fetchTimestampHeader(consumerRecord.headers());
           assertNotNull(eventTimestamp);
 
-          Boolean encryptedFlag = LiKafkaClientsUtils.fetchEncryptionHeader(consumerRecord.headers());
-          assertNotNull(encryptedFlag);
+          EncryptionHeaderValue encryptionHeaderValue = LiKafkaClientsUtils.fetchEncryptionHeader(consumerRecord.headers());
+          assertNotNull(encryptionHeaderValue);
 
           assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
-          assertTrue(encryptedFlag);
           String messageId = consumerRecord.value().substring(0, 32);
           String origMessage = messages.get(messageId);
           assertEquals(consumerRecord.value(), origMessage, "Messages should be the same");
@@ -172,14 +172,19 @@ public class EncryptionIntegrationTest extends AbstractKafkaClientsIntegrationTe
         assertNotNull(eventTimestamp);
         assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
 
-        Boolean encryptedFlag = LiKafkaClientsUtils.fetchEncryptionHeader(consumerRecord.headers());
-        assertNotNull(encryptedFlag);
+
+        EncryptionHeaderValue encryptionHeaderValue = LiKafkaClientsUtils.fetchEncryptionHeader(consumerRecord.headers());
+        assertNotNull(encryptionHeaderValue);
         assertTrue(true);
         LargeMessageHeaderValue largeMessageHeaderValue =
             LiKafkaClientsUtils.fetchLargeMessageHeader(consumerRecord.headers());
         assertNotNull(largeMessageHeaderValue);
         assertEquals(largeMessageHeaderValue.getSegmentNumber(), -1);
-        assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 7);
+        if (EncryptionHeaderValue.CURRENT_VERSION == EncryptionHeaderValue.V1) {
+          assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 6);
+        } else {
+          assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 7);
+        }
         assertEquals(largeMessageHeaderValue.getType(), LargeMessageHeaderValue.LEGACY_V2);
 
         String messageId = consumerRecord.value().substring(0, 32);
@@ -287,7 +292,11 @@ public class EncryptionIntegrationTest extends AbstractKafkaClientsIntegrationTe
         final int expectedProducedMessageSize;
 
         // This is expected size of final message after encryption
-        expectedProducedMessageSize = getEncryptedMessageValueSize(message);
+        if (EncryptionHeaderValue.CURRENT_VERSION > EncryptionHeaderValue.V1) {
+          expectedProducedMessageSize = getEncryptedMessageValueSize(message);
+        } else {
+          expectedProducedMessageSize = message.length();
+        }
         ProducerRecord<String, String> producerRecord = new ProducerRecord<>(TOPIC, message);
         producer.send(producerRecord, (recordMetadata, e) -> {
           if (properties.getProperty(LARGE_MESSAGE_ENABLED_CONFIG).equals("false")) {

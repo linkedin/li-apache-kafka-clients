@@ -6,6 +6,7 @@ package com.linkedin.kafka.clients.largemessage;
 
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
+import com.linkedin.kafka.clients.common.EncryptionHeaderValue;
 import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.largemessage.errors.SkippableException;
 import com.linkedin.kafka.clients.security.TopicEncrypterDecrypterManager;
@@ -476,9 +477,8 @@ public class ConsumerRecordsProcessor<K, V> {
     byte[] valueBytes = parseAndMaybeTrackRecord(tp, consumerRecord.offset(), consumerRecord.value(), largeMessageHeader);
     if (valueBytes != INCOMPLETE_RESULT) {
       Header encryptionHeader = headers.lastHeader(Constants.ENCRYPTION_HEADER);
-      if (encryptionHeader != null && valueBytes != null) {
+      if (encryptionHeader != null && valueBytes != null && EncryptionHeaderValue.CURRENT_VERSION > EncryptionHeaderValue.V1) {
         valueBytes = _topicEncrypterDecrypterManager.getEncrypterDecrypter(consumerRecord.topic()).decrypt(valueBytes);
-
       }
       V value = (V) _deserializeStrategy.deserialize(tp.topic(), consumerRecord.headers(), valueBytes);
       if (_auditor != null) {

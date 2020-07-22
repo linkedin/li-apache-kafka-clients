@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.clients.utils;
 
+import com.linkedin.kafka.clients.common.EncryptionHeaderValue;
 import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.mario.common.versioning.VersioningUtils;
 import java.nio.ByteBuffer;
@@ -260,10 +261,10 @@ public class LiKafkaClientsUtils {
    * @param headers ConsumerRecord headers
    * @return Returns null if _encrypt does not exist otherwise returns the boolean value
    */
-  public static Boolean fetchEncryptionHeader(Headers headers) {
+  public static EncryptionHeaderValue fetchEncryptionHeader(Headers headers) {
     Map<String, byte[]> specialHeaders = fetchSpecialHeaders(headers);
     return specialHeaders.containsKey(Constants.ENCRYPTION_HEADER)
-        ? PrimitiveEncoderDecoder.decodeBoolean(specialHeaders.get(Constants.ENCRYPTION_HEADER), 0)
+        ? EncryptionHeaderValue.fromBytes(specialHeaders.get(Constants.ENCRYPTION_HEADER))
         : null;
   }
 }

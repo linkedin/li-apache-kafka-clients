@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.producer;
 import com.linkedin.kafka.clients.auditing.AuditType;
 import com.linkedin.kafka.clients.auditing.Auditor;
 import com.linkedin.kafka.clients.auditing.NoOpAuditor;
+import com.linkedin.kafka.clients.common.EncryptionHeaderValue;
 import com.linkedin.kafka.clients.largemessage.LargeMessageCallback;
 import com.linkedin.kafka.clients.largemessage.LargeMessageSegment;
 import com.linkedin.kafka.clients.largemessage.MessageSplitter;
@@ -343,9 +344,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       // encrypt serialized value; it is possible that the length of encrypted value is different from the original serialized value
       if (_encryptionEnabled) {
         if (serializedValue != null) {
-           serializedValue = _topicEncrypterDecrypterManager.getEncrypterDecrypter(topic).encrypt(serializedValue);
+          if (EncryptionHeaderValue.CURRENT_VERSION != EncryptionHeaderValue.V1) {
+            serializedValue = _topicEncrypterDecrypterManager.getEncrypterDecrypter(topic).encrypt(serializedValue);
+          }
           // the value of ENCRYPTION_HEADER can be used for specific encryption method; in our default encryption implementation, this field is not used here
-          headers.add(Constants.ENCRYPTION_HEADER, PrimitiveEncoderDecoder.encodeBoolean(true));
+          EncryptionHeaderValue encryptionHeaderValue = new EncryptionHeaderValue(EncryptionHeaderValue.CURRENT_VERSION);
+          headers.add(Constants.ENCRYPTION_HEADER, EncryptionHeaderValue.toBytes(encryptionHeaderValue));
         }
       }
 

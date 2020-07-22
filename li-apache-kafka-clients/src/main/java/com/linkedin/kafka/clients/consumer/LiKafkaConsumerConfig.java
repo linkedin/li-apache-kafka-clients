@@ -49,6 +49,7 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
       LiKafkaCommonClientConfigs.METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG;
   public static final String CLUSTER_GROUP_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_GROUP_CONFIG;
   public static final String CLUSTER_ENVIRONMENT_CONFIG = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_CONFIG;
+  public static final String SKIP_DECRYPTION_CONFIG = "decryption.skipped";
 
   private static final String MESSAGE_ASSEMBLER_BUFFER_CAPACITY_DOC = "The maximum number of bytes the message assembler " +
       " uses to buffer the incomplete large message segments. The capacity is shared by messages from all the topics. " +
@@ -107,6 +108,10 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
   public static final String CLUSTER_GROUP_DOC = LiKafkaCommonClientConfigs.CLUSTER_GROUP_DOC;
 
   public static final String CLUSTER_ENVIRONMENT_DOC = LiKafkaCommonClientConfigs.CLUSTER_ENVIRONMENT_DOC;
+
+  private static final String SKIP_DECRYPTION_DOC =
+      "The flag which decides if the consumer should skip the decryption process "
+          + "when it is just forwarding records.";
 
   static {
     CONFIG = new ConfigDef()
@@ -215,7 +220,12 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 Type.CLASS,
                 DefaultTopicEncrypterDecrypterManager.class.getName(),
                 Importance.MEDIUM,
-                LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC);;
+                LiKafkaCommonClientConfigs.TOPIC_ENCRYPTION_MANAGER_CLASS_CONFIG_DOC)
+        .define(SKIP_DECRYPTION_CONFIG,
+                Type.BOOLEAN,
+                "false",
+                Importance.MEDIUM,
+                SKIP_DECRYPTION_DOC);
   }
 
   public LiKafkaConsumerConfig(Map<?, ?> props) {
