@@ -67,7 +67,6 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
    */
   @Test
   public void testSend() throws Exception {
-    long startTime = System.currentTimeMillis();
     Properties props = new Properties();
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
     String tempTopic = "testTopic" + new Random().nextInt(1000000);
@@ -89,11 +88,6 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
       while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
         ConsumerRecords<String, String> records = consumer.poll(100);
         for (ConsumerRecord<String, String> record : records) {
-          Map<String, byte[]> headers = LiKafkaClientsUtils.fetchSpecialHeaders(record.headers());
-          assertTrue(headers.containsKey(Constants.TIMESTAMP_HEADER));
-          long eventTimestamp = PrimitiveEncoderDecoder.decodeLong(headers.get(Constants.TIMESTAMP_HEADER), 0);
-          assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
-
           int index = Integer.parseInt(record.value());
           counts.set(index);
           messageCount++;
@@ -101,6 +95,72 @@ public class LiKafkaProducerIntegrationTest extends AbstractKafkaClientsIntegrat
       }
     }
     assertEquals(RECORD_COUNT, messageCount);
+  }
+
+  @Test
+  public void testTimestampHeader() throws Exception {
+    long startTime = System.currentTimeMillis();
+    Properties props = new Properties();
+    props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
+    String levelOneTopic = "levelOneTopic" + new Random().nextInt(1000000);
+    String levelTwoTopic = "levelTwoTopic" + new Random().nextInt(1000000);
+    createTopic(levelOneTopic);
+    createTopic(levelTwoTopic);
+    try (LiKafkaProducer<String, String> producer = createProducer(props)) {
+      for (int i = 0; i < RECORD_COUNT; ++i) {
+        String value = Integer.toString(i);
+        producer.send(new ProducerRecord<>(levelOneTopic, 0, startTime, null, value));
+      }
+
+      Properties consumerProps = new Properties();
+      consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+      try (LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps)) {
+        int messageCount = 0;
+        consumer.subscribe(Collections.singleton(levelOneTopic));
+        BitSet counts = new BitSet(RECORD_COUNT);
+        long startMs = System.currentTimeMillis();
+        while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
+          ConsumerRecords<String, String> records = consumer.poll(100);
+          for (ConsumerRecord<String, String> record : records) {
+            Map<String, byte[]> headers = LiKafkaClientsUtils.fetchSpecialHeaders(record.headers());
+            assertTrue(headers.containsKey(Constants.TIMESTAMP_HEADER));
+            long eventTimestamp = PrimitiveEncoderDecoder.decodeLong(headers.get(Constants.TIMESTAMP_HEADER), 0);
+            assertEquals(eventTimestamp, startTime);
+
+            int index = Integer.parseInt(record.value());
+            counts.set(index);
+            messageCount++;
+            producer.send(new ProducerRecord<>(levelTwoTopic, 0, record.key(), record.value(), record.headers()));
+          }
+        }
+
+        assertEquals(RECORD_COUNT, messageCount);
+      }
+
+      try (LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps)) {
+        int messageCount = 0;
+        consumer.subscribe(Collections.singleton(levelTwoTopic));
+
+        BitSet counts = new BitSet(RECORD_COUNT);
+        long startMs = System.currentTimeMillis();
+        while (messageCount < RECORD_COUNT && System.currentTimeMillis() < startMs + 30000) {
+          ConsumerRecords<String, String> records = consumer.poll(100);
+          for (ConsumerRecord<String, String> record : records) {
+            Map<String, byte[]> headers = LiKafkaClientsUtils.fetchSpecialHeaders(record.headers());
+            assertTrue(headers.containsKey(Constants.TIMESTAMP_HEADER));
+            long eventTimestamp = PrimitiveEncoderDecoder.decodeLong(headers.get(Constants.TIMESTAMP_HEADER), 0);
+            assertEquals(eventTimestamp, startTime);
+
+            int index = Integer.parseInt(record.value());
+            counts.set(index);
+            messageCount++;
+          }
+        }
+
+        assertEquals(RECORD_COUNT, messageCount);
+      }
+    }
   }
 
   @Test

@@ -295,9 +295,10 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         if (headers == null) {
           headers = new RecordHeaders();
         }
-        // Remove any header that maybe using the key for audit event timestamp or large message.
-        headers.remove(Constants.TIMESTAMP_HEADER);
-        headers.add(Constants.TIMESTAMP_HEADER, PrimitiveEncoderDecoder.encodeLong(timestamp));
+        // TIMESTAMP_HEADER is immutable and should not be modified if already exist
+        if (headers.lastHeader(Constants.TIMESTAMP_HEADER) == null) {
+          headers.add(Constants.TIMESTAMP_HEADER, PrimitiveEncoderDecoder.encodeLong(timestamp));
+        }
       }
 
       if (LOG.isTraceEnabled()) {
@@ -331,7 +332,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         if (serializedValueLength > _maxMessageSegmentSize) {
           //payload requires splitting
 
-          //if user didnt explicitely specify a destination partition, and is using a custom partitioner we
+          //if user didnt explicitly specify a destination partition, and is using a custom partitioner we
           //call the custom partitioner at this point so its decision could apply to all segments (otherwise we
           //risk the custom partitioner sending segments across multiple partitions). we know the kafka default
           //partitioner is "safe" for this (as it only operates on the key, and all segments get the same key)
