@@ -46,6 +46,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.InvalidOffsetException;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -1383,6 +1384,38 @@ public class LiKafkaConsumerIntegrationTest extends AbstractKafkaClientsIntegrat
         { LiOffsetResetStrategy.LICLOSEST },
         { LiOffsetResetStrategy.NONE }
     };
+  }
+
+  @Test
+  public void testThrowExceptionOnInvalidOffset() throws Exception {
+    createTopic(TOPIC1);
+    createTopic(TOPIC2);
+    produceRecordsWithKafkaProducer();
+    Properties props = new Properties();
+    props.setProperty("auto.offset.reset", "liclosest");
+    props.setProperty("group.id", "testThrowExceptionOnInvalidOffset");
+    props.setProperty("exception.on.invalid.offset.reset", "true");
+
+    TopicPartition tp = new TopicPartition(TOPIC1, 0);
+    try (LiKafkaConsumer<String, String> consumer = createConsumer(props)) {
+      consumer.assign(Collections.singleton(tp));
+      ConsumerRecords<String, String> consumerRecords = ConsumerRecords.empty();
+      consumer.seek(tp, 0);
+      Long endPollTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(5);
+      while (consumerRecords.isEmpty() && (System.currentTimeMillis() < endPollTime)) {
+        consumerRecords = consumer.poll(Duration.ofMillis(1000));
+      }
+      consumer.seek(tp, 100000L);
+      assertEquals(consumer.position(tp), 100000L);
+
+      boolean exceptionThrown = false;
+      try {
+        consumer.poll(Duration.ofMillis(1000));
+      } catch (InvalidOffsetException ee) {
+        exceptionThrown = true;
+      }
+      assertTrue(exceptionThrown);
+    }
   }
 
   @Test(dataProvider = "offsetResetStrategies")

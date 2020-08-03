@@ -77,6 +77,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final LiKafkaOffsetCommitCallback _offsetCommitCallback;
   private final boolean _autoCommitEnabled;
   private final long _autoCommitInterval;
+  private final boolean _throwExceptionOnInvalidOffsets;
   private final LiOffsetResetStrategy _offsetResetStrategy;
   private long _lastAutoCommitMs;
   private final Map<MetricName, Metric> _extraMetrics = new HashMap<>(2);
@@ -116,6 +117,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     _autoCommitEnabled = configs.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG);
     _autoCommitInterval = configs.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG);
+    _throwExceptionOnInvalidOffsets = configs.getBoolean(LiKafkaConsumerConfig.EXCEPTION_ON_INVALID_OFFSET_RESET_CONFIG);
     _offsetResetStrategy =
         LiOffsetResetStrategy.valueOf(configs.getString(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG).toUpperCase(Locale.ROOT));
     _lastAutoCommitMs = System.currentTimeMillis();
@@ -319,6 +321,11 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
+
+        // force throw exception if exception.on.invalid.offset.reset is set to true
+        if (_throwExceptionOnInvalidOffsets) {
+          throw oe;
+        }
       }
 
       _lastProcessedResult = _consumerRecordsProcessor.process(rawRecords);
@@ -336,6 +343,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
           throw crpe;
         }
       }
+
       now = System.currentTimeMillis();
     } while (processedRecords.isEmpty() && now < deadline);
     return processedRecords;
