@@ -8,6 +8,7 @@ import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
+import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.Collections;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Headers;
@@ -106,14 +107,31 @@ public class MessageSplitterImpl implements MessageSplitter {
       LargeMessageSegment segment = new LargeMessageSegment(segmentMessageId, seq,
           numberOfSegments, messageSizeInBytes, payload);
 
-      // NOTE: Even though we are passing topic here to serialize, the segment itself should be topic independent.
-      byte[] segmentValue = _segmentSerializer.serialize(topic, segment);
+      boolean enableRecordHeader = false;
+      if (headers.lastHeader(Constants.SHOULD_USE_HEADER) != null) {
+        enableRecordHeader = PrimitiveEncoderDecoder.decodeBoolean(headers.lastHeader(Constants.SHOULD_USE_HEADER).value(), 0);
+      }
+      byte[] segmentValue;
+      if (!enableRecordHeader) {
+        // NOTE: Even though we are passing topic here to serialize, the segment itself should be topic independent.
+        segmentValue = _segmentSerializer.serialize(topic, segment);
+      } else {
+        segmentValue = payload.array();
+      }
 
       //  Make a temporary copy of headers because we'd be overwriting {@link Constants.LARGE_MESSAGE_HEADER}
       Headers temporaryHeaders = new RecordHeaders(headers);
       temporaryHeaders.remove(Constants.LARGE_MESSAGE_HEADER);
+
+      byte largeMessageHeaderValueVersion;
+
+      if (!enableRecordHeader) {
+        largeMessageHeaderValueVersion = LargeMessageHeaderValue.LEGACY_V2;
+      } else {
+        largeMessageHeaderValueVersion = LargeMessageHeaderValue.V3;
+      }
       LargeMessageHeaderValue largeMessageHeaderValue = new LargeMessageHeaderValue(
-          LargeMessageHeaderValue.LEGACY_V2,
+          largeMessageHeaderValueVersion,
           messageId,
           seq,
           numberOfSegments,

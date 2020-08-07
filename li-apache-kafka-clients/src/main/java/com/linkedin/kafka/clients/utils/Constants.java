@@ -9,6 +9,7 @@ public class Constants {
   public static final String TIMESTAMP_HEADER = "_t";
   public static final String LARGE_MESSAGE_HEADER = "_lm";
   public static final String SAFE_OFFSET_HEADER = "_so";
+  public static final String SHOULD_USE_HEADER = "_sh";
 
   /**
    * Avoid instantiating the constants class

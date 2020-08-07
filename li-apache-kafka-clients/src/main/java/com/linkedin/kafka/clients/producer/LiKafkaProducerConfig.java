@@ -51,6 +51,7 @@ public class LiKafkaProducerConfig extends AbstractConfig {
   public static final String MAX_REQUEST_SIZE_CONFIG = ProducerConfig.MAX_REQUEST_SIZE_CONFIG;
   public static final String LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG =
       "li.large.message.segment.wrapping.required";
+  public static final String ENABLE_RECORD_HEADER_CONFIG = "li.record.header.enable";
 
   public static final String LARGE_MESSAGE_ENABLED_DOC = "Configure the producer to support large messages or not. " +
       "If large message is enabled, the producer will split the messages whose size is greater than " +
@@ -98,6 +99,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
       "and thus not split into multiple messages. This configuration does not have any effect if large message is " +
       "not enabled.";
 
+  public static final String ENABLE_RECORD_HEADER_DOC = "If true, we will use record header based large message support and stop using segmentSerializer.";
+
   static {
     // TODO: Add a default metadata service client class.
     CONFIG = new ConfigDef()
@@ -120,7 +123,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
         .define(LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM,
             LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_DOC)
         .define(METADATA_SERVICE_REQUEST_TIMEOUT_MS_CONFIG, Type.INT, Integer.MAX_VALUE, Importance.MEDIUM,
-            METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC);
+            METADATA_SERVICE_REQUEST_TIMEOUT_MS_DOC)
+        .define(ENABLE_RECORD_HEADER_CONFIG, Type.BOOLEAN, "false", Importance.MEDIUM, ENABLE_RECORD_HEADER_DOC);
     ;
   }
 

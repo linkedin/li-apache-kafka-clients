@@ -11,6 +11,7 @@ public class PrimitiveEncoderDecoder {
   // The number of bytes for a long variable
   public static final int LONG_SIZE = Long.SIZE / Byte.SIZE;
   public static final int INT_SIZE = Integer.SIZE / Byte.SIZE;
+  public static final int BOOLEAN_SIZE = 1;
 
   /**
    * Avoid instantiating PrimitiveEncoderDecoder class
@@ -95,22 +96,39 @@ public class PrimitiveEncoderDecoder {
     return data;
   }
 
-  public static int decodeInt(byte[] input, int pos) {
-    if (input == null) {
-      throw new IllegalArgumentException("bytes cannot be null");
+
+  /**
+   * Encodes a boolean value into a {@link PrimitiveEncoderDecoder#BOOLEAN_SIZE} byte array
+   * @param value value to be encoded
+   * @param output output where encoded data will be stored
+   * @param pos position in output where value will be encoded starting from
+   */
+  public static void encodeBoolean(boolean value, byte[] output, int pos) {
+    if (output == null) {
+      throw new IllegalArgumentException("The input result cannot be null");
     }
 
     if (pos < 0) {
       throw new IllegalArgumentException("position cannot be less than zero");
     }
 
-    if (input.length < pos + INT_SIZE) {
+    if (output.length < pos + BOOLEAN_SIZE) {
       throw new IllegalArgumentException(
-          String.format("Not adequate bytes available in the input array(array length = %d, pos = %d)", input.length, pos)
+          String.format("Not adequate bytes available to encode the boolean value(array length = %d, pos = %d", output.length, pos)
       );
     }
+    output[pos] = (byte) (value ? 1 : 0);
+  }
 
-    return input[pos] << 24 | (input[pos + 1] & 0xFF) << 16 | (input[pos + 2] & 0xFF) << 8 | (input[pos + 3] & 0xFF);
+  /**
+   * Encodes a boolean value int a newly created byte[] and returns it
+   * @param value value to be encoded
+   * @return encoded value
+   */
+  public static byte[] encodeBoolean(boolean value) {
+    byte[] data = new byte[BOOLEAN_SIZE];
+    encodeBoolean(value, data, 0);
+    return data;
   }
 
   /**
@@ -120,19 +138,7 @@ public class PrimitiveEncoderDecoder {
    * @return a decoded long
    */
   public static long decodeLong(byte[] input, int pos) {
-    if (input == null) {
-      throw new IllegalArgumentException("bytes cannot be null");
-    }
-
-    if (pos < 0) {
-      throw new IllegalArgumentException("position cannot be less than zero");
-    }
-
-    if (input.length < pos + LONG_SIZE) {
-      throw new IllegalArgumentException(
-          String.format("Not adequate bytes available in the input array(array length = %d, pos = %d)", input.length, pos)
-      );
-    }
+    sanityCheck(input, pos, LONG_SIZE);
 
     return (input[pos] & 0xFFL) << 56
         | (input[pos + 1] & 0xFFL) << 48
@@ -142,5 +148,45 @@ public class PrimitiveEncoderDecoder {
         | (input[pos + 5] & 0xFFL) << 16
         | (input[pos + 6] & 0xFFL) << 8
         | (input[pos + 7] & 0xFFL);
+  }
+
+
+  /**
+   * Decodes {@link PrimitiveEncoderDecoder#INT_SIZE} bytes from offset in the input byte array
+   * @param input where to read encoded form from
+   * @param pos position in input to start reading from
+   * @return a decoded int
+   */
+  public static int decodeInt(byte[] input, int pos) {
+    sanityCheck(input, pos, INT_SIZE);
+
+    return input[pos] << 24 | (input[pos + 1] & 0xFF) << 16 | (input[pos + 2] & 0xFF) << 8 | (input[pos + 3] & 0xFF);
+  }
+
+  /**
+   * Decodes {@link PrimitiveEncoderDecoder#BOOLEAN_SIZE} bytes from offset in the input byte array
+   * @param input where to read encoded form from
+   * @param pos position in input to start reading from
+   * @return a decoded boolean
+   */
+  public static boolean decodeBoolean(byte[] input, int pos) {
+    sanityCheck(input, pos, BOOLEAN_SIZE);
+    return input[pos] == 1;
+  }
+
+  private static void sanityCheck(byte[] input, int pos, int dataSize) {
+    if (input == null) {
+      throw new IllegalArgumentException("bytes cannot be null");
+    }
+
+    if (pos < 0) {
+      throw new IllegalArgumentException("position cannot be less than zero");
+    }
+
+    if (input.length < pos + dataSize) {
+      throw new IllegalArgumentException(
+          String.format("Not adequate bytes available in the input array(array length = %d, pos = %d)", input.length, pos)
+      );
+    }
   }
 }
