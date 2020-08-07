@@ -304,6 +304,12 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         }
       }
 
+      // TODO: discuss with navina if adding enableRecordHeader in header to pass parameter is a good choice. It may be a little strange to control if using record headers by testing if the record header has such a field.
+      if (headers.lastHeader(Constants.SHOULD_USE_HEADER) == null) {
+        headers.add(Constants.SHOULD_USE_HEADER, PrimitiveEncoderDecoder.encodeBoolean(_enableRecordHeader));
+      }
+
+
       if (LOG.isTraceEnabled()) {
         LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}",
             messageId.toString().replaceAll("-", ""),
@@ -346,8 +352,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
             partition = invokeCustomPartitioner(topic, key, serializedKey, value, serializedValue);
           }
 
-          // TODO: discuss with navina if adding enableRecordHeader in header to pass parameter is a good choice
-          headers.add(Constants.SHOULD_USE_HEADER, PrimitiveEncoderDecoder.encodeBoolean(_enableRecordHeader));
+
           // Split the payload into large message segments (they will all have the same key and same partition)
           List<ProducerRecord<byte[], byte[]>> segmentRecords =
               _messageSplitter.split(topic, partition, timestamp, messageId, serializedKey, serializedValue, headers);
@@ -368,8 +373,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
           if (partition == null && _partitioner != null) {
             partition = invokeCustomPartitioner(topic, key, serializedKey, value, serializedValue);
           }
-          // TODO: discuss with navina if adding enableRecordHeader in header to pass parameter is a good choice
-          headers.add(Constants.SHOULD_USE_HEADER, PrimitiveEncoderDecoder.encodeBoolean(_enableRecordHeader));
 
           // Wrap the paylod with a large message segment, even if the payload is not big enough to split
           List<ProducerRecord<byte[], byte[]>> wrappedRecord =
