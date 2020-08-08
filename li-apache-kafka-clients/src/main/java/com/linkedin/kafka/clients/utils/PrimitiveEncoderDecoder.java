@@ -121,17 +121,6 @@ public class PrimitiveEncoderDecoder {
   }
 
   /**
-   * Encodes a boolean value int a newly created byte[] and returns it
-   * @param value value to be encoded
-   * @return encoded value
-   */
-  public static byte[] encodeBoolean(boolean value) {
-    byte[] data = new byte[BOOLEAN_SIZE];
-    encodeBoolean(value, data, 0);
-    return data;
-  }
-
-  /**
    * Decodes {@link PrimitiveEncoderDecoder#LONG_SIZE} bytes from offset in the input byte array
    * @param input where to read encoded form from
    * @param pos position in input to start reading from
@@ -161,17 +150,6 @@ public class PrimitiveEncoderDecoder {
     sanityCheck(input, pos, INT_SIZE);
 
     return input[pos] << 24 | (input[pos + 1] & 0xFF) << 16 | (input[pos + 2] & 0xFF) << 8 | (input[pos + 3] & 0xFF);
-  }
-
-  /**
-   * Decodes {@link PrimitiveEncoderDecoder#BOOLEAN_SIZE} bytes from offset in the input byte array
-   * @param input where to read encoded form from
-   * @param pos position in input to start reading from
-   * @return a decoded boolean
-   */
-  public static boolean decodeBoolean(byte[] input, int pos) {
-    sanityCheck(input, pos, BOOLEAN_SIZE);
-    return input[pos] == 1;
   }
 
   private static void sanityCheck(byte[] input, int pos, int dataSize) {
