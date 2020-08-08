@@ -304,9 +304,15 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
         }
       }
 
-      // TODO: discuss with navina if adding enableRecordHeader in header to pass parameter is a good choice. It may be a little strange to control if using record headers by testing if the record header has such a field.
-      if (headers.lastHeader(Constants.SHOULD_USE_HEADER) == null) {
-        headers.add(Constants.SHOULD_USE_HEADER, PrimitiveEncoderDecoder.encodeBoolean(_enableRecordHeader));
+      // TODO: discuss with navina if adding enableRecordHeader in header to pass parameter is a good choice.
+      // It may be a little strange to control if using record headers by testing if the record header has such a field.
+      if (_enableRecordHeader) {
+        if (headers == null) {
+          headers = new RecordHeaders();
+        }
+        if (headers.lastHeader(Constants.SHOULD_USE_HEADER) == null) {
+          headers.add(Constants.SHOULD_USE_HEADER, PrimitiveEncoderDecoder.encodeBoolean(true));
+        }
       }
 
 

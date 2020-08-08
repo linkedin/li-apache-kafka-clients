@@ -112,24 +112,20 @@ public class MessageSplitterImpl implements MessageSplitter {
         enableRecordHeader = PrimitiveEncoderDecoder.decodeBoolean(headers.lastHeader(Constants.SHOULD_USE_HEADER).value(), 0);
       }
       byte[] segmentValue;
-      if (!enableRecordHeader) {
+      byte largeMessageHeaderValueVersion;
+      if (enableRecordHeader) {
+        segmentValue = payload.array();
+        largeMessageHeaderValueVersion = LargeMessageHeaderValue.V3;
+      } else {
         // NOTE: Even though we are passing topic here to serialize, the segment itself should be topic independent.
         segmentValue = _segmentSerializer.serialize(topic, segment);
-      } else {
-        segmentValue = payload.array();
+        largeMessageHeaderValueVersion = LargeMessageHeaderValue.LEGACY_V2;
       }
 
       //  Make a temporary copy of headers because we'd be overwriting {@link Constants.LARGE_MESSAGE_HEADER}
       Headers temporaryHeaders = new RecordHeaders(headers);
       temporaryHeaders.remove(Constants.LARGE_MESSAGE_HEADER);
 
-      byte largeMessageHeaderValueVersion;
-
-      if (!enableRecordHeader) {
-        largeMessageHeaderValueVersion = LargeMessageHeaderValue.LEGACY_V2;
-      } else {
-        largeMessageHeaderValueVersion = LargeMessageHeaderValue.V3;
-      }
       LargeMessageHeaderValue largeMessageHeaderValue = new LargeMessageHeaderValue(
           largeMessageHeaderValueVersion,
           messageId,
