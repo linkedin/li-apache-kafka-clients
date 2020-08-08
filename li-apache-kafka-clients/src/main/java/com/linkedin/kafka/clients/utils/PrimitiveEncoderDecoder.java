@@ -11,7 +11,6 @@ public class PrimitiveEncoderDecoder {
   // The number of bytes for a long variable
   public static final int LONG_SIZE = Long.SIZE / Byte.SIZE;
   public static final int INT_SIZE = Integer.SIZE / Byte.SIZE;
-  public static final int BOOLEAN_SIZE = 1;
 
   /**
    * Avoid instantiating PrimitiveEncoderDecoder class
@@ -96,29 +95,6 @@ public class PrimitiveEncoderDecoder {
     return data;
   }
 
-
-  /**
-   * Encodes a boolean value into a {@link PrimitiveEncoderDecoder#BOOLEAN_SIZE} byte array
-   * @param value value to be encoded
-   * @param output output where encoded data will be stored
-   * @param pos position in output where value will be encoded starting from
-   */
-  public static void encodeBoolean(boolean value, byte[] output, int pos) {
-    if (output == null) {
-      throw new IllegalArgumentException("The input result cannot be null");
-    }
-
-    if (pos < 0) {
-      throw new IllegalArgumentException("position cannot be less than zero");
-    }
-
-    if (output.length < pos + BOOLEAN_SIZE) {
-      throw new IllegalArgumentException(
-          String.format("Not adequate bytes available to encode the boolean value(array length = %d, pos = %d", output.length, pos)
-      );
-    }
-    output[pos] = (byte) (value ? 1 : 0);
-  }
 
   /**
    * Decodes {@link PrimitiveEncoderDecoder#LONG_SIZE} bytes from offset in the input byte array
