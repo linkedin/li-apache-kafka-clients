@@ -29,13 +29,21 @@ public class MessageSplitterImpl implements MessageSplitter {
   private final int _maxSegmentSize;
   private final Serializer<LargeMessageSegment> _segmentSerializer;
   private final UUIDFactory _uuidFactory;
+  private final boolean _enableRecordHeader;
 
   public MessageSplitterImpl(int maxSegmentSize,
                              Serializer<LargeMessageSegment> segmentSerializer,
                              UUIDFactory uuidFactory) {
+    this(maxSegmentSize, segmentSerializer, uuidFactory, false);
+  }
+
+  public MessageSplitterImpl(int maxSegmentSize,
+      Serializer<LargeMessageSegment> segmentSerializer,
+      UUIDFactory uuidFactory, boolean enableRecordHeader) {
     _maxSegmentSize = maxSegmentSize;
     _segmentSerializer = segmentSerializer;
     _uuidFactory = uuidFactory;
+    _enableRecordHeader = enableRecordHeader;
   }
 
   @Override
@@ -107,13 +115,9 @@ public class MessageSplitterImpl implements MessageSplitter {
       LargeMessageSegment segment = new LargeMessageSegment(segmentMessageId, seq,
           numberOfSegments, messageSizeInBytes, payload);
 
-      boolean enableRecordHeader = false;
-      if (headers.lastHeader(Constants.SHOULD_USE_HEADER) != null) {
-        enableRecordHeader = PrimitiveEncoderDecoder.decodeBoolean(headers.lastHeader(Constants.SHOULD_USE_HEADER).value(), 0);
-      }
       byte[] segmentValue;
       byte largeMessageHeaderValueVersion;
-      if (enableRecordHeader) {
+      if (_enableRecordHeader) {
         segmentValue = payload.array();
         largeMessageHeaderValueVersion = LargeMessageHeaderValue.V3;
       } else {

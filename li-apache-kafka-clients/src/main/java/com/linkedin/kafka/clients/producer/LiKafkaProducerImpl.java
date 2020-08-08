@@ -251,7 +251,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
           : configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
       segmentSerializer.configure(configs.originals(), false);
       _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
-      _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
+      _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory, _enableRecordHeader);
       _largeMessageSegmentWrappingRequired =
           configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG);
 
@@ -303,18 +303,6 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
           headers.add(Constants.TIMESTAMP_HEADER, PrimitiveEncoderDecoder.encodeLong(timestamp));
         }
       }
-
-      // TODO: discuss with navina if adding enableRecordHeader in header to pass parameter is a good choice.
-      // It may be a little strange to control if using record headers by testing if the record header has such a field.
-      if (_enableRecordHeader) {
-        if (headers == null) {
-          headers = new RecordHeaders();
-        }
-        if (headers.lastHeader(Constants.SHOULD_USE_HEADER) == null) {
-          headers.add(Constants.SHOULD_USE_HEADER, PrimitiveEncoderDecoder.encodeBoolean(true));
-        }
-      }
-
 
       if (LOG.isTraceEnabled()) {
         LOG.trace("Sending event: [{}, {}] with key {} to kafka topic {}",
