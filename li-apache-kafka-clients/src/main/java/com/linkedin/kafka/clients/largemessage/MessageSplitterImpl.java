@@ -8,7 +8,6 @@ import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.utils.Constants;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.producer.UUIDFactory;
-import com.linkedin.kafka.clients.utils.PrimitiveEncoderDecoder;
 import java.util.Collections;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Headers;
