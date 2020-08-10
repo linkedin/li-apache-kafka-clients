@@ -99,7 +99,8 @@ public class LiKafkaProducerConfig extends AbstractConfig {
       "and thus not split into multiple messages. This configuration does not have any effect if large message is " +
       "not enabled.";
 
-  public static final String ENABLE_RECORD_HEADER_DOC = "If true, we will utilize record headers for large message support and other serialization(e.g. encryption or compression) and stop using segmentSerializer.";
+  public static final String ENABLE_RECORD_HEADER_DOC = "If true, we will utilize record headers for large message support "
+      + "and other serialization(e.g. encryption or compression) and stop using segmentSerializer.";
 
   static {
     // TODO: Add a default metadata service client class.
