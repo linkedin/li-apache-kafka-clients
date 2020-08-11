@@ -28,13 +28,21 @@ public class MessageSplitterImpl implements MessageSplitter {
   private final int _maxSegmentSize;
   private final Serializer<LargeMessageSegment> _segmentSerializer;
   private final UUIDFactory _uuidFactory;
+  private final boolean _enableRecordHeader;
 
   public MessageSplitterImpl(int maxSegmentSize,
                              Serializer<LargeMessageSegment> segmentSerializer,
                              UUIDFactory uuidFactory) {
+    this(maxSegmentSize, segmentSerializer, uuidFactory, false);
+  }
+
+  public MessageSplitterImpl(int maxSegmentSize,
+      Serializer<LargeMessageSegment> segmentSerializer,
+      UUIDFactory uuidFactory, boolean enableRecordHeader) {
     _maxSegmentSize = maxSegmentSize;
     _segmentSerializer = segmentSerializer;
     _uuidFactory = uuidFactory;
+    _enableRecordHeader = enableRecordHeader;
   }
 
   @Override
@@ -106,14 +114,23 @@ public class MessageSplitterImpl implements MessageSplitter {
       LargeMessageSegment segment = new LargeMessageSegment(segmentMessageId, seq,
           numberOfSegments, messageSizeInBytes, payload);
 
-      // NOTE: Even though we are passing topic here to serialize, the segment itself should be topic independent.
-      byte[] segmentValue = _segmentSerializer.serialize(topic, segment);
+      byte[] segmentValue;
+      byte largeMessageHeaderValueVersion;
+      if (_enableRecordHeader) {
+        segmentValue = payload.array();
+        largeMessageHeaderValueVersion = LargeMessageHeaderValue.V3;
+      } else {
+        // NOTE: Even though we are passing topic here to serialize, the segment itself should be topic independent.
+        segmentValue = _segmentSerializer.serialize(topic, segment);
+        largeMessageHeaderValueVersion = LargeMessageHeaderValue.LEGACY_V2;
+      }
 
       //  Make a temporary copy of headers because we'd be overwriting {@link Constants.LARGE_MESSAGE_HEADER}
       Headers temporaryHeaders = new RecordHeaders(headers);
       temporaryHeaders.remove(Constants.LARGE_MESSAGE_HEADER);
+
       LargeMessageHeaderValue largeMessageHeaderValue = new LargeMessageHeaderValue(
-          LargeMessageHeaderValue.LEGACY_V2,
+          largeMessageHeaderValueVersion,
           messageId,
           seq,
           numberOfSegments,

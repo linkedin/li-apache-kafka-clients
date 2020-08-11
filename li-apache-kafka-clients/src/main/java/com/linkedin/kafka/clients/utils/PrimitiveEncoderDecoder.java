@@ -95,23 +95,6 @@ public class PrimitiveEncoderDecoder {
     return data;
   }
 
-  public static int decodeInt(byte[] input, int pos) {
-    if (input == null) {
-      throw new IllegalArgumentException("bytes cannot be null");
-    }
-
-    if (pos < 0) {
-      throw new IllegalArgumentException("position cannot be less than zero");
-    }
-
-    if (input.length < pos + INT_SIZE) {
-      throw new IllegalArgumentException(
-          String.format("Not adequate bytes available in the input array(array length = %d, pos = %d)", input.length, pos)
-      );
-    }
-
-    return input[pos] << 24 | (input[pos + 1] & 0xFF) << 16 | (input[pos + 2] & 0xFF) << 8 | (input[pos + 3] & 0xFF);
-  }
 
   /**
    * Decodes {@link PrimitiveEncoderDecoder#LONG_SIZE} bytes from offset in the input byte array
@@ -120,19 +103,7 @@ public class PrimitiveEncoderDecoder {
    * @return a decoded long
    */
   public static long decodeLong(byte[] input, int pos) {
-    if (input == null) {
-      throw new IllegalArgumentException("bytes cannot be null");
-    }
-
-    if (pos < 0) {
-      throw new IllegalArgumentException("position cannot be less than zero");
-    }
-
-    if (input.length < pos + LONG_SIZE) {
-      throw new IllegalArgumentException(
-          String.format("Not adequate bytes available in the input array(array length = %d, pos = %d)", input.length, pos)
-      );
-    }
+    sanityCheck(input, pos, LONG_SIZE);
 
     return (input[pos] & 0xFFL) << 56
         | (input[pos + 1] & 0xFFL) << 48
@@ -142,5 +113,34 @@ public class PrimitiveEncoderDecoder {
         | (input[pos + 5] & 0xFFL) << 16
         | (input[pos + 6] & 0xFFL) << 8
         | (input[pos + 7] & 0xFFL);
+  }
+
+
+  /**
+   * Decodes {@link PrimitiveEncoderDecoder#INT_SIZE} bytes from offset in the input byte array
+   * @param input where to read encoded form from
+   * @param pos position in input to start reading from
+   * @return a decoded int
+   */
+  public static int decodeInt(byte[] input, int pos) {
+    sanityCheck(input, pos, INT_SIZE);
+
+    return input[pos] << 24 | (input[pos + 1] & 0xFF) << 16 | (input[pos + 2] & 0xFF) << 8 | (input[pos + 3] & 0xFF);
+  }
+
+  private static void sanityCheck(byte[] input, int pos, int dataSize) {
+    if (input == null) {
+      throw new IllegalArgumentException("bytes cannot be null");
+    }
+
+    if (pos < 0) {
+      throw new IllegalArgumentException("position cannot be less than zero");
+    }
+
+    if (input.length < pos + dataSize) {
+      throw new IllegalArgumentException(
+          String.format("Not adequate bytes available in the input array(array length = %d, pos = %d)", input.length, pos)
+      );
+    }
   }
 }

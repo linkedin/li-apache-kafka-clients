@@ -127,6 +127,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
   private final int _maxMessageSegmentSize;
   private final MessageSplitter _messageSplitter;
   private final boolean _largeMessageSegmentWrappingRequired;
+  private final boolean _enableRecordHeader;
 
   // serializers
   private Serializer<K> _keySerializer;
@@ -228,6 +229,8 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       // prepare to handle large messages.
       _largeMessageEnabled = configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_ENABLED_CONFIG);
 
+      _enableRecordHeader = configs.getBoolean(LiKafkaProducerConfig.ENABLE_RECORD_HEADER_CONFIG);
+
       if (_largeMessageEnabled && _partitioner != null) {
         //if large msg support is enabled and the user has provided a custom partitioner (our default for partitioner is null)
         //we will sometimes need to invoke this partitioner ourselves. to do so we would need to get cluster metadata
@@ -248,7 +251,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
           : configs.getConfiguredInstance(LiKafkaProducerConfig.SEGMENT_SERIALIZER_CLASS_CONFIG, Serializer.class);
       segmentSerializer.configure(configs.originals(), false);
       _uuidFactory = configs.getConfiguredInstance(LiKafkaProducerConfig.UUID_FACTORY_CLASS_CONFIG, UUIDFactory.class);
-      _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory);
+      _messageSplitter = new MessageSplitterImpl(_maxMessageSegmentSize, segmentSerializer, _uuidFactory, _enableRecordHeader);
       _largeMessageSegmentWrappingRequired =
           configs.getBoolean(LiKafkaProducerConfig.LARGE_MESSAGE_SEGMENT_WRAPPING_REQUIRED_CONFIG);
 
@@ -329,6 +332,9 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
       Callback errorLoggingCallback = new ErrorLoggingCallback<>(messageId, auditToken, topic, timestamp, sizeInBytes, _auditor, callback);
 
       if (_largeMessageEnabled) {
+        if (headers == null) {
+          headers = new RecordHeaders();
+        }
         if (serializedValueLength > _maxMessageSegmentSize) {
           //payload requires splitting
 
@@ -339,6 +345,7 @@ public class LiKafkaProducerImpl<K, V> implements LiKafkaProducer<K, V> {
           if (partition == null && _partitioner != null) {
             partition = invokeCustomPartitioner(topic, key, serializedKey, value, serializedValue);
           }
+
 
           // Split the payload into large message segments (they will all have the same key and same partition)
           List<ProducerRecord<byte[], byte[]>> segmentRecords =
