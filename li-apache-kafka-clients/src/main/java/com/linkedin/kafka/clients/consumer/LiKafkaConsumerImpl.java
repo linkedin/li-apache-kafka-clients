@@ -350,6 +350,10 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
+<<<<<<< HEAD
+=======
+        _offsetInvalidOrOutRangeCount.getAndIncrement();
+>>>>>>> Add counter metric for offset out of range & invalid exceptions in LiKafkaConsumerImpl
         // force throw exception if exception.on.invalid.offset.reset is set to true
         if (_throwExceptionOnInvalidOffsets) {
           throw oe;
@@ -719,10 +723,12 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
       if (!seekBeginningPartitions.isEmpty()) {
         LOG.info("Offsets are out of range for partitions {}. Seeking to the beginning offsets returned", seekBeginningPartitions);
+        _offsetInvalidOrOutRangeCount.getAndIncrement();
         seekBeginningPartitions.forEach(this::seekAndClear);
       }
       if (!seekEndPartitions.isEmpty()) {
         LOG.info("Offsets are out of range for partitions {}. Seeking to the end offsets returned", seekEndPartitions);
+        _offsetInvalidOrOutRangeCount.getAndIncrement();
         seekEndPartitions.forEach(this::seekAndClear);
       }
       if (!seekFetchedOffsetPartitions.isEmpty()) {
