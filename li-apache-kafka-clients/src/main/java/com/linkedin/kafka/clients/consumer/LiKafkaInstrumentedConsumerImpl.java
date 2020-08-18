@@ -4,11 +4,13 @@
 
 package com.linkedin.kafka.clients.consumer;
 
+import com.linkedin.kafka.clients.common.InstrumentedClientLoggingHandler;
 import com.linkedin.kafka.clients.common.MetricsProxy;
 import com.linkedin.kafka.clients.utils.CloseableLock;
 import com.linkedin.kafka.clients.utils.KafkaConsumerLock;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.mario.client.EventHandler;
+import com.linkedin.mario.client.LoggingHandler;
 import com.linkedin.mario.client.SimpleClient;
 import com.linkedin.mario.client.SimpleClientState;
 import com.linkedin.mario.common.websockets.PubSubClientType;
@@ -79,6 +81,8 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
 
   private volatile Map<String, String> configOverrides = null;
   private volatile Consumer<K, V> delegate;
+  private final String clientId; //user-provided via config.
+  private final LoggingHandler loggingHandler;
   private final SimpleClient mdsClient;
 
   private volatile Collection<String> subscribedTopics = null;
@@ -127,7 +131,8 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
       LOG.error("issues translating consumer config to strings: {}", csv);
     }
 
-    String clientId = baseConfig.getProperty("client.id");
+    clientId = baseConfig.getProperty("client.id");
+    loggingHandler = new InstrumentedClientLoggingHandler(LOG, clientId);
     mdsClient = new SimpleClient(
         "LiKafkaInstrumentedConsumer " + clientId,
         PubSubClientType.CONSUMER,
@@ -137,7 +142,7 @@ public class LiKafkaInstrumentedConsumerImpl<K, V> implements DelegatingConsumer
         translatedBaseConfig,
         this.libraryVersions,
         this,
-        null
+        loggingHandler
     );
 
     boolean tryFallback;

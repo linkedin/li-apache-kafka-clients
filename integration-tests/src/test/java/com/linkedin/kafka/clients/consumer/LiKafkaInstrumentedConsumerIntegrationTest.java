@@ -13,6 +13,7 @@ import com.linkedin.mario.common.models.v1.ClientConfigRules;
 import com.linkedin.mario.common.models.v1.ClientPredicates;
 import com.linkedin.mario.common.models.v1.KafkaClusterDescriptor;
 import com.linkedin.mario.server.EmbeddableMario;
+import com.linkedin.mario.server.config.MarioConfiguration;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.time.Duration;
@@ -76,7 +77,9 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     producer.flush();
     producer.close(1, TimeUnit.MINUTES);
 
-    EmbeddableMario mario = new EmbeddableMario(null);
+    MarioConfiguration marioConfiguration = MarioConfiguration.embeddableInMem();
+    marioConfiguration.setEnableNgSupport(false);
+    EmbeddableMario mario = new EmbeddableMario(marioConfiguration);
     Random random = new Random();
     int beforeBatchSize = 1 + random.nextInt(20); //[1, 20]
 
@@ -90,7 +93,8 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
         zkConnect(),
         bootstrapServers(),
         "test",
-        0L
+        0L,
+        false
     );
     mario.addKafkaCluster(kafkaClusterDescriptor).get();
 

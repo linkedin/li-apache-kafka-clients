@@ -254,4 +254,17 @@ public class LiKafkaClientsUtils {
         ? LargeMessageHeaderValue.fromBytes(specialHeaders.get(Constants.LARGE_MESSAGE_HEADER))
         : null;
   }
+
+  public static Throwable getRootCause(Throwable t) {
+    if (t == null) {
+      return null;
+    }
+    Throwable root = t;
+    Throwable cause = root.getCause();
+    while (cause != null && cause != t) {
+      root = cause;
+      cause = root.getCause();
+    }
+    return root;
+  }
 }
