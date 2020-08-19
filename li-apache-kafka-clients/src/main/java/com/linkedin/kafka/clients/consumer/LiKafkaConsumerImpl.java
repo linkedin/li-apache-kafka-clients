@@ -350,10 +350,6 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
-<<<<<<< HEAD
-=======
-        _offsetInvalidOrOutRangeCount.getAndIncrement();
->>>>>>> Add counter metric for offset out of range & invalid exceptions in LiKafkaConsumerImpl
         // force throw exception if exception.on.invalid.offset.reset is set to true
         if (_throwExceptionOnInvalidOffsets) {
           throw oe;
