@@ -50,7 +50,7 @@ project.ext {
     }
   }
   liKafkaVersion = "2.0.0.27"
-  marioVersion = "0.0.34"
+  marioVersion = "0.0.56"
 }
 
 subprojects {
@@ -62,6 +62,7 @@ subprojects {
     plugins.apply('checkstyle')
 
     repositories {
+      mavenLocal()
       jcenter()
       maven {
         url "https://dl.bintray.com/linkedin/maven"

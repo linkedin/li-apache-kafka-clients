@@ -13,7 +13,7 @@ dependencies {
     exclude group: 'org.slf4j', module:'slf4j-log4j12'
   }
   testCompile ("com.linkedin.mario:mario-vertx:${rootProject.ext.marioVersion}") {
-
+    exclude group: "com.linkedin.northguard"
   }
 //  testCompile ("com.linkedin.mario:mario-integration-tests:${rootProject.ext.marioVersion}") {
 //    exclude group: 'org.apache.kafka'

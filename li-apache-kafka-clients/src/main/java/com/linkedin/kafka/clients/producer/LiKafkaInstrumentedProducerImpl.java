@@ -4,9 +4,11 @@
 
 package com.linkedin.kafka.clients.producer;
 
+import com.linkedin.kafka.clients.common.InstrumentedClientLoggingHandler;
 import com.linkedin.kafka.clients.common.MetricsProxy;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.mario.client.EventHandler;
+import com.linkedin.mario.client.LoggingHandler;
 import com.linkedin.mario.client.SimpleClient;
 import com.linkedin.mario.client.SimpleClientState;
 import com.linkedin.mario.common.websockets.PubSubClientType;
@@ -70,6 +72,8 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
   private volatile Long closedAt = null;
   private volatile Map<String, String> configOverrides;
   private volatile Producer<K, V> delegate;
+  private final String clientId; //user-provided via config.
+  private final LoggingHandler loggingHandler;
   private final SimpleClient mdsClient;
 
   // This is null if the underlying producer does not have an implementation for time-bounded flush
@@ -117,7 +121,8 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       LOG.error("issues translating producer config to strings: {}", csv);
     }
 
-    String clientId = baseConfig.getProperty("client.id");
+    clientId = baseConfig.getProperty("client.id");
+    loggingHandler = new InstrumentedClientLoggingHandler(LOG, clientId);
     mdsClient = new SimpleClient(
         "LiKafkaInstrumentedProducer " + clientId,
         PubSubClientType.PRODUCER,
@@ -127,7 +132,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
         translatedBaseConfig,
         this.libraryVersions,
         this,
-        null
+        loggingHandler
     );
 
     boolean tryFallback;
