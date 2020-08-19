@@ -7,6 +7,7 @@ package com.linkedin.kafka.clients.largemessage;
 import com.linkedin.kafka.clients.common.LargeMessageHeaderValue;
 import com.linkedin.kafka.clients.consumer.LiKafkaConsumer;
 import com.linkedin.kafka.clients.producer.LiKafkaProducer;
+import com.linkedin.kafka.clients.producer.LiKafkaProducerConfig;
 import com.linkedin.kafka.clients.utils.LiKafkaClientsUtils;
 import com.linkedin.kafka.clients.utils.tests.AbstractKafkaClientsIntegrationTestHarness;
 import com.linkedin.kafka.clients.utils.tests.KafkaTestUtils;
@@ -164,6 +165,87 @@ public class LargeMessageIntegrationTest extends AbstractKafkaClientsIntegration
         assertEquals(largeMessageHeaderValue.getSegmentNumber(), -1);
         assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 6);
         assertEquals(largeMessageHeaderValue.getType(), LargeMessageHeaderValue.LEGACY_V2);
+
+        String messageId = consumerRecord.value().substring(0, 32);
+        String origMessage = messages.get(messageId);
+        assertEquals(consumerRecord.value(), origMessage, "Messages should be the same");
+        messages.remove(messageId);
+      }
+    }
+    consumer.close();
+    assertEquals(messages.size(), 0, "All the messages sent should have been consumed.");
+  }
+
+
+  @Test
+  public void testLargeMessageWithRecordHeaderEnabled() throws Exception {
+    // this test will set LiKafkaProducerConfig.ENABLE_RECORD_HEADER_CONFIG to be true
+    // which means we will test record header based LM support without using segmentSerde
+
+    //create the test topic
+    try (AdminClient adminClient = createRawAdminClient(null)) {
+      adminClient.createTopics(Collections.singletonList(new NewTopic(TOPIC, NUM_PARTITIONS, (short) 1))).all().get(1, TimeUnit.MINUTES);
+    }
+
+    long startTime = System.currentTimeMillis();
+    Properties props = new Properties();
+    props.setProperty("large.message.enabled", "true");
+    props.setProperty("max.message.segment.size", "200");
+    props.setProperty("client.id", "testProducer");
+    props.setProperty(LiKafkaProducerConfig.ENABLE_RECORD_HEADER_CONFIG, "true");
+
+    LiKafkaProducer<String, String> largeMessageProducer = createProducer(props);
+    Properties consumerProps = buildConsumerProps();
+    consumerProps.setProperty("auto.offset.reset", "earliest");
+    LiKafkaConsumer<String, String> consumer = createConsumer(consumerProps);
+
+        /* The test will send 100 different large messages to broker, consume from broker and verify the message contents.
+           Here for simplicity we use a large message segment as a large message, and chunk this */
+    Map<String, String> messages = new HashMap<>();
+    int numberOfLargeMessages = 100;
+    int largeMessageSize = 1000;
+    final Set<String> ackedMessages = new HashSet<>();
+    // Produce large messages.
+    for (int i = 0; i < numberOfLargeMessages; i++) {
+      final String messageId = LiKafkaClientsUtils.randomUUID().toString().replace("-", "");
+      String message = messageId + KafkaTestUtils.getRandomString(largeMessageSize);
+      messages.put(messageId, message);
+      largeMessageProducer.send(new ProducerRecord<>(TOPIC, message), (recordMetadata, e) -> {
+        // The callback should have been invoked only once.
+        assertFalse(ackedMessages.contains(messageId));
+        if (e == null) {
+          ackedMessages.add(messageId);
+        }
+      });
+    }
+    largeMessageProducer.close();
+    // All messages should have been sent.
+    assertEquals(ackedMessages.size(), messages.size());
+
+    // Consume and verify the large messages
+    List<TopicPartition> partitions = new ArrayList<>();
+    for (int i = 0; i < NUM_PARTITIONS; i++) {
+      partitions.add(new TopicPartition(TOPIC, i));
+    }
+    consumer.assign(partitions);
+
+    ConsumerRecords<String, String> records = null;
+    boolean consumptionStarted = false;
+    while (!consumptionStarted || records.count() > 0) {
+      records = consumer.poll(10);
+      if (records.count() > 0) {
+        consumptionStarted = true;
+      }
+      for (ConsumerRecord<String, String> consumerRecord : records) {
+        // Verify headers
+        Long eventTimestamp = LiKafkaClientsUtils.fetchTimestampHeader(consumerRecord.headers());
+        assertNotNull(eventTimestamp);
+        assertTrue(eventTimestamp >= startTime && eventTimestamp <= System.currentTimeMillis());
+        LargeMessageHeaderValue largeMessageHeaderValue = LiKafkaClientsUtils.fetchLargeMessageHeader(consumerRecord.headers());
+        assertEquals(largeMessageHeaderValue.getSegmentNumber(), -1);
+        assertEquals(largeMessageHeaderValue.getNumberOfSegments(), 6);
+        // V3 means we use record header based LM         
+        assertEquals(largeMessageHeaderValue.getType(), LargeMessageHeaderValue.V3);
 
         String messageId = consumerRecord.value().substring(0, 32);
         String origMessage = messages.get(messageId);
