@@ -117,7 +117,7 @@ public class MessageSplitterImpl implements MessageSplitter {
       byte[] segmentValue;
       byte largeMessageHeaderValueVersion;
       if (_enableRecordHeader) {
-        segmentValue = payload.array();
+        segmentValue = segment.payloadArray();
         largeMessageHeaderValueVersion = LargeMessageHeaderValue.V3;
       } else {
         // NOTE: Even though we are passing topic here to serialize, the segment itself should be topic independent.
