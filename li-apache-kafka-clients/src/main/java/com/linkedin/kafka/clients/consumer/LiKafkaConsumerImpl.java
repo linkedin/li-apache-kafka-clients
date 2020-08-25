@@ -155,7 +155,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
     };
 
     MetricName offsetOutOfRangeCounterName = new MetricName(
-        "consumer-num-invalid-offset-exceptions",
+        "consumer-liclosest-data-loss-estimation",
         "lnkd",
         "counter of how many times the consumer reached OffsetOutOfRangeException or NoOffsetForPartitionException"
             + "with liclosest reset strategy (case 2 and 3b) for potential data loss estimation.",
