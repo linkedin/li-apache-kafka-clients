@@ -349,7 +349,6 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
-        _offsetInvalidOrOutRangeCount.getAndIncrement();
         // force throw exception if exception.on.invalid.offset.reset is set to true
         if (_throwExceptionOnInvalidOffsets) {
           throw oe;
@@ -694,6 +693,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         if (beginningOffset != -1L && endOffset != -1L) {
           if (beginningOffset > fetchedOffset) {  // Case 2
             seekBeginningPartitions.put(tp, beginningOffset);
+            _offsetInvalidOrOutRangeCount.getAndIncrement();
             return;
           }
           if (endOffset < fetchedOffset) {  // Case 3a
@@ -702,6 +702,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
           } else {  // Case 3b: endOffset >= fetchedOffset
             LOG.debug("Closest offset computed for topic partition {} is the fetched offset {}. ", tp, fetchedOffset);
             seekFetchedOffsetPartitions.put(tp, fetchedOffset);
+            _offsetInvalidOrOutRangeCount.getAndIncrement();
           }
         } else {
           // can't handle reset if the either bound values are not known
