@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -80,6 +81,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final boolean _throwExceptionOnInvalidOffsets;
   private final LiOffsetResetStrategy _offsetResetStrategy;
   private long _lastAutoCommitMs;
+  private AtomicInteger _offsetInvalidOrOutRangeCount;
   private final Map<MetricName, Metric> _extraMetrics = new HashMap<>(2);
 
   private ConsumerRecordsProcessResult<K, V> _lastProcessedResult;
@@ -127,6 +129,8 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
                                          byteArrayDeserializer,
                                          byteArrayDeserializer);
     _clientId = LiKafkaClientsUtils.getClientId(_kafkaConsumer);
+    _offsetInvalidOrOutRangeCount = new AtomicInteger(0);
+
     MetricName skippedRecordsMetricName = new MetricName(
         "records-skipped",
         "lnkd",
@@ -142,6 +146,30 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
       @Override
       public double value() {
         return (double) _consumerRecordsProcessor.getRecordsSkipped();
+      }
+
+      @Override
+      public Object metricValue() {
+        return value();
+      }
+    };
+
+    MetricName offsetOutOfRangeCounterName = new MetricName(
+        "consumer-liclosest-data-loss-estimation",
+        "lnkd",
+        "counter of how many times the consumer reached OffsetOutOfRangeException or NoOffsetForPartitionException"
+            + "with liclosest reset strategy (case 2 and 3b) for potential data loss estimation.",
+        Collections.singletonMap("client-id", _clientId)
+    );
+    Metric offsetOutOfRangeCounter = new Metric() {
+      @Override
+      public MetricName metricName() {
+        return offsetOutOfRangeCounterName;
+      }
+
+      @Override
+      public double value() {
+        return _offsetInvalidOrOutRangeCount.get();
       }
 
       @Override
@@ -176,6 +204,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     _extraMetrics.put(skippedRecordsMetricName, skippedRecordsMetric);
     _extraMetrics.put(consumerOffsetWatermarkSpan, consumerOffsetWatermarkSpanMetric);
+    _extraMetrics.put(offsetOutOfRangeCounterName, offsetOutOfRangeCounter);
 
     try {
 
@@ -321,7 +350,6 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       } catch (OffsetOutOfRangeException | NoOffsetForPartitionException oe) {
         handleInvalidOffsetException(oe);
-
         // force throw exception if exception.on.invalid.offset.reset is set to true
         if (_throwExceptionOnInvalidOffsets) {
           throw oe;
@@ -666,6 +694,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         if (beginningOffset != -1L && endOffset != -1L) {
           if (beginningOffset > fetchedOffset) {  // Case 2
             seekBeginningPartitions.put(tp, beginningOffset);
+            _offsetInvalidOrOutRangeCount.getAndIncrement();
             return;
           }
           if (endOffset < fetchedOffset) {  // Case 3a
@@ -674,6 +703,7 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
           } else {  // Case 3b: endOffset >= fetchedOffset
             LOG.debug("Closest offset computed for topic partition {} is the fetched offset {}. ", tp, fetchedOffset);
             seekFetchedOffsetPartitions.put(tp, fetchedOffset);
+            _offsetInvalidOrOutRangeCount.getAndIncrement();
           }
         } else {
           // can't handle reset if the either bound values are not known
