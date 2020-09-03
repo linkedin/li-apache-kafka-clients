@@ -461,11 +461,11 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
     }
 
     // release read lock held by current thread if any
-    // BMM has use cases of closing the producer in send callback if send fails, we need to ensure
+    // There are use cases of closing the producer in send callback if send fails, we need to ensure
     // the same ordering of acquiring/releasing locks, in this case:
     // 1. send will get the Read lock
     // 2. close will first release all Read locks; then grab the Write lock
-    int holds = delegateLock.getReadHoldCount();
+    final int holds = delegateLock.getReadHoldCount();
     ReentrantReadWriteLock.ReadLock readLock = delegateLock.readLock();
     ReentrantReadWriteLock.WriteLock writeLock = delegateLock.writeLock();
     if (holds > 0) { //do we own a read lock ?
