@@ -49,7 +49,7 @@ project.ext {
       url "https://github.com/linkedin/li-apache-kafka-clients"
     }
   }
-  liKafkaVersion = "2.0.0.28"
+  liKafkaVersion = "2.0.0.29"
   marioVersion = "0.0.56"
 }
 
