@@ -337,8 +337,6 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
 
   @Override
   public void flush() {
-    verifyOpen();
-
     delegateLock.readLock().lock();
     try {
       delegate.flush();
@@ -355,8 +353,6 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
    * If the underlying producer doesn't support a bounded flush, it will invoke the {@link #flush()}.
    */
   public void flush(long timeout, TimeUnit timeUnit) {
-    verifyOpen();
-
     delegateLock.readLock().lock();
     try {
       boolean useSeparateThreadForFlush = false;
