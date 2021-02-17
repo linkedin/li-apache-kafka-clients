@@ -197,7 +197,7 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
   }
 
   @Test
-  public void testProducerFlush() throws Exception {
+  public void testProducerFlushAfterClose() throws Exception {
     String topic = "testCloseFromProduceCallbackOnSenderThread";
     createTopic(topic, 1);
 
@@ -222,9 +222,9 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
     random.nextBytes(value);
     ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, key, value);
 
-    producer.send(record).get();
-    producer.flush(Integer.MAX_VALUE, TimeUnit.MILLISECONDS);
+    producer.send(record);
     producer.close(Duration.ofSeconds(30));
+    producer.flush(Integer.MAX_VALUE, TimeUnit.MILLISECONDS);
   }
 
   private void createTopic(String topicName, int numPartitions) throws Exception {

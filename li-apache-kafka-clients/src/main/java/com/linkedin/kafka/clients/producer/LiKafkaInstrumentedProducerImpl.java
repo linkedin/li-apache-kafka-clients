@@ -452,7 +452,7 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
         delegate.close(timeout.toMillis(), TimeUnit.MILLISECONDS);
       }
     } finally {
-      this.delegate = null;
+//      this.delegate = null;
       closeMdsClient();
     }
   }
