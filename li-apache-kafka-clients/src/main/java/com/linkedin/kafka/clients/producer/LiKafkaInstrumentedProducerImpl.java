@@ -359,8 +359,14 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       if (boundedFlushMethod != null) {
         try {
           boundedFlushMethod.invoke(delegate, timeout, timeUnit);
-        } catch (IllegalAccessException | InvocationTargetException e) {
-          throw new IllegalStateException("failed to invoke the bounded flush method", e);
+        } catch (IllegalAccessException illegalAccessException) {
+          throw new IllegalStateException("Failed to invoke the bounded flush method", illegalAccessException.getCause());
+        } catch (InvocationTargetException invocationTargetException) {
+          try {
+            throw (Exception) invocationTargetException.getCause();
+          } catch (Exception exception) {
+            exception.printStackTrace();
+          }
         }
       } else {
         useSeparateThreadForFlush = true;
