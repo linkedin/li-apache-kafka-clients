@@ -359,11 +359,13 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       if (boundedFlushMethod != null) {
         try {
           boundedFlushMethod.invoke(delegate, timeout, timeUnit);
-        } catch (Exception e) {
-            if (e.getCause() instanceof RuntimeException) {
-              throw new RuntimeException("Failed to flush due to RuntimeException", e.getCause());
+        } catch (IllegalAccessException e1) {
+          throw new IllegalStateException("Failed to invoke the bounded flush method", e1);
+        } catch (InvocationTargetException e2) {
+            if (e2.getCause() instanceof RuntimeException) {
+              throw new RuntimeException("Failed to flush due to RuntimeException", e2.getCause());
             } else {
-              throw new IllegalStateException("Failed to invoke the bounded flush method", e.getCause());
+              throw new IllegalStateException("Failed to invoke the bounded flush method", e2.getCause());
             }
           }
       } else {
