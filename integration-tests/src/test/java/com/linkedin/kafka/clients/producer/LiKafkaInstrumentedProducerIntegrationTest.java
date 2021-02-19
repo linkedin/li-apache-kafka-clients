@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -215,16 +216,20 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
         () -> "bogus",
         10
     );
-
     byte[] key = new byte[500];
     byte[] value = new byte[500];
     random.nextBytes(key);
     random.nextBytes(value);
     ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, key, value);
 
+    // kill brokers
+    Set<Integer> brokerIds = super._brokers.keySet();
+    for (int id: brokerIds) {
+      super.killBroker(id);
+    }
     producer.send(record);
-    producer.close(Duration.ofSeconds(30));
-    producer.flush(Integer.MAX_VALUE, TimeUnit.MILLISECONDS);
+    producer.close(Duration.ofSeconds(0));
+    Assert.assertThrows(RuntimeException.class, () -> producer.flush(0, TimeUnit.MILLISECONDS));
   }
 
   private void createTopic(String topicName, int numPartitions) throws Exception {

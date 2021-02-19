@@ -359,15 +359,13 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
       if (boundedFlushMethod != null) {
         try {
           boundedFlushMethod.invoke(delegate, timeout, timeUnit);
-        } catch (IllegalAccessException illegalAccessException) {
-          throw new IllegalStateException("Failed to invoke the bounded flush method", illegalAccessException.getCause());
-        } catch (InvocationTargetException invocationTargetException) {
-          try {
-            throw (Exception) invocationTargetException.getCause();
-          } catch (Exception exception) {
-            exception.printStackTrace();
+        } catch (Exception e) {
+            if (e.getCause() instanceof RuntimeException) {
+              throw new RuntimeException("Failed to flush due to RuntimeException", e.getCause());
+            } else {
+              throw new IllegalStateException("Failed to invoke the bounded flush method", e.getCause());
+            }
           }
-        }
       } else {
         useSeparateThreadForFlush = true;
       }
@@ -452,7 +450,6 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
         delegate.close(timeout.toMillis(), TimeUnit.MILLISECONDS);
       }
     } finally {
-//      this.delegate = null;
       closeMdsClient();
     }
   }
