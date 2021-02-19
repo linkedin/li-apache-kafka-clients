@@ -229,7 +229,7 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
   }
 
   @Test
-  public void testProducerFlushWithBrokerKilled() throws Exception {
+  public void testProducerFlushWithTimeoutException() throws Exception {
     String topic = "testCloseFromProduceCallbackOnSenderThread";
     createTopic(topic, 1);
 
