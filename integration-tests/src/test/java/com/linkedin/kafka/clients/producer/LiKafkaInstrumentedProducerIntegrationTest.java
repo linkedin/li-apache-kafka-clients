@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -30,6 +31,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.RecordTooLargeException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -194,6 +196,70 @@ public class LiKafkaInstrumentedProducerIntegrationTest extends AbstractKafkaCli
     Throwable issue = issueRef.get();
     Throwable root = Throwables.getRootCause(issue);
     Assert.assertTrue(root instanceof RecordTooLargeException, root.getMessage());
+  }
+
+  @Test
+  public void testProducerFlushAfterClose() throws Exception {
+    String topic = "testCloseFromProduceCallbackOnSenderThread";
+    createTopic(topic, 1);
+
+    Random random = new Random(666);
+    Properties extra = new Properties();
+    extra.setProperty(ProducerConfig.MAX_REQUEST_SIZE_CONFIG, "" + 1500);
+    extra.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
+    extra.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    extra.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    Properties baseProducerConfig = getProducerProperties(extra);
+    LiKafkaInstrumentedProducerImpl<byte[], byte[]> producer = new LiKafkaInstrumentedProducerImpl<byte[], byte[]>(
+        baseProducerConfig,
+        Collections.emptyMap(),
+        (baseConfig, overrideConfig) -> new LiKafkaProducerImpl<byte[], byte[]>(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        () -> "bogus",
+        10
+    );
+    byte[] key = new byte[500];
+    byte[] value = new byte[500];
+    random.nextBytes(key);
+    random.nextBytes(value);
+    ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, key, value);
+
+    producer.send(record);
+    producer.close(Duration.ofSeconds(0));
+    producer.flush(0, TimeUnit.MILLISECONDS);
+  }
+
+  @Test
+  public void testProducerFlushWithTimeoutException() throws Exception {
+    String topic = "testCloseFromProduceCallbackOnSenderThread";
+    createTopic(topic, 1);
+
+    Random random = new Random(666);
+    Properties extra = new Properties();
+    extra.setProperty(ProducerConfig.MAX_REQUEST_SIZE_CONFIG, "" + 1500);
+    extra.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
+    extra.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    extra.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getCanonicalName());
+    Properties baseProducerConfig = getProducerProperties(extra);
+    LiKafkaInstrumentedProducerImpl<byte[], byte[]> producer = new LiKafkaInstrumentedProducerImpl<byte[], byte[]>(
+        baseProducerConfig,
+        Collections.emptyMap(),
+        (baseConfig, overrideConfig) -> new LiKafkaProducerImpl<byte[], byte[]>(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        () -> "bogus",
+        10
+    );
+    byte[] key = new byte[500];
+    byte[] value = new byte[500];
+    random.nextBytes(key);
+    random.nextBytes(value);
+    ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, key, value);
+    producer.send(record);
+    // kill brokers
+    Set<Integer> brokerIds = super._brokers.keySet();
+    for (int id: brokerIds) {
+      super.killBroker(id);
+    }
+    producer.send(record);
+    Assert.assertThrows(TimeoutException.class, () -> producer.flush(0, TimeUnit.MILLISECONDS));
   }
 
   private void createTopic(String topicName, int numPartitions) throws Exception {
