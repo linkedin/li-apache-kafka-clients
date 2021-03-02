@@ -90,6 +90,10 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
 
   private static final String AUDITOR_CLASS_DOC = "The auditor class to use for the consumer";
 
+  private static final String ENABLE_SHALLOW_ITERATOR_DOC = "If true consumer will return the raw byte record to caller directly"
+      + " without performing large message processing. Shallow iterator means: Shallow iterate message batches in the consumer, "
+      + " returning message batches (potentially compressed) instead of individual records";
+
   private static final String ENABLE_AUTO_COMMIT_DOC = "If true the consumer's offset will be periodically committed in" +
       " the background.";
 
@@ -169,6 +173,11 @@ public class LiKafkaConsumerConfig extends AbstractConfig {
                 NoOpAuditor.class.getName(),
                 Importance.LOW,
                 AUDITOR_CLASS_DOC)
+        .define(ConsumerConfig.ENABLE_SHALLOW_ITERATOR_CONFIG,
+            Type.BOOLEAN,
+            "false",
+            Importance.LOW,
+            ENABLE_SHALLOW_ITERATOR_DOC)
         .define(ENABLE_AUTO_COMMIT_CONFIG,
                 Type.BOOLEAN,
                 "true",

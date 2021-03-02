@@ -33,6 +33,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.PassThroughConsumerRecord;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
@@ -57,25 +58,39 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
   }
 
   @Test
+  public void testPassthroughConsumerReturnRecordType() throws Exception {
+    String topic = "testPassthroughConsumerReturnRecordType";
+    createTopic(topic, 1);
+    Producer<byte[], byte[]> producer = createRawProducer();
+    produceRawRecordToTopic(topic, producer);
+
+    Properties extra = new Properties();
+    extra.setProperty(ConsumerConfig.GROUP_ID_CONFIG, UUID.randomUUID().toString());
+    extra.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    extra.setProperty(ConsumerConfig.ENABLE_SHALLOW_ITERATOR_CONFIG, "true");
+    Properties baseConsumerConfig = getConsumerProperties(extra);
+    LiKafkaInstrumentedConsumerImpl<byte[], byte[]> consumer = new LiKafkaInstrumentedConsumerImpl<>(
+        baseConsumerConfig,
+        null,
+        (baseConfig, overrideConfig) -> new LiKafkaConsumerImpl<>(LiKafkaClientsUtils.getConsolidatedProperties(baseConfig, overrideConfig)),
+        () -> "bob",
+        1);
+
+    consumer.subscribe(Collections.singletonList(topic));
+    KafkaTestUtils.waitUntil("1st record batch", () -> {
+      ConsumerRecords<byte[], byte[]> recs = consumer.poll(Duration.ofSeconds(10));
+      return recs.count() > 0 && recs.iterator().next() instanceof PassThroughConsumerRecord;
+    }, 1, 2, TimeUnit.MINUTES, false);
+
+    consumer.close(Duration.ofSeconds(30));
+  }
+
+  @Test
   public void testConsumerLiveConfigReload() throws Exception {
     String topic = "testConsumerLiveConfigReload";
     createTopic(topic, 1);
     Producer<byte[], byte[]> producer = createRawProducer();
-    for (int i = 0; i < 1000; i++) {
-      byte[] key = new byte[1024];
-      byte[] value = new byte[1024];
-      Arrays.fill(key, (byte) i);
-      Arrays.fill(value, (byte) i);
-      ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, 0, key, value);
-      ByteArrayOutputStream bos = new ByteArrayOutputStream();
-      DataOutputStream dos = new DataOutputStream(bos);
-      dos.writeInt(i);
-      dos.close();
-      record.headers().add("recordNum", bos.toByteArray());
-      producer.send(record);
-    }
-    producer.flush();
-    producer.close(1, TimeUnit.MINUTES);
+    produceRawRecordToTopic(topic, producer);
 
     MarioConfiguration marioConfiguration = MarioConfiguration.embeddableInMem();
     marioConfiguration.setEnableNgSupport(false);
@@ -237,5 +252,23 @@ public class LiKafkaInstrumentedConsumerIntegrationTest extends AbstractKafkaCli
     try (AdminClient adminClient = createRawAdminClient(null)) {
       adminClient.createTopics(Collections.singletonList(new NewTopic(topicName, numPartitions, (short) 1))).all().get(1, TimeUnit.MINUTES);
     }
+  }
+
+  private void produceRawRecordToTopic(String topicName, Producer<byte[], byte[]> producer) throws Exception {
+    for (int i = 0; i < 1000; i++) {
+      byte[] key = new byte[1024];
+      byte[] value = new byte[1024];
+      Arrays.fill(key, (byte) i);
+      Arrays.fill(value, (byte) i);
+      ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topicName, 0, key, value);
+      ByteArrayOutputStream bos = new ByteArrayOutputStream();
+      DataOutputStream dos = new DataOutputStream(bos);
+      dos.writeInt(i);
+      dos.close();
+      record.headers().add("recordNum", bos.toByteArray());
+      producer.send(record);
+    }
+    producer.flush();
+    producer.close(1, TimeUnit.MINUTES);
   }
 }
