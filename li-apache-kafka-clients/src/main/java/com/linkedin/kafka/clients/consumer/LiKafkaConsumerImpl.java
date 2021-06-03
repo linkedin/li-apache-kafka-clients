@@ -76,7 +76,6 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
   private final ConsumerRecordsProcessor<K, V> _consumerRecordsProcessor;
   private final LiKafkaConsumerRebalanceListener<K, V> _consumerRebalanceListener;
   private final LiKafkaOffsetCommitCallback _offsetCommitCallback;
-  private final boolean _passthroughEnabled;
   private final boolean _autoCommitEnabled;
   private final long _autoCommitInterval;
   private final boolean _throwExceptionOnInvalidOffsets;
@@ -120,7 +119,6 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
 
     _autoCommitEnabled = configs.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG);
     _autoCommitInterval = configs.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG);
-    _passthroughEnabled = configs.getBoolean(ConsumerConfig.ENABLE_SHALLOW_ITERATOR_CONFIG);
     _throwExceptionOnInvalidOffsets = configs.getBoolean(LiKafkaConsumerConfig.EXCEPTION_ON_INVALID_OFFSET_RESET_CONFIG);
     _offsetResetStrategy =
         LiOffsetResetStrategy.valueOf(configs.getString(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG).toUpperCase(Locale.ROOT));
@@ -358,27 +356,19 @@ public class LiKafkaConsumerImpl<K, V> implements LiKafkaConsumer<K, V> {
         }
       }
 
-      /* Hack for passthrough mirroring: since Brooklin is the only user of passthrough feature and they only
-       * use raw <byte[], byte[]> consumer, there's no need to perform large message processing in this case,
-       * and should just return the consumed records directly to the caller.
-       */
-      if (_passthroughEnabled) {
-        processedRecords = (ConsumerRecords<K, V>) rawRecords;
-      } else {
-        _lastProcessedResult = _consumerRecordsProcessor.process(rawRecords);
-        processedRecords = _lastProcessedResult.consumerRecords();
-        // Clear the internal reference.
-        _lastProcessedResult.clearRecords();
-        // Rewind offset if there are processing exceptions.
-        seekToCurrentOffsetsOnRecordProcessingExceptions();
+      _lastProcessedResult = _consumerRecordsProcessor.process(rawRecords);
+      processedRecords = _lastProcessedResult.consumerRecords();
+      // Clear the internal reference.
+      _lastProcessedResult.clearRecords();
+      // Rewind offset if there are processing exceptions.
+      seekToCurrentOffsetsOnRecordProcessingExceptions();
 
-        // this is an optimization
-        // if no records were processed try to throw exception in current poll()
-        if (processedRecords.isEmpty()) {
-          crpe = handleRecordProcessingException(null);
-          if (crpe != null) {
-            throw crpe;
-          }
+      // this is an optimization
+      // if no records were processed try to throw exception in current poll()
+      if (processedRecords.isEmpty()) {
+        crpe = handleRecordProcessingException(null);
+        if (crpe != null) {
+          throw crpe;
         }
       }
 
