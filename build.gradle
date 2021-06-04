@@ -49,7 +49,7 @@ project.ext {
       url "https://github.com/linkedin/li-apache-kafka-clients"
     }
   }
-  liKafkaVersion = "2.0.0.35"
+  liKafkaVersion = "2.0.0.37"
   marioVersion = "0.0.56"
 }
 
@@ -63,7 +63,15 @@ subprojects {
 
     repositories {
       mavenLocal()
+      mavenCentral()
       jcenter()
+      maven {
+        credentials {
+          username = System.getenv('ARTIFACTORY_USER')
+          password = System.getenv('ARTIFACTORY_KEY')
+        }
+        url 'https://linkedin.jfrog.io/artifactory/kafka'
+      }
       maven {
         url "https://dl.bintray.com/linkedin/maven"
       }
