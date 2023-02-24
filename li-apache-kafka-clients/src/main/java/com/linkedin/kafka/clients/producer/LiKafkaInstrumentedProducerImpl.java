@@ -133,31 +133,6 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
         this,
         loggingHandler
     );
-
-    boolean tryFallback;
-    Exception issue = null;
-    try {
-      tryFallback = !initialConnectionLatch.await(initialConnectionTimeoutMs, TimeUnit.MILLISECONDS);
-    } catch (Exception e) {
-      tryFallback = true;
-      issue = e;
-    }
-
-    if (tryFallback) {
-      boolean delegateChanged = recreateDelegate(true);
-      if (delegateChanged) {
-        if (issue != null) {
-          LOG.error("exception waiting to contact {}, using user-provided configs as fallback",
-              mdsClient.getLastAttemptedMarioUrl(), issue);
-        } else {
-          LOG.warn("unable to contact {} within timeout ({}), using user-provided configs as fallback",
-              mdsClient.getLastAttemptedMarioUrl(), initialConnectionTimeoutMs);
-        }
-      } else if (issue != null) {
-        //we got interrupted waiting, but apparently connection to mds was successful?
-        LOG.warn("exception waiting on MDS connection, yet connection succeeded?", issue);
-      }
-    }
   }
 
   @Override
@@ -174,7 +149,8 @@ public class LiKafkaInstrumentedProducerImpl<K, V> implements DelegatingProducer
             LOG.info("successfully connected to {}, no config overrides", mdsClient.getLastConnectedMarioUrl());
           }
           this.configOverrides = newOverrides;
-          recreateDelegate(false);
+          //honor the other creation in constructor if any
+          recreateDelegate(true);
         }
       } finally {
         initialConnectionLatch.countDown();
